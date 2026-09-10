@@ -1,5 +1,10 @@
 pub mod control;
 
+use std::fs;
+use std::io;
+use std::net::TcpListener;
+use std::path::Path;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerState {
     Stopped,
@@ -66,6 +71,28 @@ impl ServerLifecycle {
             }),
         }
     }
+}
+
+pub fn run(state_dir: &Path) -> io::Result<()> {
+    fs::create_dir_all(state_dir)?;
+    let listener = TcpListener::bind(("127.0.0.1", 0))?;
+    let address = listener.local_addr()?.to_string();
+    let endpoint = state_dir.join("server.endpoint");
+    fs::write(&endpoint, &address)?;
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                if control::handle_connection(stream)? {
+                    break;
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    let _ = fs::remove_file(endpoint);
+    Ok(())
 }
 
 #[cfg(test)]

@@ -1,20 +1,33 @@
 use std::env;
 use std::fs;
 use std::io;
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::Duration;
+
+use crate::protocol::frame::{read_frame, write_frame};
+use crate::protocol::{Request, Response, PROTOCOL_VERSION};
+use serde_json::Value;
 
 const APP_DIR: &str = "Spindle";
 
 pub fn run() -> io::Result<()> {
     let command = env::args().nth(1).unwrap_or_else(|| "attach".into());
+    if command == "run-server" {
+        let state_dir = env::args().nth(2).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "run-server needs a state directory",
+            )
+        })?;
+        return crate::server::run(Path::new(&state_dir));
+    }
     let project = Project::from_current_dir()?;
 
     match command.as_str() {
-        "start" | "attach" => {
-            project.ensure_state_dir()?;
-            println!("{} {}", command, project.describe());
-            println!("server lifecycle is not implemented yet");
-        }
+        "start" => start_server(&project)?,
+        "attach" => attach_server(&project)?,
         "list" => {
             println!("project: {}", project.describe());
             println!("state: {}", project.state_dir.display());
@@ -24,7 +37,10 @@ pub fn run() -> io::Result<()> {
             println!("state directory: {}", project.state_dir.display());
             println!("state directory exists: {}", project.state_dir.exists());
         }
-        "stop" => println!("server lifecycle is not implemented yet"),
+        "stop" => {
+            send_command(&project, "stop_server")?;
+            println!("server stopped");
+        }
         "help" | "--help" | "-h" => print_help(),
         other => {
             print_help();
@@ -36,6 +52,61 @@ pub fn run() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn start_server(project: &Project) -> io::Result<()> {
+    project.ensure_state_dir()?;
+    if ping_server(project).is_ok() {
+        println!("server already running for {}", project.describe());
+        return Ok(());
+    }
+    let executable = env::current_exe()?;
+    Command::new(executable)
+        .args(["run-server", &project.state_dir.to_string_lossy()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    for _ in 0..20 {
+        if ping_server(project).is_ok() {
+            println!("server started for {}", project.describe());
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    Err(io::Error::new(
+        io::ErrorKind::TimedOut,
+        "server did not become ready",
+    ))
+}
+
+fn attach_server(project: &Project) -> io::Result<()> {
+    project.ensure_state_dir()?;
+    ping_server(project)?;
+    println!("attached to {}", project.describe());
+    Ok(())
+}
+
+fn ping_server(project: &Project) -> io::Result<Response<Value>> {
+    send_command(project, "ping")
+}
+
+fn send_command(project: &Project, operation: &str) -> io::Result<Response<Value>> {
+    let address = fs::read_to_string(project.endpoint_path())?;
+    let mut stream = TcpStream::connect(address.trim())?;
+    let request = Request {
+        version: PROTOCOL_VERSION,
+        request_id: format!("{}", std::process::id()),
+        op: operation.into(),
+        payload: Value::Object(Default::default()),
+    };
+    let encoded = serde_json::to_vec(&request).map_err(io::Error::other)?;
+    write_frame(&mut stream, &encoded)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, format!("{error:?}")))?;
+    let mut reader = std::io::BufReader::new(stream);
+    let response = read_frame(&mut reader)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, format!("{error:?}")))?;
+    serde_json::from_slice(&response).map_err(io::Error::other)
 }
 
 fn print_help() {
@@ -116,5 +187,11 @@ mod tests {
             project_id(Path::new("C:/repo")),
             project_id(Path::new("C:/other"))
         );
+    }
+}
+
+impl Project {
+    fn endpoint_path(&self) -> PathBuf {
+        self.state_dir.join("server.endpoint")
     }
 }

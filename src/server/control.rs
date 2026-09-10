@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use std::io::{self, BufReader};
 use std::net::TcpStream;
 
-pub fn handle_connection(stream: TcpStream) -> io::Result<()> {
+pub fn handle_connection(stream: TcpStream) -> io::Result<bool> {
     let reader_stream = stream.try_clone()?;
     let mut reader = BufReader::new(reader_stream);
     let mut writer = stream;
@@ -13,7 +13,19 @@ pub fn handle_connection(stream: TcpStream) -> io::Result<()> {
         Err(error) => error_response("invalid_frame", frame_error_message(error)),
     };
     let encoded = serde_json::to_vec(&response).map_err(io::Error::other)?;
-    write_frame(&mut writer, &encoded).map_err(frame_io_error)
+    write_frame(&mut writer, &encoded).map_err(frame_io_error)?;
+    Ok(response_requests_stop(&response))
+}
+
+fn response_requests_stop(response: &Response<Value>) -> bool {
+    response.ok
+        && response
+            .payload
+            .as_ref()
+            .and_then(Value::as_object)
+            .and_then(|payload| payload.get("stopping"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
 }
 
 fn response_for(frame: &[u8]) -> Response<Value> {
@@ -34,6 +46,7 @@ fn response_for(frame: &[u8]) -> Response<Value> {
         "ping" => json!({ "status": "ok" }),
         "attach" => json!({ "attached": true }),
         "get_snapshot" => json!({ "version": 1, "spaces": [] }),
+        "stop_server" => json!({ "stopping": true }),
         _ => {
             return error_response(
                 "unknown_operation",
