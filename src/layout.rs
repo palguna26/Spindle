@@ -57,33 +57,29 @@ impl LayoutNode {
             } => match (*first, *second) {
                 (first, second) if first.contains(pane_id) => {
                     let collapse = matches!(first, LayoutNode::Pane { .. });
-                    first.close_pane(pane_id).map(|remaining| {
-                        if collapse {
-                            second
-                        } else {
-                            Self::Split {
-                                direction,
-                                ratio,
-                                first: Box::new(remaining),
-                                second: Box::new(second),
-                            }
-                        }
-                    })
+                    if collapse {
+                        Some(second)
+                    } else {
+                        first.close_pane(pane_id).map(|remaining| Self::Split {
+                            direction,
+                            ratio,
+                            first: Box::new(remaining),
+                            second: Box::new(second),
+                        })
+                    }
                 }
                 (first, second) if second.contains(pane_id) => {
                     let collapse = matches!(second, LayoutNode::Pane { .. });
-                    second.close_pane(pane_id).map(|remaining| {
-                        if collapse {
-                            first
-                        } else {
-                            Self::Split {
-                                direction,
-                                ratio,
-                                first: Box::new(first),
-                                second: Box::new(remaining),
-                            }
-                        }
-                    })
+                    if collapse {
+                        Some(first)
+                    } else {
+                        second.close_pane(pane_id).map(|remaining| Self::Split {
+                            direction,
+                            ratio,
+                            first: Box::new(first),
+                            second: Box::new(remaining),
+                        })
+                    }
                 }
                 (first, second) => Some(Self::Split {
                     direction,
