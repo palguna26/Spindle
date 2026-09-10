@@ -1,0 +1,9 @@
+[package]
+name = "spindle"
+version = "0.1.0"
+edition = "2021"
+description = "A Rust terminal multiplexer for persistent parallel coding-agent sessions"
+license = "MIT"
+
+[dependencies]
+
