@@ -1,3 +1,5 @@
+pub mod control;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerState {
     Stopped,
