@@ -1,4 +1,4 @@
-use crate::{layout::LayoutNode, status::PaneStatus};
+use crate::{model::layout::LayoutNode, model::status::PaneStatus};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -75,7 +75,7 @@ pub fn recover(mut snapshot: Snapshot) -> Snapshot {
 #[cfg(test)]
 mod tests {
     use super::{load, recover, save, PaneSnapshot, Snapshot, SNAPSHOT_VERSION};
-    use crate::{layout::LayoutNode, status::PaneStatus};
+    use crate::{model::layout::LayoutNode, model::status::PaneStatus};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_path() -> std::path::PathBuf {
