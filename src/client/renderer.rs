@@ -50,6 +50,18 @@ pub fn render_palette(frame: &mut Frame<'_>, selected: usize) {
     );
 }
 
+pub fn render_prompt(frame: &mut Frame<'_>, title: &str, input: &str) {
+    let area = centered_rect(60, 25, frame.area());
+    frame.render_widget(
+        Paragraph::new(input.to_string()).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!("{title} (Enter to save, Esc to cancel)")),
+        ),
+        area,
+    );
+}
+
 fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     let width = width.min(area.width);
     let height = (area.height * height / 100).max(1).min(area.height);

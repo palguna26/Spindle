@@ -1,5 +1,6 @@
 use super::input::{action, is_prefix, Action};
 use super::palette::{move_selection, Command};
+use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
 use super::renderer;
 use super::{ClientError, ControlClient};
 use crate::server::session::SessionSnapshot;
@@ -48,6 +49,7 @@ fn event_loop(
     let mut prefix_active = false;
     let mut palette_selected = 0;
     let mut palette_open = false;
+    let mut rename_prompt: Option<RenamePrompt> = None;
     let mut last_size = None;
     loop {
         let snapshot = current_snapshot(client)?;
@@ -62,6 +64,14 @@ fn event_loop(
                 if palette_open {
                     renderer::render_palette(frame, palette_selected);
                 }
+                if let Some(prompt) = &rename_prompt {
+                    let title = match prompt.target {
+                        RenameTarget::Pane => "Rename pane",
+                        RenameTarget::Tab => "Rename tab",
+                        RenameTarget::Workspace => "Rename workspace",
+                    };
+                    renderer::render_prompt(frame, title, &prompt.input);
+                }
             })
             .map_err(ClientError::Io)?;
         if !event::poll(Duration::from_millis(100)).map_err(ClientError::Io)? {
@@ -73,6 +83,18 @@ fn event_loop(
         if key.kind != KeyEventKind::Press {
             continue;
         }
+        if let Some(prompt) = &mut rename_prompt {
+            match prompt.apply_key(key.code) {
+                PromptResult::Continue => {}
+                PromptResult::Cancel => rename_prompt = None,
+                PromptResult::Submit(name) => {
+                    let target = prompt.target;
+                    rename_prompt = None;
+                    submit_rename(client, &snapshot, target, name)?;
+                }
+            }
+            continue;
+        }
         if palette_open {
             if let Some(next) = move_selection(palette_selected, key.code) {
                 palette_selected = next;
@@ -81,6 +103,10 @@ fn event_loop(
             } else if key.code == KeyCode::Enter {
                 let command = Command::ALL[palette_selected];
                 palette_open = false;
+                if let Some(target) = rename_target(command.action()) {
+                    rename_prompt = Some(RenamePrompt::new(target));
+                    continue;
+                }
                 if execute_action(command.action(), client, &snapshot, terminal_size)? {
                     break;
                 }
@@ -192,10 +218,50 @@ fn event_loop(
             }
             Action::None => {}
             Action::CommandPalette => {}
+            Action::RenameFocusedPane | Action::RenameActiveTab | Action::RenameActiveWorkspace => {
+            }
         }
         prefix_active = false;
     }
     Ok(())
+}
+
+fn rename_target(action: Action) -> Option<RenameTarget> {
+    match action {
+        Action::RenameFocusedPane => Some(RenameTarget::Pane),
+        Action::RenameActiveTab => Some(RenameTarget::Tab),
+        Action::RenameActiveWorkspace => Some(RenameTarget::Workspace),
+        _ => None,
+    }
+}
+
+fn submit_rename(
+    client: &ControlClient,
+    snapshot: &SessionSnapshot,
+    target: RenameTarget,
+    name: String,
+) -> Result<(), ClientError> {
+    let (operation, id) = match target {
+        RenameTarget::Pane => ("rename_pane", snapshot.focused_pane_id.clone()),
+        RenameTarget::Tab => ("rename_tab", active_tab_id(snapshot)),
+        RenameTarget::Workspace => ("rename_workspace", active_workspace_id(snapshot)),
+    };
+    if let Some(id) = id {
+        let _ = client.request(
+            format!("rename-{}", operation),
+            operation,
+            json!({ "id": id, "name": name }),
+        )?;
+    }
+    Ok(())
+}
+
+fn active_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
+    snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)
+        .map(|space| space.active_workspace_id.clone())
 }
 
 fn execute_action(
@@ -291,6 +357,9 @@ fn execute_action(
                     json!({ "pane_id": pane_id, "delta": delta }),
                 );
             }
+            Ok(false)
+        }
+        Action::RenameFocusedPane | Action::RenameActiveTab | Action::RenameActiveWorkspace => {
             Ok(false)
         }
         _ => Ok(false),

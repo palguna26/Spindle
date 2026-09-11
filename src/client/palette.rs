@@ -11,6 +11,9 @@ pub enum Command {
     PreviousSpace,
     StopFocusedPane,
     RestartFocusedPane,
+    RenameFocusedPane,
+    RenameActiveTab,
+    RenameActiveWorkspace,
     FocusNext,
     SplitHorizontal,
     SplitVertical,
@@ -20,7 +23,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 17] = [
         Self::NewTab,
         Self::CloseTab,
         Self::NextTab,
@@ -29,6 +32,9 @@ impl Command {
         Self::PreviousSpace,
         Self::StopFocusedPane,
         Self::RestartFocusedPane,
+        Self::RenameFocusedPane,
+        Self::RenameActiveTab,
+        Self::RenameActiveWorkspace,
         Self::FocusNext,
         Self::SplitHorizontal,
         Self::SplitVertical,
@@ -47,6 +53,9 @@ impl Command {
             Self::PreviousSpace => "Previous space",
             Self::StopFocusedPane => "Stop focused pane",
             Self::RestartFocusedPane => "Restart focused pane",
+            Self::RenameFocusedPane => "Rename focused pane",
+            Self::RenameActiveTab => "Rename active tab",
+            Self::RenameActiveWorkspace => "Rename active workspace",
             Self::FocusNext => "Focus next pane",
             Self::SplitHorizontal => "Split horizontally",
             Self::SplitVertical => "Split vertically",
@@ -66,6 +75,9 @@ impl Command {
             Self::PreviousSpace => Action::PreviousSpace,
             Self::StopFocusedPane => Action::StopFocusedPane,
             Self::RestartFocusedPane => Action::RestartFocusedPane,
+            Self::RenameFocusedPane => Action::RenameFocusedPane,
+            Self::RenameActiveTab => Action::RenameActiveTab,
+            Self::RenameActiveWorkspace => Action::RenameActiveWorkspace,
             Self::FocusNext => Action::FocusNext,
             Self::SplitHorizontal => Action::SplitHorizontal,
             Self::SplitVertical => Action::SplitVertical,
