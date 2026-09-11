@@ -1,9 +1,11 @@
 pub mod control;
+mod session;
 
 use std::fs;
 use std::io;
 use std::net::TcpListener;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerState {
@@ -79,11 +81,12 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     let address = listener.local_addr()?.to_string();
     let endpoint = state_dir.join("server.endpoint");
     fs::write(&endpoint, &address)?;
+    let session = Arc::new(Mutex::new(session::Session::default()));
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                if control::handle_connection(stream)? {
+                if control::handle_connection(stream, Arc::clone(&session))? {
                     break;
                 }
             }
