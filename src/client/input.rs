@@ -5,6 +5,7 @@ pub enum Action {
     None,
     Detach,
     NewTab,
+    CloseTab,
     NextTab,
     PreviousTab,
     NextSpace,
@@ -23,6 +24,7 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
         return match key.code {
             KeyCode::Char('d') => Action::Detach,
             KeyCode::Char('n') => Action::NewTab,
+            KeyCode::Char('c') => Action::CloseTab,
             KeyCode::Char(']') => Action::NextTab,
             KeyCode::Char('[') => Action::PreviousTab,
             KeyCode::Char('}') => Action::NextSpace,
@@ -74,6 +76,10 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)),
             Action::NextTab
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
+            Action::CloseTab
         );
     }
 

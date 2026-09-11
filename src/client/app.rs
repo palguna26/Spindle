@@ -78,6 +78,11 @@ fn event_loop(
             Action::NewTab => {
                 client.request("new-tab", "create_tab", json!({ "name": "Activity" }))?;
             }
+            Action::CloseTab => {
+                if let Some(tab_id) = active_tab_id(&snapshot) {
+                    let _ = client.request("close-tab", "close_tab", json!({ "id": tab_id }));
+                }
+            }
             Action::NextTab | Action::PreviousTab => {
                 if let Some(tab_id) = adjacent_tab_id(&snapshot, matches!(pressed, Action::NextTab))
                 {
@@ -245,9 +250,21 @@ fn adjacent_tab_id(snapshot: &SessionSnapshot, forward: bool) -> Option<String> 
     Some(workspace.tabs[next].tab_id.clone())
 }
 
+fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
+    let space = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)?;
+    let workspace = space
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.workspace_id == space.active_workspace_id)?;
+    Some(workspace.active_tab_id.clone())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{adjacent_space_id, adjacent_tab_id, key_code_bytes};
+    use super::{active_tab_id, adjacent_space_id, adjacent_tab_id, key_code_bytes};
     use crate::server::session::Session;
     use crossterm::event::KeyCode;
 
@@ -277,5 +294,6 @@ mod tests {
             adjacent_space_id(&snapshot, true).as_deref(),
             Some(second_space_id)
         );
+        assert_eq!(active_tab_id(&snapshot).as_deref(), Some(first_tab_id));
     }
 }
