@@ -53,6 +53,15 @@ struct NameRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct WorkspaceRequest {
+    name: String,
+    #[serde(default)]
+    repository_path: Option<String>,
+    #[serde(default)]
+    branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct IdNameRequest {
     id: String,
     name: String,
@@ -395,7 +404,7 @@ pub(crate) fn response_for_with_interactive(
             })
         }
         "create_workspace" => {
-            let payload: NameRequest = match serde_json::from_value(request.payload) {
+            let payload: WorkspaceRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,
                 Err(error) => {
                     return request_error(request.request_id, "invalid_payload", error.to_string())
@@ -403,7 +412,11 @@ pub(crate) fn response_for_with_interactive(
             };
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
-                session.create_workspace(payload.name)
+                session.create_workspace_with_context(
+                    payload.name,
+                    payload.repository_path,
+                    payload.branch,
+                )
             })
         }
         "switch_workspace" => {

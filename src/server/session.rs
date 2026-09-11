@@ -71,6 +71,10 @@ pub struct TabView {
 pub struct WorkspaceView {
     pub workspace_id: String,
     pub name: String,
+    #[serde(default)]
+    pub repository_path: Option<String>,
+    #[serde(default)]
+    pub branch: Option<String>,
     pub tabs: Vec<TabView>,
     pub active_tab_id: String,
 }
@@ -116,6 +120,8 @@ impl Default for Session {
                     workspaces: vec![WorkspaceView {
                         workspace_id: "workspace-1".into(),
                         name: "Current project".into(),
+                        repository_path: None,
+                        branch: None,
                         tabs: vec![TabView {
                             tab_id: "tab-1".into(),
                             name: "Main".into(),
@@ -323,6 +329,15 @@ impl Session {
     }
 
     pub fn create_workspace(&mut self, name: String) -> Result<Value, String> {
+        self.create_workspace_with_context(name, None, None)
+    }
+
+    pub fn create_workspace_with_context(
+        &mut self,
+        name: String,
+        repository_path: Option<String>,
+        branch: Option<String>,
+    ) -> Result<Value, String> {
         let space = self
             .snapshot
             .spaces
@@ -334,6 +349,8 @@ impl Session {
         space.workspaces.push(WorkspaceView {
             workspace_id: workspace_id.clone(),
             name,
+            repository_path,
+            branch,
             tabs: vec![TabView {
                 tab_id: tab_id.clone(),
                 name: "Main".into(),
@@ -355,6 +372,8 @@ impl Session {
             workspaces: vec![WorkspaceView {
                 workspace_id: workspace_id.clone(),
                 name: "Current project".into(),
+                repository_path: None,
+                branch: None,
                 tabs: vec![TabView {
                     tab_id: tab_id.clone(),
                     name: "Main".into(),
@@ -857,7 +876,13 @@ mod tests {
     #[test]
     fn workspace_and_tab_operations_update_active_state() {
         let mut session = Session::default();
-        let workspace = session.create_workspace("Feature".into()).unwrap();
+        let workspace = session
+            .create_workspace_with_context(
+                "Feature".into(),
+                Some("C:/repo".into()),
+                Some("main".into()),
+            )
+            .unwrap();
         let workspace_id = workspace["workspace_id"].as_str().unwrap();
         assert_eq!(
             session.snapshot().spaces[0].active_workspace_id,
@@ -878,6 +903,16 @@ mod tests {
         assert_eq!(
             session.snapshot().spaces[0].workspaces[1].name,
             "Feature work"
+        );
+        assert_eq!(
+            session.snapshot().spaces[0].workspaces[1]
+                .repository_path
+                .as_deref(),
+            Some("C:/repo")
+        );
+        assert_eq!(
+            session.snapshot().spaces[0].workspaces[1].branch.as_deref(),
+            Some("main")
         );
         assert_eq!(
             session.snapshot().spaces[0].workspaces[1].tabs[1].name,
