@@ -210,6 +210,84 @@ fn split_panes_survive_workspace_switching() {
 }
 
 #[test]
+fn client_loss_allows_geometry_ownership_takeover() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let first = ControlClient::connect(address.trim()).unwrap();
+    let second = ControlClient::connect(address.trim()).unwrap();
+    let first_attach = first.attach().unwrap();
+    assert_eq!(first_attach.payload.unwrap()["active"], true);
+    let second_attach = second.attach().unwrap();
+    assert_eq!(second_attach.payload.unwrap()["active"], false);
+    drop(first);
+    std::thread::sleep(Duration::from_millis(1_100));
+    let takeover = second.attach().unwrap();
+    assert_eq!(takeover.payload.unwrap()["active"], true);
+
+    second
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
+fn server_restart_marks_live_panes_interrupted() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let pane = client
+        .request(
+            "live-pane",
+            "create_pane",
+            serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+                "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap();
+    let pane_id = pane.payload.unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+
+    let (thread, address) = start_server(&state_dir);
+    let recovered = ControlClient::connect(address.trim()).unwrap();
+    let snapshot = recovered
+        .request(
+            "snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    let recovered_pane = snapshot["panes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pane| pane["pane_id"] == pane_id)
+        .unwrap();
+    assert!(recovered_pane["status"]["Interrupted"].is_object());
+    recovered
+        .request(
+            "stop-again",
+            "stop_server",
+            Value::Object(Default::default()),
+        )
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn client_can_subscribe_from_a_sequence() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
