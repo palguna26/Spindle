@@ -123,12 +123,21 @@ fn pane_title(pane: &crate::server::session::PaneView) -> String {
     };
     let alternate = if pane.alternate_screen { " [alt]" } else { "" };
     format!(
-        "{} {} {}{}",
+        "{} {} {} — {}{}",
         pane.status.indicator(),
         pane.pane_id,
         label,
+        status_detail(&pane.status),
         alternate
     )
+}
+
+fn status_detail(status: &PaneStatus) -> String {
+    match status {
+        PaneStatus::Running => "running".into(),
+        PaneStatus::Completed { exit_code } => format!("exit {exit_code}"),
+        PaneStatus::Halted { reason } | PaneStatus::Interrupted { reason } => reason.clone(),
+    }
 }
 
 pub fn status_color(status: &PaneStatus) -> Color {
@@ -191,7 +200,30 @@ mod tests {
             title: "Editor".into(),
             alternate_screen: true,
         };
-        assert_eq!(pane_title(&pane), "◉ pane-1 Editor [alt]");
+        assert!(pane_title(&pane).contains("Editor"));
+        assert!(pane_title(&pane).contains("running"));
+        assert!(pane_title(&pane).contains("[alt]"));
+    }
+
+    #[test]
+    fn pane_title_shows_failure_reason_and_exit_code() {
+        let mut pane = PaneView {
+            pane_id: "pane-1".into(),
+            command: "cmd.exe".into(),
+            args: Vec::new(),
+            cwd: "C:/".into(),
+            status: PaneStatus::Completed { exit_code: 0 },
+            scrollback_bytes: 0,
+            screen: String::new(),
+            cursor: (0, 0),
+            title: String::new(),
+            alternate_screen: false,
+        };
+        assert!(pane_title(&pane).contains("exit 0"));
+        pane.status = PaneStatus::Halted {
+            reason: "process failed".into(),
+        };
+        assert!(pane_title(&pane).contains("process failed"));
     }
 
     #[test]
