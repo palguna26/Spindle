@@ -1,5 +1,5 @@
 pub mod control;
-mod session;
+pub mod session;
 
 use std::fs;
 use std::io;
