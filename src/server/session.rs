@@ -436,7 +436,13 @@ impl Session {
             .iter_mut()
             .find(|space| space.space_id == self.snapshot.active_space_id)
             .ok_or_else(|| "active space does not exist".to_string())?;
-        let workspace_id = format!("workspace-{}", space.workspaces.len() + 1);
+        let workspace_id = next_numbered_id(
+            "workspace",
+            space
+                .workspaces
+                .iter()
+                .map(|workspace| workspace.workspace_id.clone()),
+        );
         let tab_id = format!("tab-{}-1", workspace_id);
         space.workspaces.push(WorkspaceView {
             workspace_id: workspace_id.clone(),
@@ -455,7 +461,13 @@ impl Session {
     }
 
     pub fn create_space(&mut self, name: String) -> Result<Value, String> {
-        let space_id = format!("space-{}", self.snapshot.spaces.len() + 1);
+        let space_id = next_numbered_id(
+            "space",
+            self.snapshot
+                .spaces
+                .iter()
+                .map(|space| space.space_id.clone()),
+        );
         let workspace_id = format!("workspace-{}-1", space_id);
         let tab_id = format!("tab-{}-1", workspace_id);
         self.snapshot.spaces.push(SpaceView {
@@ -578,10 +590,9 @@ impl Session {
 
     pub fn create_tab(&mut self, name: String) -> Result<Value, String> {
         let workspace = self.active_workspace_mut()?;
-        let tab_id = format!(
-            "tab-{}-{}",
-            workspace.workspace_id,
-            workspace.tabs.len() + 1
+        let tab_id = next_numbered_id(
+            &format!("tab-{}", workspace.workspace_id),
+            workspace.tabs.iter().map(|tab| tab.tab_id.clone()),
         );
         workspace.tabs.push(TabView {
             tab_id: tab_id.clone(),
@@ -971,6 +982,18 @@ fn next_pane_id(snapshot: &SessionSnapshot) -> u64 {
         + 1
 }
 
+fn next_numbered_id(prefix: &str, ids: impl IntoIterator<Item = String>) -> String {
+    let ids: std::collections::BTreeSet<String> = ids.into_iter().collect();
+    let mut number = 1;
+    loop {
+        let candidate = format!("{prefix}-{number}");
+        if !ids.contains(&candidate) {
+            return candidate;
+        }
+        number += 1;
+    }
+}
+
 impl Session {
     pub fn refresh_snapshot(&mut self) {
         for pane in &mut self.snapshot.panes {
@@ -1135,6 +1158,39 @@ mod tests {
         let tab_id = tab["tab_id"].as_str().unwrap().to_string();
         session.close_tab(&tab_id).unwrap();
         assert_eq!(session.snapshot().spaces[0].workspaces[0].tabs.len(), 1);
+    }
+
+    #[test]
+    fn new_container_ids_do_not_collide_after_middle_deletions() {
+        let mut session = Session::default();
+        session.create_space("Second".into()).unwrap();
+        session.create_space("Third".into()).unwrap();
+        session.delete_space("space-2").unwrap();
+        assert_eq!(
+            session.create_space("Replacement".into()).unwrap()["space_id"],
+            "space-2"
+        );
+
+        session.switch_space("space-1").unwrap();
+        session.create_workspace("Second workspace".into()).unwrap();
+        session.create_workspace("Third workspace".into()).unwrap();
+        session.delete_workspace("workspace-2").unwrap();
+        assert_eq!(
+            session
+                .create_workspace("Replacement workspace".into())
+                .unwrap()["workspace_id"],
+            "workspace-2"
+        );
+
+        let first_tab = session.create_tab("Second tab".into()).unwrap();
+        let second_tab = session.create_tab("Third tab".into()).unwrap();
+        session
+            .close_tab(second_tab["tab_id"].as_str().unwrap())
+            .unwrap();
+        assert_ne!(
+            session.create_tab("Replacement tab".into()).unwrap()["tab_id"],
+            first_tab["tab_id"]
+        );
     }
 
     #[test]
