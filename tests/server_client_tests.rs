@@ -116,6 +116,112 @@ fn session_metadata_survives_server_restart() {
 }
 
 #[test]
+fn terminal_screen_and_scrollback_survive_server_restart() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let pane = client
+        .request(
+            "history-pane",
+            "create_pane",
+            serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/C", "echo", "persisted-terminal-output"],
+                "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap()
+        .payload
+        .unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mut before_restart = None;
+    for _ in 0..30 {
+        let snapshot = client
+            .request(
+                "history-snapshot",
+                "get_snapshot",
+                Value::Object(Default::default()),
+            )
+            .unwrap()
+            .payload
+            .unwrap();
+        let current = snapshot["panes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|current| current["pane_id"] == pane)
+            .unwrap();
+        let scrollback: Vec<u8> = current["scrollback"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|byte| byte.as_u64().and_then(|byte| u8::try_from(byte).ok()))
+            .collect();
+        if scrollback.windows(4).any(|window| window == b"\x1b[6n") {
+            client
+                .request(
+                    "history-cursor-response",
+                    "send_input",
+                    serde_json::json!({ "pane_id": pane, "bytes": b"\x1b[1;1R" }),
+                )
+                .unwrap();
+        }
+        if current["screen"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("persisted-terminal-output")
+        {
+            before_restart = Some(current.clone());
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let before_restart = before_restart.expect("terminal output did not reach the snapshot");
+    assert!(before_restart["scrollback_bytes"].as_u64().unwrap() > 0);
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+
+    let (thread, address) = start_server(&state_dir);
+    let recovered = ControlClient::connect(address.trim()).unwrap();
+    let snapshot = recovered
+        .request(
+            "recovered-history",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    let pane = snapshot["panes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|current| current["pane_id"] == pane)
+        .unwrap();
+    assert!(pane["screen"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("persisted-terminal-output"));
+    assert!(pane["scrollback_bytes"].as_u64().unwrap() > 0);
+    recovered
+        .request(
+            "stop-again",
+            "stop_server",
+            Value::Object(Default::default()),
+        )
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn tab_metadata_and_active_tab_survive_server_restart() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
