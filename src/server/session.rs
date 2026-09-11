@@ -32,6 +32,10 @@ pub struct PaneView {
     pub command: String,
     pub args: Vec<String>,
     pub cwd: String,
+    #[serde(default = "default_dimension")]
+    pub cols: u16,
+    #[serde(default = "default_dimension")]
+    pub rows: u16,
     #[serde(default)]
     pub label: Option<String>,
     pub status: PaneStatus,
@@ -46,6 +50,10 @@ pub struct PaneView {
     pub title: String,
     #[serde(default)]
     pub alternate_screen: bool,
+}
+
+fn default_dimension() -> u16 {
+    80
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -292,6 +300,8 @@ impl Session {
             command: request.command,
             args: request.args,
             cwd: request.cwd,
+            cols: request.cols,
+            rows: request.rows,
             label: request.label,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
@@ -653,7 +663,7 @@ impl Session {
             .get(pane_id)
             .map(|pane| pane.config.env.clone())
             .unwrap_or_default();
-        let (command, args, cwd, status) = self
+        let (command, args, cwd, cols, rows, status) = self
             .snapshot
             .panes
             .iter()
@@ -663,6 +673,8 @@ impl Session {
                     pane.command.clone(),
                     pane.args.clone(),
                     pane.cwd.clone(),
+                    pane.cols,
+                    pane.rows,
                     pane.status.clone(),
                 )
             })
@@ -683,8 +695,8 @@ impl Session {
                     args,
                     cwd,
                     env,
-                    cols: 80,
-                    rows: 24,
+                    cols,
+                    rows,
                 },
             )
             .map_err(|error| format!("{error:?}"))?;
@@ -811,6 +823,8 @@ impl Session {
         for pane in &mut self.snapshot.panes {
             if let Some(current) = self.pane_manager.get(&pane.pane_id) {
                 pane.status = current.status.clone();
+                pane.cols = current.terminal.snapshot().cols;
+                pane.rows = current.terminal.snapshot().rows;
                 pane.scrollback_bytes = current.scrollback.len();
                 pane.scrollback = current.scrollback.iter().copied().collect();
                 let terminal = current.terminal.snapshot();
@@ -896,6 +910,8 @@ mod tests {
             command: "powershell.exe".into(),
             args: Vec::new(),
             cwd: "C:/".into(),
+            cols: 80,
+            rows: 24,
             label: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
@@ -993,6 +1009,8 @@ mod tests {
             command: "powershell.exe".into(),
             args: Vec::new(),
             cwd: "C:/".into(),
+            cols: 80,
+            rows: 24,
             label: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
@@ -1015,6 +1033,8 @@ mod tests {
             command: "powershell.exe".into(),
             args: Vec::new(),
             cwd: "C:/".into(),
+            cols: 80,
+            rows: 24,
             label: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
