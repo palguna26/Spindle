@@ -19,6 +19,8 @@ pub struct CreatePaneRequest {
     pub args: Vec<String>,
     pub cwd: String,
     #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
     pub env: BTreeMap<String, String>,
     pub cols: u16,
     pub rows: u16,
@@ -30,6 +32,8 @@ pub struct PaneView {
     pub command: String,
     pub args: Vec<String>,
     pub cwd: String,
+    #[serde(default)]
+    pub label: Option<String>,
     pub status: PaneStatus,
     pub scrollback_bytes: usize,
     #[serde(default)]
@@ -274,6 +278,7 @@ impl Session {
             command: request.command,
             args: request.args,
             cwd: request.cwd,
+            label: request.label,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             screen: String::new(),
@@ -545,6 +550,17 @@ impl Session {
         }
         self.snapshot.focused_pane_id = Some(pane_id.into());
         Ok(serde_json::json!({ "pane_id": pane_id }))
+    }
+
+    pub fn rename_pane(&mut self, pane_id: &str, label: String) -> Result<Value, String> {
+        let pane = self
+            .snapshot
+            .panes
+            .iter_mut()
+            .find(|pane| pane.pane_id == pane_id)
+            .ok_or_else(|| format!("pane '{pane_id}' does not exist"))?;
+        pane.label = (!label.trim().is_empty()).then_some(label);
+        Ok(serde_json::json!({ "pane_id": pane_id, "label": pane.label }))
     }
 
     pub fn focus_next(&mut self) -> Result<Value, String> {
@@ -857,6 +873,28 @@ mod tests {
     }
 
     #[test]
+    fn pane_labels_can_be_renamed_and_cleared() {
+        let mut session = Session::default();
+        session.snapshot.panes.push(PaneView {
+            pane_id: "pane-1".into(),
+            command: "powershell.exe".into(),
+            args: Vec::new(),
+            cwd: "C:/".into(),
+            label: None,
+            status: PaneStatus::Completed { exit_code: 0 },
+            scrollback_bytes: 0,
+            screen: String::new(),
+            cursor: (0, 0),
+            title: String::new(),
+            alternate_screen: false,
+        });
+        session.rename_pane("pane-1", "Shell".into()).unwrap();
+        assert_eq!(session.snapshot.panes[0].label.as_deref(), Some("Shell"));
+        session.rename_pane("pane-1", " ".into()).unwrap();
+        assert!(session.snapshot.panes[0].label.is_none());
+    }
+
+    #[test]
     fn last_containers_cannot_be_deleted() {
         let mut session = Session::default();
         assert!(session.delete_space("space-1").is_err());
@@ -924,6 +962,7 @@ mod tests {
             command: "powershell.exe".into(),
             args: Vec::new(),
             cwd: "C:/".into(),
+            label: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             screen: String::new(),
@@ -944,6 +983,7 @@ mod tests {
             command: "powershell.exe".into(),
             args: Vec::new(),
             cwd: "C:/".into(),
+            label: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             screen: String::new(),

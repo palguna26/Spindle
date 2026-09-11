@@ -116,11 +116,12 @@ fn render_layout(frame: &mut Frame<'_>, node: &LayoutNode, snapshot: &SessionSna
 }
 
 fn pane_title(pane: &crate::server::session::PaneView) -> String {
-    let label = if pane.title.is_empty() {
-        pane.command.as_str()
-    } else {
-        pane.title.as_str()
-    };
+    let label = pane
+        .label
+        .as_deref()
+        .filter(|label| !label.is_empty())
+        .or_else(|| (!pane.title.is_empty()).then_some(pane.title.as_str()))
+        .unwrap_or(pane.command.as_str());
     let alternate = if pane.alternate_screen { " [alt]" } else { "" };
     format!(
         "{} {} {} — {}{}",
@@ -193,6 +194,7 @@ mod tests {
             command: "powershell.exe".into(),
             args: Vec::new(),
             cwd: "C:/".into(),
+            label: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             screen: String::new(),
@@ -212,6 +214,7 @@ mod tests {
             command: "cmd.exe".into(),
             args: Vec::new(),
             cwd: "C:/".into(),
+            label: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             screen: String::new(),
