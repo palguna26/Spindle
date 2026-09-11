@@ -18,6 +18,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\installer-smoke.ps1
 
 The smoke flow uses an isolated `LOCALAPPDATA`, starts and stops a server,
 checks diagnostics, and verifies endpoint and PID markers are removed.
+It also verifies warm-start behavior and recovery from a dead endpoint marker.
+
+The Rust integration suite covers separate control and interactive IPC, PTY
+input/output/resize, exit statuses, detach with multiple live panes, client
+loss and geometry takeover, screen and scrollback recovery, layout recovery,
+workspace switching, and safe space/workspace deletion.
 
 To test the installer without changing the user PATH, pass a temporary
 destination:
@@ -26,6 +32,6 @@ destination:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Destination $env:TEMP\spindle-install-test
 ```
 
-Before a release, also manually verify two PowerShell or fake CLI panes,
-detach/reattach, a second client, workspace switching, pane restart, and
-recovery from a server restart.
+Before a release, manually verify two PowerShell or fake CLI panes,
+detach/reattach, a second client, workspace switching, pane restart, recovery
+from a server restart, and Codex/OpenCode side by side in a real repository.
