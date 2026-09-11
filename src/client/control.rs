@@ -98,17 +98,14 @@ impl ControlClient {
         &self.client_id
     }
 
-    pub fn request_with_retry<T: Serialize>(
+    pub fn request_with_retry<T: Serialize + Clone>(
         &self,
         request_id: impl Into<String> + Clone,
         operation: impl Into<String> + Clone,
         payload: T,
         attempts: usize,
         delay: Duration,
-    ) -> Result<Response<serde_json::Value>, ClientError>
-    where
-        T: Clone,
-    {
+    ) -> Result<Response<serde_json::Value>, ClientError> {
         let attempts = attempts.max(1);
         let mut last_error = None;
         for attempt in 0..attempts {
@@ -135,7 +132,7 @@ impl ControlClient {
         operation: String,
         payload: T,
     ) -> Result<Response<serde_json::Value>, ClientError> {
-        let mut stream = connect_stream(&self.address)?;
+        let mut stream = connect_stream_retry(&self.address)?;
         let request = Request {
             version: PROTOCOL_VERSION,
             request_id,
@@ -164,6 +161,36 @@ fn connect_stream(address: &str) -> io::Result<TcpStream> {
 #[cfg(windows)]
 fn connect_stream(address: &str) -> io::Result<std::fs::File> {
     crate::server::transport::connect(address)
+}
+
+#[cfg(not(windows))]
+fn connect_stream_retry(address: &str) -> io::Result<TcpStream> {
+    retry_connect(address, connect_stream)
+}
+
+#[cfg(windows)]
+fn connect_stream_retry(address: &str) -> io::Result<std::fs::File> {
+    retry_connect(address, connect_stream)
+}
+
+fn retry_connect<S, F>(address: &str, connect: F) -> io::Result<S>
+where
+    S: std::io::Read + std::io::Write,
+    F: Fn(&str) -> io::Result<S>,
+{
+    let mut last_error = None;
+    for attempt in 0..20 {
+        match connect(address) {
+            Ok(stream) => return Ok(stream),
+            Err(error) => {
+                last_error = Some(error);
+                if attempt < 19 {
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+            }
+        }
+    }
+    Err(last_error.expect("at least one connection attempt"))
 }
 
 #[cfg(test)]

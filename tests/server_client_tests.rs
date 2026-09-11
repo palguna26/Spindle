@@ -2,6 +2,7 @@ use serde_json::Value;
 use spindle::client::ControlClient;
 use spindle::protocol::Response;
 use spindle::server;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -20,13 +21,16 @@ fn request(address: &str, operation: &str) -> Response<Value> {
         .unwrap()
 }
 
-fn start_server(state_dir: &PathBuf) -> (std::thread::JoinHandle<()>, String) {
-    let server_state = state_dir.clone();
+fn start_server(state_dir: &Path) -> (std::thread::JoinHandle<()>, String) {
+    let server_state = state_dir.to_path_buf();
     let thread = std::thread::spawn(move || server::run(&server_state).unwrap());
     let endpoint = state_dir.join("server.endpoint");
     for _ in 0..80 {
         if endpoint.exists() {
-            return (thread, std::fs::read_to_string(endpoint).unwrap());
+            let address = std::fs::read_to_string(&endpoint).unwrap();
+            if ControlClient::connect(address.trim()).is_ok() {
+                return (thread, address);
+            }
         }
         std::thread::sleep(Duration::from_millis(25));
     }
