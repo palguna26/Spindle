@@ -1,4 +1,5 @@
 use crate::{model::layout::LayoutNode, model::status::PaneStatus};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -70,6 +71,35 @@ pub fn recover(mut snapshot: Snapshot) -> Snapshot {
         }
     }
     snapshot
+}
+
+pub fn save_versioned<T: Serialize>(path: &Path, value: &T) -> Result<(), SnapshotError> {
+    let data = serde_json::to_vec_pretty(&Versioned {
+        version: SNAPSHOT_VERSION,
+        data: value,
+    })?;
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let temporary = path.with_extension(format!("tmp-{}", std::process::id()));
+    let mut file = File::create(&temporary)?;
+    file.write_all(&data)?;
+    file.sync_all()?;
+    fs::rename(temporary, path)?;
+    Ok(())
+}
+
+pub fn load_versioned<T: DeserializeOwned>(path: &Path) -> Result<T, SnapshotError> {
+    let versioned: Versioned<T> = serde_json::from_reader(File::open(path)?)?;
+    if versioned.version > SNAPSHOT_VERSION {
+        return Err(SnapshotError::UnsupportedVersion(versioned.version));
+    }
+    Ok(versioned.data)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Versioned<T> {
+    version: u16,
+    data: T,
 }
 
 #[cfg(test)]

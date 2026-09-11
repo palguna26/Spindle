@@ -1,8 +1,10 @@
 use crate::model::layout::LayoutNode;
 use crate::model::status::PaneStatus;
 use crate::pane::{PaneConfig, PaneManager, PaneManagerError};
+use crate::persist::{load_versioned, save_versioned, SnapshotError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreatePaneRequest {
@@ -14,7 +16,7 @@ pub struct CreatePaneRequest {
     pub rows: u16,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaneView {
     pub pane_id: String,
     pub command: String,
@@ -24,14 +26,14 @@ pub struct PaneView {
     pub scrollback_bytes: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TabView {
     pub tab_id: String,
     pub name: String,
     pub layout: Option<LayoutNode>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceView {
     pub workspace_id: String,
     pub name: String,
@@ -39,7 +41,7 @@ pub struct WorkspaceView {
     pub active_tab_id: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpaceView {
     pub space_id: String,
     pub name: String,
@@ -47,8 +49,9 @@ pub struct SpaceView {
     pub active_workspace_id: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionSnapshot {
+    pub version: u16,
     pub spaces: Vec<SpaceView>,
     pub active_space_id: String,
     pub panes: Vec<PaneView>,
@@ -59,6 +62,7 @@ pub struct Session {
     pane_manager: PaneManager,
     snapshot: SessionSnapshot,
     next_pane_id: u64,
+    snapshot_path: Option<PathBuf>,
 }
 
 impl Default for Session {
@@ -66,6 +70,7 @@ impl Default for Session {
         Self {
             pane_manager: PaneManager::default(),
             snapshot: SessionSnapshot {
+                version: 1,
                 spaces: vec![SpaceView {
                     space_id: "space-1".into(),
                     name: "Default".into(),
@@ -86,11 +91,45 @@ impl Default for Session {
                 focused_pane_id: None,
             },
             next_pane_id: 1,
+            snapshot_path: None,
         }
     }
 }
 
 impl Session {
+    pub fn load_or_default(path: impl AsRef<Path>) -> Self {
+        let path = path.as_ref().to_path_buf();
+        match load_versioned::<SessionSnapshot>(&path) {
+            Ok(mut snapshot) => {
+                for pane in &mut snapshot.panes {
+                    if pane.status.is_running() {
+                        pane.status = PaneStatus::Interrupted {
+                            reason: "process was live when the server stopped".into(),
+                        };
+                    }
+                }
+                Self {
+                    pane_manager: PaneManager::default(),
+                    next_pane_id: next_pane_id(&snapshot),
+                    snapshot,
+                    snapshot_path: Some(path),
+                }
+            }
+            Err(_) => {
+                let mut session = Self::default();
+                session.snapshot_path = Some(path);
+                session
+            }
+        }
+    }
+
+    pub fn save(&self) -> Result<(), SnapshotError> {
+        if let Some(path) = &self.snapshot_path {
+            save_versioned(path, &self.snapshot)?;
+        }
+        Ok(())
+    }
+
     pub fn snapshot(&self) -> &SessionSnapshot {
         &self.snapshot
     }
@@ -156,6 +195,17 @@ impl Session {
     pub fn poll(&mut self) {
         self.pane_manager.poll();
     }
+}
+
+fn next_pane_id(snapshot: &SessionSnapshot) -> u64 {
+    snapshot
+        .panes
+        .iter()
+        .filter_map(|pane| pane.pane_id.strip_prefix("pane-"))
+        .filter_map(|id| id.parse::<u64>().ok())
+        .max()
+        .unwrap_or(0)
+        + 1
 }
 
 impl Session {

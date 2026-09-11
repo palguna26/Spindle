@@ -69,10 +69,18 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
                     return request_error(request.request_id, "invalid_payload", error.to_string())
                 }
             };
-            session
-                .lock()
-                .expect("session lock poisoned")
-                .create_pane(payload)
+            let mut session = session.lock().expect("session lock poisoned");
+            let result = session.create_pane(payload);
+            if result.is_ok() {
+                if let Err(error) = session.save() {
+                    return request_error(
+                        request.request_id,
+                        "persistence_failed",
+                        format!("{error:?}"),
+                    );
+                }
+            }
+            result
         }
         "send_input" => {
             let payload: InputRequest = match serde_json::from_value(request.payload) {
@@ -81,11 +89,11 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
                     return request_error(request.request_id, "invalid_payload", error.to_string())
                 }
             };
-            session
-                .lock()
-                .expect("session lock poisoned")
+            let mut session = session.lock().expect("session lock poisoned");
+            let result = session
                 .send_input(&payload.pane_id, &payload.bytes)
-                .map(|_| json!({ "sent": payload.bytes.len() }))
+                .map(|_| json!({ "sent": payload.bytes.len() }));
+            result
         }
         "resize_pty" => {
             let payload: ResizeRequest = match serde_json::from_value(request.payload) {
@@ -94,9 +102,8 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
                     return request_error(request.request_id, "invalid_payload", error.to_string())
                 }
             };
+            let mut session = session.lock().expect("session lock poisoned");
             session
-                .lock()
-                .expect("session lock poisoned")
                 .resize(&payload.pane_id, payload.cols, payload.rows)
                 .map(|_| json!({ "resized": true }))
         }
@@ -107,11 +114,20 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
                     return request_error(request.request_id, "invalid_payload", error.to_string())
                 }
             };
-            session
-                .lock()
-                .expect("session lock poisoned")
+            let mut session = session.lock().expect("session lock poisoned");
+            let result = session
                 .stop_pane(&payload.pane_id)
-                .map(|_| json!({ "stopped": true }))
+                .map(|_| json!({ "stopped": true }));
+            if result.is_ok() {
+                if let Err(error) = session.save() {
+                    return request_error(
+                        request.request_id,
+                        "persistence_failed",
+                        format!("{error:?}"),
+                    );
+                }
+            }
+            result
         }
         "stop_server" => Ok(json!({ "stopping": true })),
         _ => Err(format!("unknown operation '{}'", request.op)),

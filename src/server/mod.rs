@@ -81,7 +81,9 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     let address = listener.local_addr()?.to_string();
     let endpoint = state_dir.join("server.endpoint");
     fs::write(&endpoint, &address)?;
-    let session = Arc::new(Mutex::new(session::Session::default()));
+    let session = Arc::new(Mutex::new(session::Session::load_or_default(
+        state_dir.join("session.json"),
+    )));
 
     for stream in listener.incoming() {
         match stream {
