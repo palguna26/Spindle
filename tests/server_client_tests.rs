@@ -160,7 +160,7 @@ fn pty_output_reaches_event_subscribers() {
             "create_pane",
             serde_json::json!({
                 "command": "cmd.exe",
-                "args": ["/C", "echo from-env"],
+                "args": ["/C", "echo %SPINDLE_EVENT%"],
                 "cwd": cwd,
                 "env": { "SPINDLE_EVENT": "from-env" },
                 "cols": 80,
