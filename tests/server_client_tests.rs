@@ -142,3 +142,69 @@ fn client_can_open_a_long_lived_event_stream() {
     thread.join().unwrap();
     let _ = std::fs::remove_dir_all(state_dir);
 }
+
+#[test]
+fn pty_output_reaches_event_subscribers() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let created = client
+        .request(
+            "create-pane",
+            "create_pane",
+            serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/C", "echo spindle-event"],
+                "cwd": cwd,
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap();
+    let pane_id = created.payload.unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mut sequence = 0;
+    let mut saw_output = false;
+    for _ in 0..80 {
+        let batch = client.subscribe_events(sequence).unwrap();
+        sequence = batch.latest_sequence;
+        saw_output |= batch.events.iter().any(|event| {
+            event.event == "pane_output"
+                && event.payload["pane_id"] == pane_id
+                && event.payload["bytes"]
+                    .as_array()
+                    .is_some_and(|bytes| !bytes.is_empty())
+        });
+        if saw_output {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(saw_output, "pane output was not published");
+
+    let snapshot = client
+        .request(
+            "snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap();
+    assert!(snapshot.payload.unwrap()["panes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|pane| pane["pane_id"] == pane_id));
+
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
