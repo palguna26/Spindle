@@ -184,6 +184,26 @@ impl Session {
         Ok(())
     }
 
+    pub fn set_default_workspace_context(
+        &mut self,
+        repository_path: String,
+        branch: Option<String>,
+    ) {
+        if let Some(workspace) = self
+            .snapshot
+            .spaces
+            .first_mut()
+            .and_then(|space| space.workspaces.first_mut())
+        {
+            if workspace.repository_path.is_none() {
+                workspace.repository_path = Some(repository_path);
+            }
+            if workspace.branch.is_none() {
+                workspace.branch = branch;
+            }
+        }
+    }
+
     pub fn snapshot(&self) -> &SessionSnapshot {
         &self.snapshot
     }
@@ -931,6 +951,16 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(request.env["SPINDLE_TEST"], "1");
+    }
+
+    #[test]
+    fn default_workspace_context_is_filled_without_overwriting_metadata() {
+        let mut session = Session::default();
+        session.set_default_workspace_context("C:/repo".into(), Some("main".into()));
+        session.set_default_workspace_context("C:/other".into(), Some("feature".into()));
+        let workspace = &session.snapshot().spaces[0].workspaces[0];
+        assert_eq!(workspace.repository_path.as_deref(), Some("C:/repo"));
+        assert_eq!(workspace.branch.as_deref(), Some("main"));
     }
 
     #[test]

@@ -106,10 +106,14 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     let address = transport::endpoint(state_dir);
     #[cfg(windows)]
     let interactive_address = transport::interactive_endpoint(state_dir);
-    let session = Arc::new(Mutex::new(
-        session::Session::load_or_default(state_dir.join("session.json"))
-            .map_err(|error| io::Error::other(format!("session snapshot is invalid: {error:?}")))?,
-    ));
+    let mut loaded_session = session::Session::load_or_default(state_dir.join("session.json"))
+        .map_err(|error| io::Error::other(format!("session snapshot is invalid: {error:?}")))?;
+    let repository_path = std::env::current_dir()?.to_string_lossy().into_owned();
+    loaded_session.set_default_workspace_context(repository_path, git_branch());
+    loaded_session.save().map_err(|error| {
+        io::Error::other(format!("session snapshot could not be saved: {error:?}"))
+    })?;
+    let session = Arc::new(Mutex::new(loaded_session));
     let endpoint = state_dir.join("server.endpoint");
     let interactive_endpoint = state_dir.join("server.interactive.endpoint");
     let identity_json = state_dir.join("server.json");
@@ -182,6 +186,18 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     let _ = fs::remove_file(identity_json);
     let _ = fs::remove_file(identity);
     Ok(())
+}
+
+fn git_branch() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["branch", "--show-current"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!branch.is_empty()).then_some(branch)
 }
 
 #[cfg(not(windows))]

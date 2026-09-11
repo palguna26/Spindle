@@ -56,12 +56,16 @@ fn server_accepts_attach_snapshot_and_stop() {
     assert!(attach.ok);
     let snapshot = request(address.trim(), "get_snapshot");
     assert!(snapshot.ok);
+    let snapshot_payload = snapshot.payload.unwrap();
+    assert_eq!(snapshot_payload["spaces"].as_array().unwrap().len(), 1);
+    let workspace = &snapshot_payload["spaces"][0]["workspaces"][0];
+    let expected_repository = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
     assert_eq!(
-        snapshot.payload.unwrap()["spaces"]
-            .as_array()
-            .unwrap()
-            .len(),
-        1
+        workspace["repository_path"].as_str(),
+        Some(expected_repository.as_str())
     );
 
     let stop = request(address.trim(), "stop_server");
