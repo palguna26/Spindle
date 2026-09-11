@@ -5,7 +5,7 @@ use crate::server::session::SessionSnapshot;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    disable_raw_mode, enable_raw_mode, size, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
@@ -39,8 +39,14 @@ fn event_loop(
     client: &ControlClient,
 ) -> Result<(), ClientError> {
     let mut prefix_active = false;
+    let mut last_size = None;
     loop {
         let snapshot = current_snapshot(client)?;
+        let terminal_size = size().map_err(ClientError::Io)?;
+        if last_size != Some(terminal_size) {
+            resize_panes(client, &snapshot, terminal_size)?;
+            last_size = Some(terminal_size);
+        }
         terminal
             .draw(|frame| renderer::render(frame, &snapshot))
             .map_err(ClientError::Io)?;
@@ -127,8 +133,33 @@ fn event_loop(
 }
 
 fn current_snapshot(client: &ControlClient) -> Result<SessionSnapshot, ClientError> {
-    let response = client.request("snapshot", "get_snapshot", json!({}))?;
+    let response = client.request_with_retry(
+        "snapshot",
+        "get_snapshot",
+        json!({}),
+        5,
+        Duration::from_millis(50),
+    )?;
     serde_json::from_value(response.payload.unwrap_or_default()).map_err(ClientError::Json)
+}
+
+fn resize_panes(
+    client: &ControlClient,
+    snapshot: &SessionSnapshot,
+    terminal_size: (u16, u16),
+) -> Result<(), ClientError> {
+    let cols = terminal_size.0.max(1);
+    let rows = terminal_size.1.saturating_sub(1).max(1);
+    for pane in &snapshot.panes {
+        let _ = client.request_with_retry(
+            format!("resize-{}", pane.pane_id),
+            "resize_pty",
+            json!({ "pane_id": pane.pane_id, "cols": cols, "rows": rows }),
+            2,
+            Duration::from_millis(20),
+        );
+    }
+    Ok(())
 }
 
 fn key_code_bytes(code: KeyCode) -> Option<Vec<u8>> {

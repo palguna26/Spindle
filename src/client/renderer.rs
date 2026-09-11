@@ -74,12 +74,17 @@ fn render_layout(frame: &mut Frame<'_>, node: &LayoutNode, snapshot: &SessionSna
                 pane.command
             );
             let lines = pane.screen.lines().map(Line::from).collect::<Vec<_>>();
+            let border_color = if snapshot.focused_pane_id.as_deref() == Some(pane_id) {
+                Color::White
+            } else {
+                status_color(&pane.status)
+            };
             frame.render_widget(
                 Paragraph::new(lines).block(
                     Block::default()
                         .borders(Borders::ALL)
                         .title(title)
-                        .border_style(Style::default().fg(status_color(&pane.status))),
+                        .border_style(Style::default().fg(border_color)),
                 ),
                 area,
             );
