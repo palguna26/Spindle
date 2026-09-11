@@ -176,6 +176,14 @@ impl Session {
             .unwrap_or(true)
     }
 
+    pub fn detach(&mut self, client_id: &str) -> Value {
+        let released = self.geometry_owner.as_deref() == Some(client_id);
+        if released {
+            self.geometry_owner = None;
+        }
+        serde_json::json!({ "detached": true, "released_geometry": released })
+    }
+
     pub fn create_pane(&mut self, request: CreatePaneRequest) -> Result<Value, String> {
         self.create_pane_with_direction(request, crate::model::layout::Direction::Vertical)
     }

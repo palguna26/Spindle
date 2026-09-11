@@ -66,7 +66,10 @@ fn event_loop(
         }
         let pressed = action(prefix_active, key);
         match pressed {
-            Action::Detach => break,
+            Action::Detach => {
+                client.detach()?;
+                break;
+            }
             Action::NewTab => {
                 client.request("new-tab", "create_tab", json!({ "name": "Activity" }))?;
             }

@@ -85,6 +85,14 @@ impl ControlClient {
         )
     }
 
+    pub fn detach(&self) -> Result<Response<serde_json::Value>, ClientError> {
+        self.request(
+            "detach",
+            "detach",
+            serde_json::json!({ "client_id": self.client_id }),
+        )
+    }
+
     pub fn client_id(&self) -> &str {
         &self.client_id
     }

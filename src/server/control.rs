@@ -112,6 +112,16 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
             let mut session = session.lock().expect("session lock poisoned");
             Ok(session.attach(payload.client_id))
         }
+        "detach" => {
+            let payload: AttachRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            Ok(session.detach(&payload.client_id))
+        }
         "create_space" => {
             let payload: NameRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,
@@ -529,5 +539,20 @@ mod tests {
         );
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, "geometry_owned");
+    }
+
+    #[test]
+    fn owner_can_detach_and_release_geometry() {
+        let shared = session();
+        response_for(
+            br#"{"version":1,"request_id":"a","op":"attach","payload":{"client_id":"active"}}"#,
+            &shared,
+        );
+        let detached = response_for(
+            br#"{"version":1,"request_id":"d","op":"detach","payload":{"client_id":"active"}}"#,
+            &shared,
+        );
+        assert!(detached.ok);
+        assert_eq!(detached.payload.unwrap()["released_geometry"], true);
     }
 }
