@@ -6,7 +6,7 @@ use crate::persist::{load_versioned, save_versioned, SnapshotError};
 use crate::protocol::Event;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,6 +15,8 @@ pub struct CreatePaneRequest {
     #[serde(default)]
     pub args: Vec<String>,
     pub cwd: String,
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
     pub cols: u16,
     pub rows: u16,
 }
@@ -219,6 +221,7 @@ impl Session {
                     command: request.command.clone(),
                     args: request.args.clone(),
                     cwd: request.cwd.clone(),
+                    env: request.env.clone(),
                     cols: request.cols,
                     rows: request.rows,
                 },
@@ -567,6 +570,11 @@ impl Session {
     }
 
     pub fn restart_pane(&mut self, pane_id: &str) -> Result<Value, String> {
+        let env = self
+            .pane_manager
+            .get(pane_id)
+            .map(|pane| pane.config.env.clone())
+            .unwrap_or_default();
         let (command, args, cwd, status) = self
             .snapshot
             .panes
@@ -596,6 +604,7 @@ impl Session {
                     command,
                     args,
                     cwd,
+                    env,
                     cols: 80,
                     rows: 24,
                 },
@@ -734,7 +743,7 @@ impl From<PaneManagerError> for String {
 
 #[cfg(test)]
 mod tests {
-    use super::{PaneView, Session};
+    use super::{CreatePaneRequest, PaneView, Session};
     use crate::model::status::PaneStatus;
 
     #[test]
@@ -766,6 +775,19 @@ mod tests {
             session.snapshot().spaces[0].workspaces[1].tabs[1].name,
             "Build logs"
         );
+    }
+
+    #[test]
+    fn pane_requests_accept_runtime_environment() {
+        let request: CreatePaneRequest = serde_json::from_value(serde_json::json!({
+            "command": "powershell.exe",
+            "cwd": "C:/",
+            "cols": 80,
+            "rows": 24,
+            "env": { "SPINDLE_TEST": "1" }
+        }))
+        .unwrap();
+        assert_eq!(request.env["SPINDLE_TEST"], "1");
     }
 
     #[test]

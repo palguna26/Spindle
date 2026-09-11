@@ -2,7 +2,7 @@ use super::PaneEvent;
 use crate::model::status::PaneStatus;
 use crate::pty::{PtyConfig, PtySession, PtySessionError};
 use crate::terminal::{TerminalEmulator, TerminalSnapshot};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
 const DEFAULT_SCROLLBACK_BYTES: usize = 64 * 1024;
 
@@ -11,6 +11,7 @@ pub struct PaneConfig {
     pub command: String,
     pub args: Vec<String>,
     pub cwd: String,
+    pub env: BTreeMap<String, String>,
     pub cols: u16,
     pub rows: u16,
 }
@@ -67,6 +68,7 @@ impl PaneManager {
             command: config.command.clone(),
             args: config.args.clone(),
             cwd: config.cwd.clone(),
+            env: config.env.clone(),
             cols: config.cols,
             rows: config.rows,
         })?;
@@ -177,6 +179,7 @@ impl PaneManager {
 #[cfg(test)]
 mod tests {
     use super::{PaneConfig, PaneManager};
+    use std::collections::BTreeMap;
 
     fn config(command: &str) -> PaneConfig {
         PaneConfig {
@@ -186,6 +189,7 @@ mod tests {
                 .unwrap()
                 .to_string_lossy()
                 .into_owned(),
+            env: BTreeMap::new(),
             cols: 80,
             rows: 24,
         }

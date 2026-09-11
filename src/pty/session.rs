@@ -1,4 +1,5 @@
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use std::collections::BTreeMap;
 use std::io::{self, Read, Write};
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -9,6 +10,7 @@ pub struct PtyConfig {
     pub command: String,
     pub args: Vec<String>,
     pub cwd: String,
+    pub env: BTreeMap<String, String>,
     pub cols: u16,
     pub rows: u16,
 }
@@ -51,6 +53,9 @@ impl PtySession {
         let mut command = CommandBuilder::new(&config.command);
         command.args(&config.args);
         command.cwd(Path::new(&config.cwd));
+        for (key, value) in &config.env {
+            command.env(key, value);
+        }
         let child = pair
             .slave
             .spawn_command(command)
@@ -137,6 +142,7 @@ impl PtySession {
 #[cfg(test)]
 mod tests {
     use super::{PtyConfig, PtySession};
+    use std::collections::BTreeMap;
 
     #[test]
     fn missing_command_returns_an_error() {
@@ -147,6 +153,7 @@ mod tests {
                 .unwrap()
                 .to_string_lossy()
                 .into_owned(),
+            env: BTreeMap::new(),
             cols: 80,
             rows: 24,
         });
