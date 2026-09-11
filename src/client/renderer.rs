@@ -30,6 +30,37 @@ pub fn render(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
     frame.render_widget(Paragraph::new(chrome), areas[1]);
 }
 
+pub fn render_palette(frame: &mut Frame<'_>, selected: usize) {
+    let area = centered_rect(60, 70, frame.area());
+    let rows = crate::client::palette::Command::ALL
+        .iter()
+        .enumerate()
+        .map(|(index, command)| {
+            let marker = if index == selected { "> " } else { "  " };
+            Line::from(format!("{marker}{}", command.label()))
+        })
+        .collect::<Vec<_>>();
+    frame.render_widget(
+        Paragraph::new(rows).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Command palette (↑/↓, Enter, Esc)"),
+        ),
+        area,
+    );
+}
+
+fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let width = width.min(area.width);
+    let height = (area.height * height / 100).max(1).min(area.height);
+    Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
+    }
+}
+
 fn active_layout(snapshot: &SessionSnapshot) -> Option<&LayoutNode> {
     let space = snapshot
         .spaces

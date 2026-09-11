@@ -16,6 +16,7 @@ pub enum Action {
     SplitVertical,
     ResizeSmaller,
     ResizeLarger,
+    CommandPalette,
     Send(KeyCode),
 }
 
@@ -35,6 +36,7 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
             KeyCode::Char('%') => Action::SplitVertical,
             KeyCode::Char('<') => Action::ResizeSmaller,
             KeyCode::Char('>') => Action::ResizeLarger,
+            KeyCode::Char('?') => Action::CommandPalette,
             _ => Action::None,
         };
     }

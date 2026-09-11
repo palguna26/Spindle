@@ -1,4 +1,5 @@
 use super::input::{action, is_prefix, Action};
+use super::palette::{move_selection, Command};
 use super::renderer;
 use super::{ClientError, ControlClient};
 use crate::server::session::SessionSnapshot;
@@ -45,6 +46,8 @@ fn event_loop(
     client: &ControlClient,
 ) -> Result<(), ClientError> {
     let mut prefix_active = false;
+    let mut palette_selected = 0;
+    let mut palette_open = false;
     let mut last_size = None;
     loop {
         let snapshot = current_snapshot(client)?;
@@ -54,7 +57,12 @@ fn event_loop(
             last_size = Some(terminal_size);
         }
         terminal
-            .draw(|frame| renderer::render(frame, &snapshot))
+            .draw(|frame| {
+                renderer::render(frame, &snapshot);
+                if palette_open {
+                    renderer::render_palette(frame, palette_selected);
+                }
+            })
             .map_err(ClientError::Io)?;
         if !event::poll(Duration::from_millis(100)).map_err(ClientError::Io)? {
             continue;
@@ -65,11 +73,31 @@ fn event_loop(
         if key.kind != KeyEventKind::Press {
             continue;
         }
+        if palette_open {
+            if let Some(next) = move_selection(palette_selected, key.code) {
+                palette_selected = next;
+            } else if key.code == KeyCode::Esc {
+                palette_open = false;
+            } else if key.code == KeyCode::Enter {
+                let command = Command::ALL[palette_selected];
+                palette_open = false;
+                if execute_action(command.action(), client, &snapshot, terminal_size)? {
+                    break;
+                }
+            }
+            continue;
+        }
         if is_prefix(key) {
             prefix_active = true;
             continue;
         }
         let pressed = action(prefix_active, key);
+        if pressed == Action::CommandPalette {
+            palette_open = true;
+            palette_selected = 0;
+            prefix_active = false;
+            continue;
+        }
         match pressed {
             Action::Detach => {
                 client.detach()?;
@@ -154,10 +182,100 @@ fn event_loop(
                 }
             }
             Action::None => {}
+            Action::CommandPalette => {}
         }
         prefix_active = false;
     }
     Ok(())
+}
+
+fn execute_action(
+    pressed: Action,
+    client: &ControlClient,
+    snapshot: &SessionSnapshot,
+    terminal_size: (u16, u16),
+) -> Result<bool, ClientError> {
+    match pressed {
+        Action::Detach => {
+            client.detach()?;
+            Ok(true)
+        }
+        Action::NewTab => {
+            client.request(
+                "palette-new-tab",
+                "create_tab",
+                json!({ "name": "Activity" }),
+            )?;
+            Ok(false)
+        }
+        Action::CloseTab => {
+            if let Some(tab_id) = active_tab_id(snapshot) {
+                let _ = client.request("palette-close-tab", "close_tab", json!({ "id": tab_id }));
+            }
+            Ok(false)
+        }
+        Action::NextTab | Action::PreviousTab => {
+            if let Some(tab_id) = adjacent_tab_id(snapshot, matches!(pressed, Action::NextTab)) {
+                let _ = client.request("palette-switch-tab", "switch_tab", json!({ "id": tab_id }));
+            }
+            Ok(false)
+        }
+        Action::NextSpace | Action::PreviousSpace => {
+            if let Some(space_id) =
+                adjacent_space_id(snapshot, matches!(pressed, Action::NextSpace))
+            {
+                let _ = client.request(
+                    "palette-switch-space",
+                    "switch_space",
+                    json!({ "id": space_id }),
+                );
+            }
+            Ok(false)
+        }
+        Action::StopFocusedPane => {
+            if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                let _ = client.request(
+                    "palette-stop-pane",
+                    "stop_pane",
+                    json!({ "pane_id": pane_id }),
+                );
+            }
+            Ok(false)
+        }
+        Action::FocusNext => {
+            let _ = client.request("palette-focus-next", "focus_next", json!({}));
+            Ok(false)
+        }
+        Action::SplitHorizontal | Action::SplitVertical => {
+            let direction = if matches!(pressed, Action::SplitHorizontal) {
+                "horizontal"
+            } else {
+                "vertical"
+            };
+            let cwd = std::env::current_dir()
+                .map_err(ClientError::Io)?
+                .to_string_lossy()
+                .into_owned();
+            let _ = client.request("palette-split", "split_pane", json!({ "direction": direction, "command": "powershell.exe", "args": ["-NoLogo", "-NoProfile"], "cwd": cwd, "cols": pane_size(terminal_size).0, "rows": pane_size(terminal_size).1 }));
+            Ok(false)
+        }
+        Action::ResizeSmaller | Action::ResizeLarger => {
+            if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                let delta = if matches!(pressed, Action::ResizeLarger) {
+                    0.05
+                } else {
+                    -0.05
+                };
+                let _ = client.request(
+                    "palette-resize",
+                    "resize_pane",
+                    json!({ "pane_id": pane_id, "delta": delta }),
+                );
+            }
+            Ok(false)
+        }
+        _ => Ok(false),
+    }
 }
 
 fn current_snapshot(client: &ControlClient) -> Result<SessionSnapshot, ClientError> {
