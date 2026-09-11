@@ -198,7 +198,7 @@ fn status_detail(status: &PaneStatus) -> String {
 
 pub fn status_color(status: &PaneStatus) -> Color {
     match status {
-        PaneStatus::Running => Color::Yellow,
+        PaneStatus::Running => Color::Rgb(255, 165, 0),
         PaneStatus::Completed { .. } => Color::Green,
         PaneStatus::Halted { .. } | PaneStatus::Interrupted { .. } => Color::Red,
     }
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn status_colors_follow_process_lifecycle() {
-        assert_eq!(status_color(&PaneStatus::Running), Color::Yellow);
+        assert_eq!(status_color(&PaneStatus::Running), Color::Rgb(255, 165, 0));
         assert_eq!(
             status_color(&PaneStatus::Completed { exit_code: 0 }),
             Color::Green
