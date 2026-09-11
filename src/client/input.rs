@@ -5,6 +5,10 @@ pub enum Action {
     None,
     Detach,
     NewTab,
+    NextTab,
+    PreviousTab,
+    NextSpace,
+    PreviousSpace,
     StopFocusedPane,
     FocusNext,
     SplitHorizontal,
@@ -19,6 +23,10 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
         return match key.code {
             KeyCode::Char('d') => Action::Detach,
             KeyCode::Char('n') => Action::NewTab,
+            KeyCode::Char(']') => Action::NextTab,
+            KeyCode::Char('[') => Action::PreviousTab,
+            KeyCode::Char('}') => Action::NextSpace,
+            KeyCode::Char('{') => Action::PreviousSpace,
             KeyCode::Char('x') => Action::StopFocusedPane,
             KeyCode::Char('o') => Action::FocusNext,
             KeyCode::Char('"') => Action::SplitHorizontal,
@@ -62,6 +70,10 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE)),
             Action::FocusNext
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)),
+            Action::NextTab
         );
     }
 
