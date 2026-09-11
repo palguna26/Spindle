@@ -26,6 +26,18 @@ try {
     Invoke-Spindle @("start")
     Invoke-Spindle @("list")
     Invoke-Spindle @("doctor")
+    $projectState = Get-ChildItem -LiteralPath (Join-Path $stateRoot "Spindle\projects") -Directory |
+        Select-Object -First 1
+    $logPath = Join-Path $projectState.FullName "server.log"
+    if (-not (Test-Path -LiteralPath $logPath -PathType Leaf)) {
+        throw "server log was not created"
+    }
+    $startedLog = Get-Content -LiteralPath $logPath |
+        ForEach-Object { $_ | ConvertFrom-Json } |
+        Where-Object { $_.event -eq "server_started" }
+    if ($null -eq $startedLog) {
+        throw "server_started log record was not found"
+    }
     Invoke-Spindle @("stop")
     $markers = Get-ChildItem -LiteralPath (Join-Path $stateRoot "Spindle\projects") -Recurse -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -in @("server.endpoint", "server.interactive.endpoint", "server.pid", "server.json") }
