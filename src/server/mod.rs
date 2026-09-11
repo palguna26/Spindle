@@ -107,9 +107,8 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     #[cfg(windows)]
     loop {
         let stream = transport::accept(&address)?;
-        match control::handle_connection(stream, Arc::clone(&session)) {
-            Ok(true) => break,
-            Ok(false) | Err(_) => {}
+        if let Ok(true) = control::handle_connection(stream, Arc::clone(&session)) {
+            break;
         }
     }
 

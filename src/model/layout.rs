@@ -135,7 +135,7 @@ impl LayoutNode {
     pub fn close_pane(self, pane_id: &str) -> Option<Self> {
         match self {
             Self::Pane { pane_id: current } => {
-                (current != pane_id).then(|| Self::Pane { pane_id: current })
+                (current != pane_id).then_some(Self::Pane { pane_id: current })
             }
             Self::Split {
                 direction,

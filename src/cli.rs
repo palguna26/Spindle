@@ -161,6 +161,12 @@ fn project_id(path: &Path) -> String {
     format!("{hash:016x}")
 }
 
+impl Project {
+    fn endpoint_path(&self) -> PathBuf {
+        self.state_dir.join("server.endpoint")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::project_id;
@@ -180,11 +186,5 @@ mod tests {
             project_id(Path::new("C:/repo")),
             project_id(Path::new("C:/other"))
         );
-    }
-}
-
-impl Project {
-    fn endpoint_path(&self) -> PathBuf {
-        self.state_dir.join("server.endpoint")
     }
 }

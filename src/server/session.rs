@@ -131,11 +131,10 @@ impl Session {
                     geometry_owner: None,
                 }
             }
-            Err(_) => {
-                let mut session = Self::default();
-                session.snapshot_path = Some(path);
-                session
-            }
+            Err(_) => Self {
+                snapshot_path: Some(path),
+                ..Self::default()
+            },
         }
     }
 

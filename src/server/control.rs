@@ -236,10 +236,9 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
                 }
             };
             let mut session = session.lock().expect("session lock poisoned");
-            let result = session
+            session
                 .send_input(&payload.pane_id, &payload.bytes)
-                .map(|_| json!({ "sent": payload.bytes.len() }));
-            result
+                .map(|_| json!({ "sent": payload.bytes.len() }))
         }
         "resize_pty" => {
             let payload: ResizeRequest = match serde_json::from_value(request.payload) {
