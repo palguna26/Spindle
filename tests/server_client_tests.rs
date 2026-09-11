@@ -116,6 +116,100 @@ fn session_metadata_survives_server_restart() {
 }
 
 #[test]
+fn split_panes_survive_workspace_switching() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let pane_request = serde_json::json!({
+        "command": "cmd.exe",
+        "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24
+    });
+    let first = client
+        .request("first-pane", "create_pane", pane_request.clone())
+        .unwrap();
+    let first_id = first.payload.unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let second = client
+        .request(
+            "second-pane",
+            "split_pane",
+            serde_json::json!({
+                "direction": "horizontal",
+                "command": "cmd.exe",
+                "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+                "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap();
+    let second_id = second.payload.unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let workspace = client
+        .request(
+            "new-workspace",
+            "create_workspace",
+            serde_json::json!({ "name": "Feature", "repository_path": cwd, "branch": "main" }),
+        )
+        .unwrap();
+    let workspace_id = workspace.payload.unwrap()["workspace_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let switched = client
+        .request(
+            "back-workspace",
+            "switch_workspace",
+            serde_json::json!({ "id": "workspace-1" }),
+        )
+        .unwrap();
+    assert!(switched.ok);
+    let snapshot = client
+        .request("workspace-snapshot", "get_snapshot", serde_json::json!({}))
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(snapshot["panes"].as_array().unwrap().len(), 2);
+    assert!(snapshot["spaces"][0]["workspaces"][0]["tabs"][0]["layout"].is_object());
+    assert_eq!(
+        snapshot["spaces"][0]["workspaces"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(snapshot["spaces"][0]["active_workspace_id"], "workspace-1");
+    assert!(!workspace_id.is_empty());
+
+    for pane_id in [first_id, second_id] {
+        client
+            .request(
+                format!("stop-{pane_id}"),
+                "stop_pane",
+                serde_json::json!({ "pane_id": pane_id }),
+            )
+            .unwrap();
+    }
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn client_can_subscribe_from_a_sequence() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
