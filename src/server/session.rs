@@ -32,9 +32,9 @@ pub struct PaneView {
     pub command: String,
     pub args: Vec<String>,
     pub cwd: String,
-    #[serde(default = "default_dimension")]
+    #[serde(default = "default_cols")]
     pub cols: u16,
-    #[serde(default = "default_dimension")]
+    #[serde(default = "default_rows")]
     pub rows: u16,
     #[serde(default)]
     pub label: Option<String>,
@@ -52,8 +52,12 @@ pub struct PaneView {
     pub alternate_screen: bool,
 }
 
-fn default_dimension() -> u16 {
+fn default_cols() -> u16 {
     80
+}
+
+fn default_rows() -> u16 {
+    24
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -892,6 +896,20 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(request.env["SPINDLE_TEST"], "1");
+    }
+
+    #[test]
+    fn old_pane_snapshots_use_terminal_defaults() {
+        let pane: PaneView = serde_json::from_value(serde_json::json!({
+            "pane_id": "pane-1",
+            "command": "cmd.exe",
+            "args": [],
+            "cwd": "C:/",
+            "status": "Running",
+            "scrollback_bytes": 0
+        }))
+        .unwrap();
+        assert_eq!((pane.cols, pane.rows), (80, 24));
     }
 
     #[test]
