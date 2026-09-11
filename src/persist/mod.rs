@@ -132,7 +132,10 @@ struct Versioned<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{load, recover, save, PaneSnapshot, Snapshot, SNAPSHOT_VERSION};
+    use super::{
+        load, load_versioned, recover, save, PaneSnapshot, Snapshot, SnapshotError,
+        SNAPSHOT_VERSION,
+    };
     use crate::{model::layout::LayoutNode, model::status::PaneStatus};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -184,6 +187,31 @@ mod tests {
             super::load_versioned::<Snapshot>(&path).unwrap(),
             snapshot()
         );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn newer_version_is_rejected_without_removing_file() {
+        let path = temp_path();
+        let data = serde_json::json!({
+            "version": 99,
+            "data": serde_json::to_value(snapshot()).unwrap(),
+        });
+        std::fs::write(&path, serde_json::to_vec(&data).unwrap()).unwrap();
+        assert!(matches!(
+            load_versioned::<Snapshot>(&path),
+            Err(SnapshotError::UnsupportedVersion(99))
+        ));
+        assert!(path.exists());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn corrupt_versioned_snapshot_returns_error() {
+        let path = temp_path();
+        std::fs::write(&path, b"not-json").unwrap();
+        assert!(load_versioned::<Snapshot>(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"not-json");
         std::fs::remove_file(path).unwrap();
     }
 }
