@@ -3,8 +3,7 @@ use crate::protocol::{negotiate, ProtocolError, Request, Response, PROTOCOL_VERS
 use crate::server::session::{CreatePaneRequest, Session};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::io::{self, BufReader};
-use std::net::TcpStream;
+use std::io::{self, BufReader, Read, Write};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Deserialize)]
@@ -72,14 +71,16 @@ struct EventsRequest {
     after_sequence: u64,
 }
 
-pub fn handle_connection(stream: TcpStream, session: Arc<Mutex<Session>>) -> io::Result<bool> {
-    let reader_stream = stream.try_clone()?;
-    let mut reader = BufReader::new(reader_stream);
-    let mut writer = stream;
+pub fn handle_connection<S>(stream: S, session: Arc<Mutex<Session>>) -> io::Result<bool>
+where
+    S: Read + Write,
+{
+    let mut reader = BufReader::new(stream);
     let response = match read_frame(&mut reader) {
         Ok(frame) => response_for(&frame, &session),
         Err(error) => error_response("invalid_frame", frame_error_message(error)),
     };
+    let mut writer = reader.into_inner();
     let encoded = serde_json::to_vec(&response).map_err(io::Error::other)?;
     write_frame(&mut writer, &encoded).map_err(frame_io_error)?;
     Ok(response_requests_stop(&response))
