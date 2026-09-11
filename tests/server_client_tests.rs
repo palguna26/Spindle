@@ -169,6 +169,70 @@ fn tab_metadata_and_active_tab_survive_server_restart() {
 }
 
 #[test]
+fn space_and_workspace_deletion_use_control_api_safely() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+
+    let workspace = client
+        .request(
+            "create-workspace",
+            "create_workspace",
+            serde_json::json!({ "name": "Temporary" }),
+        )
+        .unwrap();
+    let workspace_id = workspace.payload.unwrap()["workspace_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        client
+            .request(
+                "delete-workspace",
+                "delete_workspace",
+                serde_json::json!({ "id": workspace_id }),
+            )
+            .unwrap()
+            .ok
+    );
+
+    let space = client
+        .request(
+            "create-space",
+            "create_space",
+            serde_json::json!({ "name": "Temporary space" }),
+        )
+        .unwrap();
+    let space_id = space.payload.unwrap()["space_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        client
+            .request(
+                "delete-space",
+                "delete_space",
+                serde_json::json!({ "id": space_id }),
+            )
+            .unwrap()
+            .ok
+    );
+
+    let last_space = client.request(
+        "delete-last-space",
+        "delete_space",
+        serde_json::json!({ "id": "space-1" }),
+    );
+    assert!(last_space.is_err());
+
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn split_panes_survive_workspace_switching() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
