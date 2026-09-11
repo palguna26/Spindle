@@ -6,6 +6,14 @@ pub enum Direction {
     Vertical,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LayoutNode {
     Pane {
@@ -133,6 +141,36 @@ impl LayoutNode {
         Some(ids[index])
     }
 
+    pub fn directional_pane(
+        &self,
+        current_pane_id: &str,
+        movement: FocusDirection,
+    ) -> Option<&str> {
+        match self {
+            Self::Pane { .. } => None,
+            Self::Split {
+                direction,
+                first,
+                second,
+                ..
+            } => {
+                if first.contains(current_pane_id) {
+                    if movement_matches(*direction, movement, true) {
+                        return second.first_pane();
+                    }
+                    return first.directional_pane(current_pane_id, movement);
+                }
+                if second.contains(current_pane_id) {
+                    if movement_matches(*direction, movement, false) {
+                        return first.last_pane();
+                    }
+                    return second.directional_pane(current_pane_id, movement);
+                }
+                None
+            }
+        }
+    }
+
     pub fn pane_ids(&self) -> Vec<&str> {
         match self {
             Self::Pane { pane_id } => vec![pane_id.as_str()],
@@ -198,6 +236,30 @@ impl LayoutNode {
     fn is_pane(&self, pane_id: &str) -> bool {
         matches!(self, Self::Pane { pane_id: current } if current == pane_id)
     }
+
+    fn first_pane(&self) -> Option<&str> {
+        match self {
+            Self::Pane { pane_id } => Some(pane_id),
+            Self::Split { first, .. } => first.first_pane(),
+        }
+    }
+
+    fn last_pane(&self) -> Option<&str> {
+        match self {
+            Self::Pane { pane_id } => Some(pane_id),
+            Self::Split { second, .. } => second.last_pane(),
+        }
+    }
+}
+
+fn movement_matches(split: Direction, movement: FocusDirection, toward_second: bool) -> bool {
+    matches!(
+        (split, movement, toward_second),
+        (Direction::Horizontal, FocusDirection::Right, true)
+            | (Direction::Horizontal, FocusDirection::Left, false)
+            | (Direction::Vertical, FocusDirection::Down, true)
+            | (Direction::Vertical, FocusDirection::Up, false)
+    )
 }
 
 pub fn clamp_ratio(ratio: f32) -> f32 {
@@ -261,5 +323,22 @@ mod tests {
         assert_eq!(layout.next_pane(Some("two")), Some("one"));
         assert_eq!(layout.previous_pane(Some("one")), Some("two"));
         assert_eq!(layout.previous_pane(Some("two")), Some("one"));
+    }
+
+    #[test]
+    fn directional_focus_follows_split_axes() {
+        let layout = LayoutNode::pane("left").split(Direction::Horizontal, 0.5, "right");
+        assert_eq!(
+            layout.directional_pane("left", super::FocusDirection::Right),
+            Some("right")
+        );
+        assert_eq!(
+            layout.directional_pane("right", super::FocusDirection::Left),
+            Some("left")
+        );
+        assert_eq!(
+            layout.directional_pane("left", super::FocusDirection::Left),
+            None
+        );
     }
 }

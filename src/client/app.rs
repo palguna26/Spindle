@@ -188,6 +188,13 @@ fn event_loop(
             Action::FocusPrevious => {
                 let _ = client.request("focus-previous", "focus_previous", json!({}));
             }
+            Action::FocusLeft | Action::FocusRight | Action::FocusUp | Action::FocusDown => {
+                let _ = client.request(
+                    "focus-direction",
+                    "focus_direction",
+                    json!({ "direction": focus_direction_name(pressed) }),
+                );
+            }
             Action::SplitHorizontal | Action::SplitVertical => {
                 let direction = if matches!(pressed, Action::SplitHorizontal) {
                     "horizontal"
@@ -318,6 +325,16 @@ fn adjacent_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
     )
 }
 
+fn focus_direction_name(action: Action) -> &'static str {
+    match action {
+        Action::FocusLeft => "left",
+        Action::FocusRight => "right",
+        Action::FocusUp => "up",
+        Action::FocusDown => "down",
+        _ => unreachable!("not a directional focus action"),
+    }
+}
+
 fn execute_action(
     pressed: Action,
     client: &ControlClient,
@@ -397,6 +414,14 @@ fn execute_action(
         }
         Action::FocusPrevious => {
             let _ = client.request("palette-focus-previous", "focus_previous", json!({}));
+            Ok(false)
+        }
+        Action::FocusLeft | Action::FocusRight | Action::FocusUp | Action::FocusDown => {
+            let _ = client.request(
+                "palette-focus-direction",
+                "focus_direction",
+                json!({ "direction": focus_direction_name(pressed) }),
+            );
             Ok(false)
         }
         Action::SplitHorizontal | Action::SplitVertical => {

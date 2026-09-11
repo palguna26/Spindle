@@ -18,6 +18,10 @@ pub enum Command {
     CreateWorkspace,
     FocusNext,
     FocusPrevious,
+    FocusLeft,
+    FocusRight,
+    FocusUp,
+    FocusDown,
     SplitHorizontal,
     SplitVertical,
     ResizeSmaller,
@@ -26,7 +30,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 24] = [
         Self::NewTab,
         Self::CloseTab,
         Self::NextTab,
@@ -42,6 +46,10 @@ impl Command {
         Self::CreateWorkspace,
         Self::FocusNext,
         Self::FocusPrevious,
+        Self::FocusLeft,
+        Self::FocusRight,
+        Self::FocusUp,
+        Self::FocusDown,
         Self::SplitHorizontal,
         Self::SplitVertical,
         Self::ResizeSmaller,
@@ -66,6 +74,10 @@ impl Command {
             Self::CreateWorkspace => "Create workspace",
             Self::FocusNext => "Focus next pane",
             Self::FocusPrevious => "Focus previous pane",
+            Self::FocusLeft => "Focus pane left",
+            Self::FocusRight => "Focus pane right",
+            Self::FocusUp => "Focus pane up",
+            Self::FocusDown => "Focus pane down",
             Self::SplitHorizontal => "Split horizontally",
             Self::SplitVertical => "Split vertically",
             Self::ResizeSmaller => "Resize smaller",
@@ -91,6 +103,10 @@ impl Command {
             Self::CreateWorkspace => Action::CreateWorkspace,
             Self::FocusNext => Action::FocusNext,
             Self::FocusPrevious => Action::FocusPrevious,
+            Self::FocusLeft => Action::FocusLeft,
+            Self::FocusRight => Action::FocusRight,
+            Self::FocusUp => Action::FocusUp,
+            Self::FocusDown => Action::FocusDown,
             Self::SplitHorizontal => Action::SplitHorizontal,
             Self::SplitVertical => Action::SplitVertical,
             Self::ResizeSmaller => Action::ResizeSmaller,

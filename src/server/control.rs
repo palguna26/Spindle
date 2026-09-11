@@ -81,6 +81,11 @@ struct LayoutResizeRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct FocusDirectionRequest {
+    direction: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct EventsRequest {
     #[serde(default)]
     after_sequence: u64,
@@ -526,6 +531,18 @@ pub(crate) fn response_for_with_interactive(
         "focus_previous" => {
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| session.focus_previous())
+        }
+        "focus_direction" => {
+            let payload: FocusDirectionRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.focus_direction(&payload.direction)
+            })
         }
         "resize_pane" => {
             let payload: LayoutResizeRequest = match serde_json::from_value(request.payload) {

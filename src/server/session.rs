@@ -731,6 +731,30 @@ impl Session {
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
+    pub fn focus_direction(&mut self, direction: &str) -> Result<Value, String> {
+        let movement = match direction {
+            "left" => crate::model::layout::FocusDirection::Left,
+            "right" => crate::model::layout::FocusDirection::Right,
+            "up" => crate::model::layout::FocusDirection::Up,
+            "down" => crate::model::layout::FocusDirection::Down,
+            other => return Err(format!("unknown focus direction '{other}'")),
+        };
+        let current = self
+            .snapshot
+            .focused_pane_id
+            .clone()
+            .ok_or_else(|| "no pane is focused".to_string())?;
+        let pane_id = self
+            .active_tab_mut()?
+            .layout
+            .as_ref()
+            .and_then(|layout| layout.directional_pane(&current, movement))
+            .map(str::to_string)
+            .ok_or_else(|| "no pane in that direction".to_string())?;
+        self.snapshot.focused_pane_id = Some(pane_id.clone());
+        Ok(serde_json::json!({ "pane_id": pane_id, "direction": direction }))
+    }
+
     pub fn resize_pane(&mut self, pane_id: &str, delta: f32) -> Result<Value, String> {
         let tab = self.active_tab_mut()?;
         let layout = tab
