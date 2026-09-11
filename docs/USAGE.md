@@ -58,7 +58,7 @@ spindle doctor   Show server health and identity
 
 The command palette supports arrow keys or `j`/`k`, Enter to select, and Esc
 to close. It includes pane, tab, space, and workspace rename actions, named
-workspace switching, and type-to-confirm deletion for the active space or
+new PowerShell pane creation, named workspace switching, and type-to-confirm deletion for the active space or
 workspace. Deletion still requires all panes in the target to be stopped and
 never permits deleting the last space or workspace.
 
