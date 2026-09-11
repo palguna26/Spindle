@@ -281,6 +281,10 @@ impl Session {
             title: String::new(),
             alternate_screen: false,
         });
+        self.record_pane_events(vec![PaneEvent::Status {
+            pane_id: pane_id.clone(),
+            status: PaneStatus::Running,
+        }]);
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
@@ -663,6 +667,10 @@ impl Session {
         pane.screen.clear();
         pane.cursor = (0, 0);
         self.snapshot.focused_pane_id = Some(pane_id.into());
+        self.record_pane_events(vec![PaneEvent::Status {
+            pane_id: pane_id.into(),
+            status: PaneStatus::Running,
+        }]);
         Ok(serde_json::json!({ "pane_id": pane_id, "restarted": true }))
     }
 
