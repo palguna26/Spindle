@@ -17,12 +17,32 @@ impl From<io::Error> for FrameError {
 
 pub fn read_frame<R: BufRead>(reader: &mut R) -> Result<Vec<u8>, FrameError> {
     let mut frame = Vec::new();
-    let read = reader.read_until(b'\n', &mut frame)?;
-    if read == 0 || frame.is_empty() || frame == b"\n" {
-        return Err(FrameError::Empty);
+    loop {
+        let chunk = reader.fill_buf()?;
+        if chunk.is_empty() {
+            return if frame.is_empty() {
+                Err(FrameError::Empty)
+            } else {
+                break;
+            };
+        }
+        let consumed = chunk
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map(|position| position + 1)
+            .unwrap_or(chunk.len());
+        if frame.len() + consumed > MAX_FRAME_BYTES {
+            return Err(FrameError::TooLarge);
+        }
+        let has_newline = chunk[..consumed].contains(&b'\n');
+        frame.extend_from_slice(&chunk[..consumed]);
+        reader.consume(consumed);
+        if has_newline {
+            break;
+        }
     }
-    if frame.len() > MAX_FRAME_BYTES {
-        return Err(FrameError::TooLarge);
+    if frame.is_empty() || frame == b"\n" {
+        return Err(FrameError::Empty);
     }
     if frame.last() == Some(&b'\n') {
         frame.pop();
@@ -67,6 +87,15 @@ mod tests {
         let oversized = vec![b'x'; MAX_FRAME_BYTES + 1];
         assert!(matches!(
             write_frame(&mut Vec::new(), &oversized),
+            Err(FrameError::TooLarge)
+        ));
+    }
+
+    #[test]
+    fn oversized_unterminated_frames_are_rejected_while_reading() {
+        let oversized = vec![b'x'; MAX_FRAME_BYTES + 1];
+        assert!(matches!(
+            read_frame(&mut Cursor::new(oversized)),
             Err(FrameError::TooLarge)
         ));
     }
