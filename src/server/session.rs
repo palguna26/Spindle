@@ -31,6 +31,10 @@ pub struct PaneView {
     pub screen: String,
     #[serde(default)]
     pub cursor: (u16, u16),
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub alternate_screen: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -245,6 +249,8 @@ impl Session {
             scrollback_bytes: 0,
             screen: String::new(),
             cursor: (0, 0),
+            title: String::new(),
+            alternate_screen: false,
         });
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
@@ -713,6 +719,8 @@ impl Session {
                 let terminal = current.terminal.snapshot();
                 pane.screen = terminal.contents;
                 pane.cursor = terminal.cursor;
+                pane.title = terminal.title;
+                pane.alternate_screen = terminal.alternate_screen;
             }
         }
     }
@@ -799,6 +807,8 @@ mod tests {
             scrollback_bytes: 0,
             screen: String::new(),
             cursor: (0, 0),
+            title: String::new(),
+            alternate_screen: false,
         });
         session.snapshot.spaces[0].workspaces[0].tabs[0].layout =
             Some(crate::model::layout::LayoutNode::pane("pane-1"));
@@ -817,6 +827,8 @@ mod tests {
             scrollback_bytes: 0,
             screen: String::new(),
             cursor: (0, 0),
+            title: String::new(),
+            alternate_screen: false,
         });
         assert!(session.restart_pane("pane-1").is_err());
     }

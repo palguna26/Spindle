@@ -7,6 +7,10 @@ pub struct TerminalSnapshot {
     pub cols: u16,
     pub contents: String,
     pub cursor: (u16, u16),
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub alternate_screen: bool,
 }
 
 pub struct TerminalEmulator {
@@ -41,6 +45,8 @@ impl TerminalEmulator {
             cols: self.cols,
             contents: screen.contents(),
             cursor: screen.cursor_position(),
+            title: screen.title().into(),
+            alternate_screen: screen.alternate_screen(),
         }
     }
 }
@@ -72,5 +78,17 @@ mod tests {
         terminal.resize(4, 12);
         assert_eq!(terminal.snapshot().rows, 4);
         assert_eq!(terminal.snapshot().cols, 12);
+    }
+
+    #[test]
+    fn title_and_alternate_screen_are_tracked() {
+        let mut terminal = TerminalEmulator::new(2, 8, 4);
+        terminal.process(b"\x1b]0;Spindle\x07\x1b[?1049h");
+        let snapshot = terminal.snapshot();
+        assert_eq!(snapshot.title, "Spindle");
+        assert!(snapshot.alternate_screen);
+
+        terminal.process(b"\x1b[?1049l");
+        assert!(!terminal.snapshot().alternate_screen);
     }
 }
