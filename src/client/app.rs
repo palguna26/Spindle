@@ -51,16 +51,30 @@ fn event_loop(
     let mut palette_open = false;
     let mut rename_prompt: Option<RenamePrompt> = None;
     let mut last_size = None;
+    let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
     loop {
-        let connected = match current_snapshot(client) {
+        let terminal_size = size().map_err(ClientError::Io)?;
+        let mut connected = match current_snapshot(client) {
             Ok(current) => {
                 snapshot = current;
                 true
             }
             Err(_) => false,
         };
-        let terminal_size = size().map_err(ClientError::Io)?;
+        if connected && !was_connected {
+            connected = client
+                .attach_with_terminal(
+                    terminal_size.0,
+                    terminal_size.1,
+                    vec!["mouse".into(), "alternate_screen".into()],
+                )
+                .is_ok();
+            if connected {
+                last_size = None;
+            }
+        }
+        was_connected = connected;
         if connected && last_size != Some(terminal_size) {
             resize_panes(client, &snapshot, terminal_size)?;
             last_size = Some(terminal_size);
@@ -266,6 +280,11 @@ fn event_loop(
         prefix_active = false;
     }
     Ok(())
+}
+
+#[cfg(test)]
+fn reconnect_requires_reattach(was_connected: bool, connected: bool) -> bool {
+    connected && !was_connected
 }
 
 fn rename_target(action: Action) -> Option<RenameTarget> {
@@ -695,7 +714,7 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
 mod tests {
     use super::{
         active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id, key_code_bytes,
-        pane_size, workspace_id_by_name,
+        pane_size, reconnect_requires_reattach, workspace_id_by_name,
     };
     use crate::server::session::Session;
     use crossterm::event::KeyCode;
@@ -752,5 +771,12 @@ mod tests {
             Some(id)
         );
         assert_eq!(workspace_id_by_name(session.snapshot(), "Missing"), None);
+    }
+
+    #[test]
+    fn reconnect_transition_requires_a_new_attach() {
+        assert!(reconnect_requires_reattach(false, true));
+        assert!(!reconnect_requires_reattach(true, true));
+        assert!(!reconnect_requires_reattach(false, false));
     }
 }
