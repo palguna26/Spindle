@@ -541,6 +541,98 @@ fn pty_output_reaches_event_subscribers() {
 }
 
 #[test]
+fn interactive_pty_accepts_input_and_resize() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let pane = client
+        .request(
+            "interactive-pane",
+            "create_pane",
+            serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/Q", "/K"],
+                "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap();
+    let pane_id = pane.payload.unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    client
+        .request(
+            "interactive-resize",
+            "resize_pty",
+            serde_json::json!({ "pane_id": pane_id, "cols": 100, "rows": 30 }),
+        )
+        .unwrap();
+    client
+        .request(
+            "interactive-input",
+            "send_input",
+            serde_json::json!({ "pane_id": pane_id, "bytes": b"echo spindle-input\r" }),
+        )
+        .unwrap();
+
+    let mut sequence = 0;
+    let mut saw_input = false;
+    let mut output = Vec::new();
+    for _ in 0..80 {
+        let batch = client.subscribe_events(sequence).unwrap();
+        sequence = batch.latest_sequence;
+        for event in batch.events {
+            if event.event == "pane_output" && event.payload["pane_id"] == pane_id {
+                let bytes: Vec<u8> = event.payload["bytes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_u64)
+                    .filter_map(|byte| u8::try_from(byte).ok())
+                    .collect();
+                output.extend(&bytes);
+                if bytes.windows(4).any(|window| window == b"\x1b[6n") {
+                    client
+                        .request(
+                            "interactive-cursor",
+                            "send_input",
+                            serde_json::json!({
+                                "pane_id": pane_id,
+                                "bytes": b"\x1b[1;1R"
+                            }),
+                        )
+                        .unwrap();
+                }
+            }
+        }
+        saw_input = String::from_utf8_lossy(&output).contains("spindle-input");
+        if saw_input {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(
+        saw_input,
+        "interactive input did not reach the PTY; output={:?}",
+        String::from_utf8_lossy(&output)
+    );
+    client
+        .request(
+            "interactive-stop",
+            "stop_pane",
+            serde_json::json!({ "pane_id": pane_id }),
+        )
+        .unwrap();
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn live_event_stream_receives_new_pty_output() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
