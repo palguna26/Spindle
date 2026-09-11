@@ -445,6 +445,24 @@ fn client_loss_allows_geometry_ownership_takeover() {
     let (thread, address) = start_server(&state_dir);
     let first = ControlClient::connect(address.trim()).unwrap();
     let second = ControlClient::connect(address.trim()).unwrap();
+    let pane = first
+        .request(
+            "surviving-pane",
+            "create_pane",
+            serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+                "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap()
+        .payload
+        .unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let first_attach = first.attach().unwrap();
     assert_eq!(first_attach.payload.unwrap()["active"], true);
     let second_attach = second.attach().unwrap();
@@ -453,6 +471,18 @@ fn client_loss_allows_geometry_ownership_takeover() {
     std::thread::sleep(Duration::from_millis(1_100));
     let takeover = second.attach().unwrap();
     assert_eq!(takeover.payload.unwrap()["active"], true);
+    let snapshot = second
+        .request(
+            "surviving-snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(snapshot["panes"][0]["pane_id"], pane);
+    let status = &snapshot["panes"][0]["status"];
+    assert_eq!(status, "Running");
 
     second
         .request("stop", "stop_server", Value::Object(Default::default()))
