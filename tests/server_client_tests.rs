@@ -116,6 +116,59 @@ fn session_metadata_survives_server_restart() {
 }
 
 #[test]
+fn tab_metadata_and_active_tab_survive_server_restart() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let created = client
+        .request(
+            "create-tab",
+            "create_tab",
+            serde_json::json!({ "name": "Logs" }),
+        )
+        .unwrap();
+    let tab_id = created.payload.unwrap()["tab_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    client
+        .request(
+            "rename-tab",
+            "rename_tab",
+            serde_json::json!({ "id": tab_id, "name": "Build logs" }),
+        )
+        .unwrap();
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+
+    let (thread, address) = start_server(&state_dir);
+    let recovered = ControlClient::connect(address.trim()).unwrap();
+    let snapshot = recovered
+        .request(
+            "snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    let workspace = &snapshot["spaces"][0]["workspaces"][0];
+    assert_eq!(workspace["active_tab_id"], tab_id);
+    assert_eq!(workspace["tabs"][1]["name"], "Build logs");
+    recovered
+        .request(
+            "stop-again",
+            "stop_server",
+            Value::Object(Default::default()),
+        )
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn split_panes_survive_workspace_switching() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
