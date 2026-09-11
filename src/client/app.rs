@@ -123,8 +123,8 @@ fn event_loop(
                         "command": "powershell.exe",
                         "args": ["-NoLogo", "-NoProfile"],
                         "cwd": cwd,
-                        "cols": 80,
-                        "rows": 24
+                        "cols": pane_size(terminal_size).0,
+                        "rows": pane_size(terminal_size).1
                     }),
                 );
             }
@@ -176,8 +176,7 @@ fn resize_panes(
     snapshot: &SessionSnapshot,
     terminal_size: (u16, u16),
 ) -> Result<(), ClientError> {
-    let cols = terminal_size.0.max(1);
-    let rows = terminal_size.1.saturating_sub(1).max(1);
+    let (cols, rows) = pane_size(terminal_size);
     for pane in &snapshot.panes {
         let _ = client.request_with_retry(
             format!("resize-{}", pane.pane_id),
@@ -193,6 +192,13 @@ fn resize_panes(
         );
     }
     Ok(())
+}
+
+fn pane_size(terminal_size: (u16, u16)) -> (u16, u16) {
+    (
+        terminal_size.0.max(1),
+        terminal_size.1.saturating_sub(1).max(1),
+    )
 }
 
 fn key_code_bytes(code: KeyCode) -> Option<Vec<u8>> {
@@ -264,7 +270,7 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{active_tab_id, adjacent_space_id, adjacent_tab_id, key_code_bytes};
+    use super::{active_tab_id, adjacent_space_id, adjacent_tab_id, key_code_bytes, pane_size};
     use crate::server::session::Session;
     use crossterm::event::KeyCode;
 
@@ -272,6 +278,8 @@ mod tests {
     fn common_keys_encode_for_a_pty() {
         assert_eq!(key_code_bytes(KeyCode::Enter), Some(vec![b'\r']));
         assert_eq!(key_code_bytes(KeyCode::Left), Some(b"\x1b[D".to_vec()));
+        assert_eq!(pane_size((120, 40)), (120, 39));
+        assert_eq!(pane_size((0, 0)), (1, 1));
     }
 
     #[test]
