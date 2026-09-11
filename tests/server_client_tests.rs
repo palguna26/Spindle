@@ -222,6 +222,100 @@ fn terminal_screen_and_scrollback_survive_server_restart() {
 }
 
 #[test]
+fn pty_exit_statuses_are_persisted_and_reported() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let create = |request_id: &str, code: u8| {
+        client
+            .request(
+                request_id,
+                "create_pane",
+                serde_json::json!({
+                    "command": "cmd.exe",
+                    "args": ["/C", "exit", code.to_string()],
+                    "cwd": cwd.clone(),
+                    "cols": 80,
+                    "rows": 24
+                }),
+            )
+            .unwrap()
+            .payload
+            .unwrap()["pane_id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let completed_id = create("completed-pane", 0);
+    let halted_id = create("halted-pane", 7);
+
+    let mut statuses = None;
+    for _ in 0..40 {
+        let snapshot = client
+            .request(
+                "status-snapshot",
+                "get_snapshot",
+                Value::Object(Default::default()),
+            )
+            .unwrap()
+            .payload
+            .unwrap();
+        let panes = snapshot["panes"].as_array().unwrap();
+        for current in panes {
+            let scrollback: Vec<u8> = current["scrollback"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|byte| byte.as_u64().and_then(|byte| u8::try_from(byte).ok()))
+                .collect();
+            if scrollback.windows(4).any(|window| window == b"\x1b[6n") {
+                client
+                    .request(
+                        "status-cursor-response",
+                        "send_input",
+                        serde_json::json!({
+                            "pane_id": current["pane_id"],
+                            "bytes": b"\x1b[1;1R"
+                        }),
+                    )
+                    .unwrap();
+            }
+        }
+        let completed = panes
+            .iter()
+            .find(|pane| pane["pane_id"] == completed_id)
+            .unwrap();
+        let halted = panes
+            .iter()
+            .find(|pane| pane["pane_id"] == halted_id)
+            .unwrap();
+        if completed["status"]["Completed"]["exit_code"] == 0
+            && halted["status"]["Halted"]["reason"].is_string()
+        {
+            statuses = Some((completed.clone(), halted.clone()));
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let (completed, halted) = statuses.expect("PTY exit statuses were not reported");
+    assert_eq!(completed["status"]["Completed"]["exit_code"], 0);
+    assert!(halted["status"]["Halted"]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("7"));
+
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn tab_metadata_and_active_tab_survive_server_restart() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
