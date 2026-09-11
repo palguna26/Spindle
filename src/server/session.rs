@@ -73,6 +73,7 @@ pub struct Session {
     next_pane_id: u64,
     snapshot_path: Option<PathBuf>,
     events: VecDeque<Event<Value>>,
+    geometry_owner: Option<String>,
 }
 
 impl Default for Session {
@@ -104,6 +105,7 @@ impl Default for Session {
             next_pane_id: 1,
             snapshot_path: None,
             events: VecDeque::new(),
+            geometry_owner: None,
         }
     }
 }
@@ -126,6 +128,7 @@ impl Session {
                     snapshot,
                     snapshot_path: Some(path),
                     events: VecDeque::new(),
+                    geometry_owner: None,
                 }
             }
             Err(_) => {
@@ -154,6 +157,23 @@ impl Session {
             .filter(|event| event.sequence > sequence)
             .cloned()
             .collect()
+    }
+
+    pub fn attach(&mut self, client_id: String) -> Value {
+        let owner = self.geometry_owner.get_or_insert(client_id.clone());
+        serde_json::json!({
+            "attached": true,
+            "client_id": client_id,
+            "geometry_owner": owner,
+            "active": owner == &client_id,
+        })
+    }
+
+    pub fn can_resize(&self, client_id: &str) -> bool {
+        self.geometry_owner
+            .as_deref()
+            .map(|owner| owner == client_id)
+            .unwrap_or(true)
     }
 
     pub fn create_pane(&mut self, request: CreatePaneRequest) -> Result<Value, String> {

@@ -15,6 +15,7 @@ use std::time::Duration;
 
 pub fn run(address: impl Into<String>) -> Result<(), ClientError> {
     let client = ControlClient::connect(address)?;
+    client.attach()?;
     let mut terminal = setup_terminal().map_err(ClientError::Io)?;
     let result = event_loop(&mut terminal, &client);
     restore_terminal(&mut terminal).map_err(ClientError::Io)?;
@@ -154,7 +155,12 @@ fn resize_panes(
         let _ = client.request_with_retry(
             format!("resize-{}", pane.pane_id),
             "resize_pty",
-            json!({ "pane_id": pane.pane_id, "cols": cols, "rows": rows }),
+            json!({
+                "pane_id": pane.pane_id,
+                "cols": cols,
+                "rows": rows,
+                "client_id": client.client_id(),
+            }),
             2,
             Duration::from_millis(20),
         );

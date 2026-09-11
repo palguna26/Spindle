@@ -28,6 +28,18 @@ struct ResizeRequest {
     pane_id: String,
     cols: u16,
     rows: u16,
+    #[serde(default)]
+    client_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AttachRequest {
+    #[serde(default = "default_client_id")]
+    client_id: String,
+}
+
+fn default_client_id() -> String {
+    "anonymous".into()
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,7 +102,16 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
 
     let result = match request.op.as_str() {
         "ping" => Ok(json!({ "status": "ok" })),
-        "attach" => Ok(json!({ "attached": true })),
+        "attach" => {
+            let payload: AttachRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            Ok(session.attach(payload.client_id))
+        }
         "create_space" => {
             let payload: NameRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,
@@ -217,6 +238,13 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
                 }
             };
             let mut session = session.lock().expect("session lock poisoned");
+            if !session.can_resize(&payload.client_id) {
+                return request_error(
+                    request.request_id,
+                    "geometry_owned",
+                    "another client owns PTY geometry".into(),
+                );
+            }
             session
                 .resize(&payload.pane_id, payload.cols, payload.rows)
                 .map(|_| json!({ "resized": true }))
@@ -484,5 +512,22 @@ mod tests {
         assert!(!response.ok);
         assert_eq!(response.version, PROTOCOL_VERSION);
         assert_eq!(response.error.unwrap().code, "invalid_json");
+    }
+
+    #[test]
+    fn passive_client_cannot_resize_pty() {
+        let shared = session();
+        let attached = response_for(
+            br#"{"version":1,"request_id":"a","op":"attach","payload":{"client_id":"active"}}"#,
+            &shared,
+        );
+        assert!(attached.ok);
+
+        let response = response_for(
+            br#"{"version":1,"request_id":"r","op":"resize_pty","payload":{"pane_id":"missing","cols":80,"rows":24,"client_id":"passive"}}"#,
+            &shared,
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, "geometry_owned");
     }
 }

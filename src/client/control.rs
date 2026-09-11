@@ -3,10 +3,14 @@ use crate::protocol::{Event, Request, Response, PROTOCOL_VERSION};
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufReader};
 use std::net::TcpStream;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+
+static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);
 
 pub struct ControlClient {
     address: String,
+    client_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,6 +49,11 @@ impl ControlClient {
     pub fn connect(address: impl Into<String>) -> Result<Self, ClientError> {
         let client = Self {
             address: address.into(),
+            client_id: format!(
+                "client-{}-{}",
+                std::process::id(),
+                NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed)
+            ),
         };
         client.request_once("connect".into(), "ping".into(), ())?;
         Ok(client)
@@ -66,6 +75,18 @@ impl ControlClient {
             serde_json::json!({ "after_sequence": after_sequence }),
         )?;
         serde_json::from_value(response.payload.unwrap_or_default()).map_err(ClientError::Json)
+    }
+
+    pub fn attach(&self) -> Result<Response<serde_json::Value>, ClientError> {
+        self.request(
+            "attach",
+            "attach",
+            serde_json::json!({ "client_id": self.client_id }),
+        )
+    }
+
+    pub fn client_id(&self) -> &str {
+        &self.client_id
     }
 
     pub fn request_with_retry<T: Serialize>(
@@ -135,6 +156,7 @@ mod tests {
     fn unavailable_endpoint_can_be_retried() {
         let client = ControlClient {
             address: "127.0.0.1:1".into(),
+            client_id: "test-client".into(),
         };
         assert!(client
             .request_with_retry("1", "ping", (), 2, Duration::from_millis(1))
