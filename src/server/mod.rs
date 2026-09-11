@@ -3,6 +3,7 @@ pub mod session;
 #[cfg(windows)]
 pub(crate) mod transport;
 
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
 #[cfg(not(windows))]
@@ -13,6 +14,15 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::thread;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ServerIdentity {
+    pub pid: u32,
+    pub protocol_version: u16,
+    pub control_endpoint: String,
+    pub interactive_endpoint: String,
+    pub started_at_unix_seconds: u64,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerState {
@@ -102,10 +112,25 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     ));
     let endpoint = state_dir.join("server.endpoint");
     let interactive_endpoint = state_dir.join("server.interactive.endpoint");
+    let identity_json = state_dir.join("server.json");
     let identity = state_dir.join("server.pid");
     fs::write(&identity, std::process::id().to_string())?;
     fs::write(&endpoint, &address)?;
     fs::write(&interactive_endpoint, &interactive_address)?;
+    let server_identity = ServerIdentity {
+        pid: std::process::id(),
+        protocol_version: crate::protocol::PROTOCOL_VERSION,
+        control_endpoint: address.clone(),
+        interactive_endpoint: interactive_address.clone(),
+        started_at_unix_seconds: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    };
+    fs::write(
+        &identity_json,
+        serde_json::to_vec_pretty(&server_identity).map_err(io::Error::other)?,
+    )?;
 
     let stopping = Arc::new(AtomicBool::new(false));
     let interactive_stopping = Arc::clone(&stopping);
@@ -154,6 +179,7 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
 
     let _ = fs::remove_file(endpoint);
     let _ = fs::remove_file(interactive_endpoint);
+    let _ = fs::remove_file(identity_json);
     let _ = fs::remove_file(identity);
     Ok(())
 }

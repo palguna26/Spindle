@@ -42,6 +42,15 @@ fn server_accepts_attach_snapshot_and_stop() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
     assert!(state_dir.join("server.pid").exists());
+    let identity: spindle::server::ServerIdentity =
+        serde_json::from_str(&std::fs::read_to_string(state_dir.join("server.json")).unwrap())
+            .unwrap();
+    assert_eq!(identity.pid, std::process::id());
+    assert_eq!(
+        identity.protocol_version,
+        spindle::protocol::PROTOCOL_VERSION
+    );
+    assert!(!identity.interactive_endpoint.is_empty());
 
     let attach = request(address.trim(), "attach");
     assert!(attach.ok);
@@ -62,6 +71,7 @@ fn server_accepts_attach_snapshot_and_stop() {
     assert!(!endpoint.exists());
     assert!(!state_dir.join("server.interactive.endpoint").exists());
     assert!(!state_dir.join("server.pid").exists());
+    assert!(!state_dir.join("server.json").exists());
     let _ = std::fs::remove_dir_all(state_dir);
 }
 

@@ -42,6 +42,11 @@ pub fn run() -> io::Result<()> {
                 Ok(pid) => println!("server pid: {}", pid.trim()),
                 Err(_) => println!("server pid: unavailable"),
             }
+            let identity_path = project.state_dir.join("server.json");
+            match fs::read_to_string(identity_path) {
+                Ok(identity) => println!("server identity: {}", identity.replace('\n', " ")),
+                Err(_) => println!("server identity: unavailable"),
+            }
         }
         "stop" => {
             send_command(&project, "stop_server")?;

@@ -26,7 +26,7 @@ try {
     Invoke-Spindle @("doctor")
     Invoke-Spindle @("stop")
     $markers = Get-ChildItem -LiteralPath (Join-Path $stateRoot "Spindle\projects") -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -in @("server.endpoint", "server.pid") }
+        Where-Object { $_.Name -in @("server.endpoint", "server.interactive.endpoint", "server.pid", "server.json") }
     if ($markers.Count -ne 0) {
         throw "server markers were not cleaned up"
     }
