@@ -6,6 +6,8 @@ pub enum RenameTarget {
     Tab,
     Workspace,
     CreateWorkspace,
+    Space,
+    CreateSpace,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -77,6 +77,8 @@ fn event_loop(
                         RenameTarget::Tab => "Rename tab",
                         RenameTarget::Workspace => "Rename workspace",
                         RenameTarget::CreateWorkspace => "Create workspace",
+                        RenameTarget::Space => "Rename space",
+                        RenameTarget::CreateSpace => "Create space",
                     };
                     renderer::render_prompt(frame, title, &prompt.input);
                 }
@@ -248,7 +250,9 @@ fn event_loop(
             Action::RenameFocusedPane
             | Action::RenameActiveTab
             | Action::RenameActiveWorkspace
-            | Action::CreateWorkspace => {}
+            | Action::CreateWorkspace
+            | Action::RenameActiveSpace
+            | Action::CreateSpace => {}
         }
         prefix_active = false;
     }
@@ -261,6 +265,8 @@ fn rename_target(action: Action) -> Option<RenameTarget> {
         Action::RenameActiveTab => Some(RenameTarget::Tab),
         Action::RenameActiveWorkspace => Some(RenameTarget::Workspace),
         Action::CreateWorkspace => Some(RenameTarget::CreateWorkspace),
+        Action::RenameActiveSpace => Some(RenameTarget::Space),
+        Action::CreateSpace => Some(RenameTarget::CreateSpace),
         _ => None,
     }
 }
@@ -285,6 +291,11 @@ fn submit_rename(
                 "create_workspace",
                 json!({ "name": name, "repository_path": repository_path }),
             )?;
+            return Ok(());
+        }
+        RenameTarget::Space => ("rename_space", Some(snapshot.active_space_id.clone())),
+        RenameTarget::CreateSpace => {
+            let _ = client.request("create-space", "create_space", json!({ "name": name }))?;
             return Ok(());
         }
     };
@@ -455,7 +466,9 @@ fn execute_action(
         Action::RenameFocusedPane
         | Action::RenameActiveTab
         | Action::RenameActiveWorkspace
-        | Action::CreateWorkspace => Ok(false),
+        | Action::CreateWorkspace
+        | Action::RenameActiveSpace
+        | Action::CreateSpace => Ok(false),
         _ => Ok(false),
     }
 }

@@ -16,6 +16,8 @@ pub enum Command {
     RenameActiveTab,
     RenameActiveWorkspace,
     CreateWorkspace,
+    RenameActiveSpace,
+    CreateSpace,
     FocusNext,
     FocusPrevious,
     FocusLeft,
@@ -30,7 +32,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 26] = [
         Self::NewTab,
         Self::CloseTab,
         Self::NextTab,
@@ -44,6 +46,8 @@ impl Command {
         Self::RenameActiveTab,
         Self::RenameActiveWorkspace,
         Self::CreateWorkspace,
+        Self::RenameActiveSpace,
+        Self::CreateSpace,
         Self::FocusNext,
         Self::FocusPrevious,
         Self::FocusLeft,
@@ -72,6 +76,8 @@ impl Command {
             Self::RenameActiveTab => "Rename active tab",
             Self::RenameActiveWorkspace => "Rename active workspace",
             Self::CreateWorkspace => "Create workspace",
+            Self::RenameActiveSpace => "Rename active space",
+            Self::CreateSpace => "Create space",
             Self::FocusNext => "Focus next pane",
             Self::FocusPrevious => "Focus previous pane",
             Self::FocusLeft => "Focus pane left",
@@ -101,6 +107,8 @@ impl Command {
             Self::RenameActiveTab => Action::RenameActiveTab,
             Self::RenameActiveWorkspace => Action::RenameActiveWorkspace,
             Self::CreateWorkspace => Action::CreateWorkspace,
+            Self::RenameActiveSpace => Action::RenameActiveSpace,
+            Self::CreateSpace => Action::CreateSpace,
             Self::FocusNext => Action::FocusNext,
             Self::FocusPrevious => Action::FocusPrevious,
             Self::FocusLeft => Action::FocusLeft,
