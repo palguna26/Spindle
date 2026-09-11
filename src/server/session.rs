@@ -1,9 +1,12 @@
 use crate::model::layout::LayoutNode;
 use crate::model::status::PaneStatus;
+use crate::pane::PaneEvent;
 use crate::pane::{PaneConfig, PaneManager, PaneManagerError};
 use crate::persist::{load_versioned, save_versioned, SnapshotError};
+use crate::protocol::Event;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +63,8 @@ pub struct SessionSnapshot {
     pub active_space_id: String,
     pub panes: Vec<PaneView>,
     pub focused_pane_id: Option<String>,
+    #[serde(default)]
+    pub event_sequence: u64,
 }
 
 pub struct Session {
@@ -67,6 +72,7 @@ pub struct Session {
     snapshot: SessionSnapshot,
     next_pane_id: u64,
     snapshot_path: Option<PathBuf>,
+    events: VecDeque<Event<Value>>,
 }
 
 impl Default for Session {
@@ -93,9 +99,11 @@ impl Default for Session {
                 active_space_id: "space-1".into(),
                 panes: Vec::new(),
                 focused_pane_id: None,
+                event_sequence: 0,
             },
             next_pane_id: 1,
             snapshot_path: None,
+            events: VecDeque::new(),
         }
     }
 }
@@ -117,6 +125,7 @@ impl Session {
                     next_pane_id: next_pane_id(&snapshot),
                     snapshot,
                     snapshot_path: Some(path),
+                    events: VecDeque::new(),
                 }
             }
             Err(_) => {
@@ -136,6 +145,15 @@ impl Session {
 
     pub fn snapshot(&self) -> &SessionSnapshot {
         &self.snapshot
+    }
+
+    pub fn events_since(&mut self, sequence: u64) -> Vec<Event<Value>> {
+        self.poll();
+        self.events
+            .iter()
+            .filter(|event| event.sequence > sequence)
+            .cloned()
+            .collect()
     }
 
     pub fn create_pane(&mut self, request: CreatePaneRequest) -> Result<Value, String> {
@@ -512,7 +530,28 @@ impl Session {
     }
 
     pub fn poll(&mut self) {
-        self.pane_manager.poll();
+        for event in self.pane_manager.poll() {
+            let (name, payload) = match event {
+                PaneEvent::Output { pane_id, bytes } => (
+                    "pane_output",
+                    serde_json::json!({ "pane_id": pane_id, "bytes": bytes }),
+                ),
+                PaneEvent::Status { pane_id, status } => (
+                    "pane_status",
+                    serde_json::json!({ "pane_id": pane_id, "status": status }),
+                ),
+            };
+            self.snapshot.event_sequence += 1;
+            self.events.push_back(Event {
+                version: crate::protocol::PROTOCOL_VERSION,
+                sequence: self.snapshot.event_sequence,
+                event: name.into(),
+                payload,
+            });
+            if self.events.len() > 4096 {
+                self.events.pop_front();
+            }
+        }
     }
 
     fn active_workspace_mut(&mut self) -> Result<&mut WorkspaceView, String> {

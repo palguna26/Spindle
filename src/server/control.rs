@@ -54,6 +54,12 @@ struct LayoutResizeRequest {
     delta: f32,
 }
 
+#[derive(Debug, Deserialize)]
+struct EventsRequest {
+    #[serde(default)]
+    after_sequence: u64,
+}
+
 pub fn handle_connection(stream: TcpStream, session: Arc<Mutex<Session>>) -> io::Result<bool> {
     let reader_stream = stream.try_clone()?;
     let mut reader = BufReader::new(reader_stream);
@@ -132,6 +138,20 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
             session.poll();
             session.refresh_snapshot();
             serde_json::to_value(session.snapshot()).map_err(|error| error.to_string())
+        }
+        "subscribe_events" => {
+            let payload: EventsRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            let events = session.events_since(payload.after_sequence);
+            Ok(json!({
+                "events": events,
+                "latest_sequence": session.snapshot().event_sequence
+            }))
         }
         "create_pane" => {
             let payload: CreatePaneRequest = match serde_json::from_value(request.payload) {
