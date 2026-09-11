@@ -8,6 +8,10 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 pub fn render(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
+    render_with_connection(frame, snapshot, true);
+}
+
+pub fn render_with_connection(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, connected: bool) {
     let areas = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
@@ -26,6 +30,14 @@ pub fn render(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
         Span::styled(" Spindle ", Style::default().fg(Color::Cyan)),
         Span::raw(format!("focused: {focused}")),
         Span::raw(format!("  panes: {}", snapshot.panes.len())),
+        Span::styled(
+            if connected {
+                "  connected"
+            } else {
+                "  connection lost — retrying"
+            },
+            Style::default().fg(if connected { Color::Green } else { Color::Red }),
+        ),
     ]);
     frame.render_widget(Paragraph::new(chrome), areas[1]);
 }
@@ -194,7 +206,7 @@ pub fn status_color(status: &PaneStatus) -> Color {
 
 #[cfg(test)]
 mod tests {
-    use super::{active_title, pane_title, render, status_color};
+    use super::{active_title, pane_title, render, render_with_connection, status_color};
     use crate::model::status::PaneStatus;
     use crate::server::session::{PaneView, Session};
     use ratatui::backend::TestBackend;
@@ -228,6 +240,24 @@ mod tests {
         let content: String = buffer.content().iter().map(|cell| cell.symbol()).collect();
         assert!(content.contains("Default"));
         assert!(content.contains("Current project"));
+    }
+
+    #[test]
+    fn disconnected_state_is_visible_in_status_chrome() {
+        let backend = TestBackend::new(60, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let session = Session::default();
+        terminal
+            .draw(|frame| render_with_connection(frame, session.snapshot(), false))
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("connection lost"));
     }
 
     #[test]

@@ -51,16 +51,23 @@ fn event_loop(
     let mut palette_open = false;
     let mut rename_prompt: Option<RenamePrompt> = None;
     let mut last_size = None;
+    let mut snapshot = current_snapshot(client)?;
     loop {
-        let snapshot = current_snapshot(client)?;
+        let connected = match current_snapshot(client) {
+            Ok(current) => {
+                snapshot = current;
+                true
+            }
+            Err(_) => false,
+        };
         let terminal_size = size().map_err(ClientError::Io)?;
-        if last_size != Some(terminal_size) {
+        if connected && last_size != Some(terminal_size) {
             resize_panes(client, &snapshot, terminal_size)?;
             last_size = Some(terminal_size);
         }
         terminal
             .draw(|frame| {
-                renderer::render(frame, &snapshot);
+                renderer::render_with_connection(frame, &snapshot, connected);
                 if palette_open {
                     renderer::render_palette(frame, palette_selected);
                 }
@@ -152,7 +159,7 @@ fn event_loop(
                 }
             }
             Action::StopFocusedPane => {
-                if let Some(pane_id) = snapshot.focused_pane_id {
+                if let Some(ref pane_id) = snapshot.focused_pane_id {
                     let _ = client.request("stop-pane", "stop_pane", json!({ "pane_id": pane_id }));
                 }
             }
@@ -192,7 +199,7 @@ fn event_loop(
                 );
             }
             Action::ResizeSmaller | Action::ResizeLarger => {
-                if let Some(pane_id) = snapshot.focused_pane_id {
+                if let Some(ref pane_id) = snapshot.focused_pane_id {
                     let delta = if matches!(pressed, Action::ResizeLarger) {
                         0.05
                     } else {
@@ -206,7 +213,7 @@ fn event_loop(
                 }
             }
             Action::Send(code) => {
-                if let Some(pane_id) = snapshot.focused_pane_id {
+                if let Some(ref pane_id) = snapshot.focused_pane_id {
                     if let Some(bytes) = key_code_bytes(code) {
                         let _ = client.request(
                             "input",
