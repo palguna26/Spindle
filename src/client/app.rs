@@ -81,6 +81,7 @@ fn event_loop(
                         RenameTarget::CreateSpace => "Create space",
                         RenameTarget::DeleteWorkspace => "Delete workspace: type its name",
                         RenameTarget::DeleteSpace => "Delete space: type its name",
+                        RenameTarget::SwitchWorkspace => "Switch workspace: type its name",
                     };
                     renderer::render_prompt(frame, title, &prompt.input);
                 }
@@ -256,7 +257,8 @@ fn event_loop(
             | Action::RenameActiveSpace
             | Action::CreateSpace
             | Action::DeleteActiveWorkspace
-            | Action::DeleteActiveSpace => {}
+            | Action::DeleteActiveSpace
+            | Action::SwitchWorkspaceByName => {}
         }
         prefix_active = false;
     }
@@ -273,6 +275,7 @@ fn rename_target(action: Action) -> Option<RenameTarget> {
         Action::CreateSpace => Some(RenameTarget::CreateSpace),
         Action::DeleteActiveWorkspace => Some(RenameTarget::DeleteWorkspace),
         Action::DeleteActiveSpace => Some(RenameTarget::DeleteSpace),
+        Action::SwitchWorkspaceByName => Some(RenameTarget::SwitchWorkspace),
         _ => None,
     }
 }
@@ -342,6 +345,16 @@ fn submit_rename(
             return Ok(());
         }
         RenameTarget::DeleteWorkspace | RenameTarget::DeleteSpace => unreachable!(),
+        RenameTarget::SwitchWorkspace => {
+            if let Some(id) = workspace_id_by_name(snapshot, &name) {
+                let _ = client.request(
+                    "switch-workspace-by-name",
+                    "switch_workspace",
+                    json!({ "id": id }),
+                )?;
+            }
+            return Ok(());
+        }
     };
     if let Some(id) = id {
         let _ = client.request(
@@ -372,6 +385,20 @@ fn active_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
         .iter()
         .find(|space| space.space_id == snapshot.active_space_id)
         .map(|space| space.active_workspace_id.clone())
+}
+
+fn workspace_id_by_name(snapshot: &SessionSnapshot, name: &str) -> Option<String> {
+    snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)
+        .and_then(|space| {
+            space
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.name == name)
+        })
+        .map(|workspace| workspace.workspace_id.clone())
 }
 
 fn adjacent_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
@@ -527,7 +554,8 @@ fn execute_action(
         | Action::RenameActiveSpace
         | Action::CreateSpace
         | Action::DeleteActiveWorkspace
-        | Action::DeleteActiveSpace => Ok(false),
+        | Action::DeleteActiveSpace
+        | Action::SwitchWorkspaceByName => Ok(false),
         _ => Ok(false),
     }
 }
@@ -644,7 +672,7 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
 mod tests {
     use super::{
         active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id, key_code_bytes,
-        pane_size,
+        pane_size, workspace_id_by_name,
     };
     use crate::server::session::Session;
     use crossterm::event::KeyCode;
@@ -689,5 +717,17 @@ mod tests {
             adjacent_workspace_id(&snapshot).as_deref(),
             Some("workspace-1")
         );
+    }
+
+    #[test]
+    fn workspace_can_be_found_by_name_in_active_space() {
+        let mut session = Session::default();
+        let created = session.create_workspace("Feature".into()).unwrap();
+        let id = created["workspace_id"].as_str().unwrap();
+        assert_eq!(
+            workspace_id_by_name(session.snapshot(), "Feature").as_deref(),
+            Some(id)
+        );
+        assert_eq!(workspace_id_by_name(session.snapshot(), "Missing"), None);
     }
 }

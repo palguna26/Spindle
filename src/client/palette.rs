@@ -10,6 +10,7 @@ pub enum Command {
     NextSpace,
     PreviousSpace,
     NextWorkspace,
+    SwitchWorkspaceByName,
     StopFocusedPane,
     RestartFocusedPane,
     RenameFocusedPane,
@@ -34,7 +35,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 29] = [
         Self::NewTab,
         Self::CloseTab,
         Self::NextTab,
@@ -42,6 +43,7 @@ impl Command {
         Self::NextSpace,
         Self::PreviousSpace,
         Self::NextWorkspace,
+        Self::SwitchWorkspaceByName,
         Self::StopFocusedPane,
         Self::RestartFocusedPane,
         Self::RenameFocusedPane,
@@ -74,6 +76,7 @@ impl Command {
             Self::NextSpace => "Next space",
             Self::PreviousSpace => "Previous space",
             Self::NextWorkspace => "Next workspace",
+            Self::SwitchWorkspaceByName => "Switch workspace (type name)",
             Self::StopFocusedPane => "Stop focused pane",
             Self::RestartFocusedPane => "Restart focused pane",
             Self::RenameFocusedPane => "Rename focused pane",
@@ -107,6 +110,7 @@ impl Command {
             Self::NextSpace => Action::NextSpace,
             Self::PreviousSpace => Action::PreviousSpace,
             Self::NextWorkspace => Action::NextWorkspace,
+            Self::SwitchWorkspaceByName => Action::SwitchWorkspaceByName,
             Self::StopFocusedPane => Action::StopFocusedPane,
             Self::RestartFocusedPane => Action::RestartFocusedPane,
             Self::RenameFocusedPane => Action::RenameFocusedPane,

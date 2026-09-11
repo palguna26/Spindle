@@ -11,6 +11,7 @@ pub enum Action {
     NextSpace,
     PreviousSpace,
     NextWorkspace,
+    SwitchWorkspaceByName,
     StopFocusedPane,
     RestartFocusedPane,
     RenameFocusedPane,
