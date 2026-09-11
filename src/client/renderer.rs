@@ -56,7 +56,13 @@ fn active_title(snapshot: &SessionSnapshot) -> String {
                 .workspaces
                 .iter()
                 .find(|workspace| workspace.workspace_id == space.active_workspace_id)
-                .map(|workspace| format!("{} / {}", space.name, workspace.name))
+                .and_then(|workspace| {
+                    workspace
+                        .tabs
+                        .iter()
+                        .find(|tab| tab.tab_id == workspace.active_tab_id)
+                        .map(|tab| format!("{} / {} / {}", space.name, workspace.name, tab.name))
+                })
         })
         .unwrap_or_else(|| "No active session".into())
 }
@@ -135,7 +141,7 @@ pub fn status_color(status: &PaneStatus) -> Color {
 
 #[cfg(test)]
 mod tests {
-    use super::{pane_title, render, status_color};
+    use super::{active_title, pane_title, render, status_color};
     use crate::model::status::PaneStatus;
     use crate::server::session::{PaneView, Session};
     use ratatui::backend::TestBackend;
@@ -186,5 +192,15 @@ mod tests {
             alternate_screen: true,
         };
         assert_eq!(pane_title(&pane), "◉ pane-1 Editor [alt]");
+    }
+
+    #[test]
+    fn active_context_includes_the_tab_name() {
+        let mut session = Session::default();
+        session.create_tab("Logs".into()).unwrap();
+        assert_eq!(
+            active_title(session.snapshot()),
+            "Default / Current project / Logs"
+        );
     }
 }
