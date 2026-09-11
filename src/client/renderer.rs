@@ -170,7 +170,16 @@ fn render_layout(frame: &mut Frame<'_>, node: &LayoutNode, snapshot: &SessionSna
     }
 }
 
-fn pane_title(pane: &crate::server::session::PaneView) -> String {
+fn pane_title(pane: &crate::server::session::PaneView) -> Line<'static> {
+    let indicator = pane.status.indicator().to_string();
+    let title = pane_title_text(pane);
+    Line::from(vec![
+        Span::styled(indicator, Style::default().fg(status_color(&pane.status))),
+        Span::raw(title[pane.status.indicator().len_utf8()..].to_string()),
+    ])
+}
+
+fn pane_title_text(pane: &crate::server::session::PaneView) -> String {
     let label = pane
         .label
         .as_deref()
@@ -206,7 +215,9 @@ pub fn status_color(status: &PaneStatus) -> Color {
 
 #[cfg(test)]
 mod tests {
-    use super::{active_title, pane_title, render, render_with_connection, status_color};
+    use super::{
+        active_title, pane_title, pane_title_text, render, render_with_connection, status_color,
+    };
     use crate::model::status::PaneStatus;
     use crate::server::session::{PaneView, Session};
     use ratatui::backend::TestBackend;
@@ -278,9 +289,13 @@ mod tests {
             title: "Editor".into(),
             alternate_screen: true,
         };
-        assert!(pane_title(&pane).contains("Editor"));
-        assert!(pane_title(&pane).contains("running"));
-        assert!(pane_title(&pane).contains("[alt]"));
+        assert!(pane_title_text(&pane).contains("Editor"));
+        assert!(pane_title_text(&pane).contains("running"));
+        assert!(pane_title_text(&pane).contains("[alt]"));
+        assert_eq!(
+            pane_title(&pane).spans[0].style.fg,
+            Some(Color::Rgb(255, 165, 0))
+        );
     }
 
     #[test]
@@ -301,11 +316,11 @@ mod tests {
             title: String::new(),
             alternate_screen: false,
         };
-        assert!(pane_title(&pane).contains("exit 0"));
+        assert!(pane_title_text(&pane).contains("exit 0"));
         pane.status = PaneStatus::Halted {
             reason: "process failed".into(),
         };
-        assert!(pane_title(&pane).contains("process failed"));
+        assert!(pane_title_text(&pane).contains("process failed"));
     }
 
     #[test]
