@@ -223,6 +223,18 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
             }
             result
         }
+        "restart_pane" => {
+            let payload: PaneRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.restart_pane(&payload.pane_id)
+            })
+        }
         "create_workspace" => {
             let payload: NameRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,

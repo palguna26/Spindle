@@ -463,6 +463,54 @@ impl Session {
             .map_err(|error| format!("{error:?}"))
     }
 
+    pub fn restart_pane(&mut self, pane_id: &str) -> Result<Value, String> {
+        let (command, args, cwd, status) = self
+            .snapshot
+            .panes
+            .iter()
+            .find(|pane| pane.pane_id == pane_id)
+            .map(|pane| {
+                (
+                    pane.command.clone(),
+                    pane.args.clone(),
+                    pane.cwd.clone(),
+                    pane.status.clone(),
+                )
+            })
+            .ok_or_else(|| format!("pane '{pane_id}' does not exist"))?;
+        if status.is_running() {
+            return Err(format!("pane '{pane_id}' is already running"));
+        }
+        if self.pane_manager.get(pane_id).is_some() {
+            self.pane_manager
+                .remove(pane_id)
+                .map_err(|error| format!("{error:?}"))?;
+        }
+        self.pane_manager
+            .spawn(
+                pane_id,
+                PaneConfig {
+                    command,
+                    args,
+                    cwd,
+                    cols: 80,
+                    rows: 24,
+                },
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        let pane = self
+            .snapshot
+            .panes
+            .iter_mut()
+            .find(|pane| pane.pane_id == pane_id)
+            .expect("pane was found before restart");
+        pane.status = PaneStatus::Running;
+        pane.screen.clear();
+        pane.cursor = (0, 0);
+        self.snapshot.focused_pane_id = Some(pane_id.into());
+        Ok(serde_json::json!({ "pane_id": pane_id, "restarted": true }))
+    }
+
     pub fn poll(&mut self) {
         self.pane_manager.poll();
     }
@@ -627,5 +675,21 @@ mod tests {
         session.snapshot.spaces[0].workspaces[0].tabs[0].layout =
             Some(crate::model::layout::LayoutNode::pane("pane-1"));
         assert!(session.delete_space("space-1").is_err());
+    }
+
+    #[test]
+    fn running_panes_cannot_be_restarted() {
+        let mut session = Session::default();
+        session.snapshot.panes.push(PaneView {
+            pane_id: "pane-1".into(),
+            command: "powershell.exe".into(),
+            args: Vec::new(),
+            cwd: "C:/".into(),
+            status: PaneStatus::Running,
+            scrollback_bytes: 0,
+            screen: String::new(),
+            cursor: (0, 0),
+        });
+        assert!(session.restart_pane("pane-1").is_err());
     }
 }
