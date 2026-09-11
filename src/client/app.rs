@@ -158,6 +158,15 @@ fn event_loop(
                         client.request("switch-space", "switch_space", json!({ "id": space_id }));
                 }
             }
+            Action::NextWorkspace => {
+                if let Some(workspace_id) = adjacent_workspace_id(&snapshot) {
+                    let _ = client.request(
+                        "switch-workspace",
+                        "switch_workspace",
+                        json!({ "id": workspace_id }),
+                    );
+                }
+            }
             Action::StopFocusedPane => {
                 if let Some(ref pane_id) = snapshot.focused_pane_id {
                     let _ = client.request("stop-pane", "stop_pane", json!({ "pane_id": pane_id }));
@@ -271,6 +280,25 @@ fn active_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
         .map(|space| space.active_workspace_id.clone())
 }
 
+fn adjacent_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
+    let space = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)?;
+    if space.workspaces.len() < 2 {
+        return None;
+    }
+    let index = space
+        .workspaces
+        .iter()
+        .position(|workspace| workspace.workspace_id == space.active_workspace_id)?;
+    Some(
+        space.workspaces[(index + 1) % space.workspaces.len()]
+            .workspace_id
+            .clone(),
+    )
+}
+
 fn execute_action(
     pressed: Action,
     client: &ControlClient,
@@ -310,6 +338,16 @@ fn execute_action(
                     "palette-switch-space",
                     "switch_space",
                     json!({ "id": space_id }),
+                );
+            }
+            Ok(false)
+        }
+        Action::NextWorkspace => {
+            if let Some(workspace_id) = adjacent_workspace_id(snapshot) {
+                let _ = client.request(
+                    "palette-switch-workspace",
+                    "switch_workspace",
+                    json!({ "id": workspace_id }),
                 );
             }
             Ok(false)
@@ -483,7 +521,10 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{active_tab_id, adjacent_space_id, adjacent_tab_id, key_code_bytes, pane_size};
+    use super::{
+        active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id, key_code_bytes,
+        pane_size,
+    };
     use crate::server::session::Session;
     use crossterm::event::KeyCode;
 
@@ -516,5 +557,16 @@ mod tests {
             Some(second_space_id)
         );
         assert_eq!(active_tab_id(&snapshot).as_deref(), Some(first_tab_id));
+    }
+
+    #[test]
+    fn workspace_navigation_wraps() {
+        let mut session = Session::default();
+        session.create_workspace("Feature".into()).unwrap();
+        let snapshot = session.snapshot().clone();
+        assert_eq!(
+            adjacent_workspace_id(&snapshot).as_deref(),
+            Some("workspace-1")
+        );
     }
 }
