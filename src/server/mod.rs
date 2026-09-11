@@ -6,9 +6,13 @@ pub(crate) mod transport;
 use std::fs;
 use std::io;
 #[cfg(not(windows))]
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
+use std::thread;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerState {
@@ -93,28 +97,37 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     let endpoint = state_dir.join("server.endpoint");
     fs::write(&endpoint, &address)?;
 
+    let stopping = Arc::new(AtomicBool::new(false));
     #[cfg(not(windows))]
-    {
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => match control::handle_connection(stream, Arc::clone(&session)) {
-                    Ok(true) => break,
-                    Ok(false) | Err(_) => {}
-                },
-                Err(error) => return Err(error),
-            }
-        }
-    }
+    let accept_next = || listener.accept().map(|(stream, _)| stream);
     #[cfg(windows)]
-    loop {
-        let stream = transport::accept(&address)?;
-        if let Ok(true) = control::handle_connection(stream, Arc::clone(&session)) {
-            break;
-        }
+    let accept_next = || transport::accept(&address);
+
+    while !stopping.load(Ordering::Acquire) {
+        let stream = accept_next()?;
+        let session = Arc::clone(&session);
+        let stopping = Arc::clone(&stopping);
+        let wake_address = address.clone();
+        thread::spawn(move || {
+            if let Ok(true) = control::handle_connection(stream, session) {
+                stopping.store(true, Ordering::Release);
+                wake_server(&wake_address);
+            }
+        });
     }
 
     let _ = fs::remove_file(endpoint);
     Ok(())
+}
+
+#[cfg(not(windows))]
+fn wake_server(address: &str) {
+    let _ = TcpStream::connect(address);
+}
+
+#[cfg(windows)]
+fn wake_server(address: &str) {
+    let _ = transport::connect(address);
 }
 
 #[cfg(test)]
