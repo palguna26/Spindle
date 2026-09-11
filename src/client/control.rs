@@ -1,12 +1,18 @@
 use crate::protocol::frame::{read_frame, write_frame, FrameError};
-use crate::protocol::{Request, Response, PROTOCOL_VERSION};
-use serde::Serialize;
+use crate::protocol::{Event, Request, Response, PROTOCOL_VERSION};
+use serde::{Deserialize, Serialize};
 use std::io::{self, BufReader};
 use std::net::TcpStream;
 use std::time::Duration;
 
 pub struct ControlClient {
     address: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EventBatch {
+    pub events: Vec<Event<serde_json::Value>>,
+    pub latest_sequence: u64,
 }
 
 #[derive(Debug)]
@@ -51,6 +57,15 @@ impl ControlClient {
         payload: T,
     ) -> Result<Response<serde_json::Value>, ClientError> {
         self.request_once(request_id.into(), operation.into(), payload)
+    }
+
+    pub fn subscribe_events(&self, after_sequence: u64) -> Result<EventBatch, ClientError> {
+        let response = self.request(
+            format!("events-{after_sequence}"),
+            "subscribe_events",
+            serde_json::json!({ "after_sequence": after_sequence }),
+        )?;
+        serde_json::from_value(response.payload.unwrap_or_default()).map_err(ClientError::Json)
     }
 
     pub fn request_with_retry<T: Serialize>(
