@@ -23,6 +23,8 @@ try {
     $env:LOCALAPPDATA = $stateRoot
     Invoke-Spindle @("help")
     Invoke-Spindle @("start")
+    Invoke-Spindle @("start")
+    Invoke-Spindle @("list")
     Invoke-Spindle @("doctor")
     Invoke-Spindle @("stop")
     $markers = Get-ChildItem -LiteralPath (Join-Path $stateRoot "Spindle\projects") -Recurse -File -ErrorAction SilentlyContinue |
