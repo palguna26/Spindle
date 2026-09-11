@@ -196,6 +196,73 @@ impl Session {
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
+    pub fn create_space(&mut self, name: String) -> Result<Value, String> {
+        let space_id = format!("space-{}", self.snapshot.spaces.len() + 1);
+        let workspace_id = format!("workspace-{}-1", space_id);
+        let tab_id = format!("tab-{}-1", workspace_id);
+        self.snapshot.spaces.push(SpaceView {
+            space_id: space_id.clone(),
+            name,
+            workspaces: vec![WorkspaceView {
+                workspace_id: workspace_id.clone(),
+                name: "Current project".into(),
+                tabs: vec![TabView {
+                    tab_id: tab_id.clone(),
+                    name: "Main".into(),
+                    layout: None,
+                }],
+                active_tab_id: tab_id,
+            }],
+            active_workspace_id: workspace_id,
+        });
+        self.snapshot.active_space_id = space_id.clone();
+        Ok(serde_json::json!({ "space_id": space_id }))
+    }
+
+    pub fn switch_space(&mut self, space_id: &str) -> Result<Value, String> {
+        if !self
+            .snapshot
+            .spaces
+            .iter()
+            .any(|space| space.space_id == space_id)
+        {
+            return Err(format!("space '{space_id}' does not exist"));
+        }
+        self.snapshot.active_space_id = space_id.into();
+        Ok(serde_json::json!({ "space_id": space_id }))
+    }
+
+    pub fn rename_space(&mut self, space_id: &str, name: String) -> Result<Value, String> {
+        let space = self
+            .snapshot
+            .spaces
+            .iter_mut()
+            .find(|space| space.space_id == space_id)
+            .ok_or_else(|| format!("space '{space_id}' does not exist"))?;
+        space.name = name;
+        Ok(serde_json::json!({ "space_id": space_id }))
+    }
+
+    pub fn delete_space(&mut self, space_id: &str) -> Result<Value, String> {
+        if self.snapshot.spaces.len() == 1 {
+            return Err("cannot delete the last space".into());
+        }
+        let index = self
+            .snapshot
+            .spaces
+            .iter()
+            .position(|space| space.space_id == space_id)
+            .ok_or_else(|| format!("space '{space_id}' does not exist"))?;
+        if self.space_has_running_panes(index) {
+            return Err("stop all panes in the space before deleting it".into());
+        }
+        self.snapshot.spaces.remove(index);
+        if self.snapshot.active_space_id == space_id {
+            self.snapshot.active_space_id = self.snapshot.spaces[0].space_id.clone();
+        }
+        Ok(serde_json::json!({ "space_id": space_id }))
+    }
+
     pub fn switch_workspace(&mut self, workspace_id: &str) -> Result<Value, String> {
         let space = self
             .snapshot
@@ -217,6 +284,35 @@ impl Session {
     pub fn rename_workspace(&mut self, workspace_id: &str, name: String) -> Result<Value, String> {
         let workspace = self.workspace_mut(workspace_id)?;
         workspace.name = name;
+        Ok(serde_json::json!({ "workspace_id": workspace_id }))
+    }
+
+    pub fn delete_workspace(&mut self, workspace_id: &str) -> Result<Value, String> {
+        let active_space_id = self.snapshot.active_space_id.clone();
+        let space_index = self
+            .snapshot
+            .spaces
+            .iter()
+            .position(|space| space.space_id == active_space_id)
+            .ok_or_else(|| "active space does not exist".to_string())?;
+        if self.snapshot.spaces[space_index].workspaces.len() == 1 {
+            return Err("cannot delete the last workspace".into());
+        }
+        let workspace_index = self.snapshot.spaces[space_index]
+            .workspaces
+            .iter()
+            .position(|workspace| workspace.workspace_id == workspace_id)
+            .ok_or_else(|| format!("workspace '{workspace_id}' does not exist"))?;
+        if self.workspace_has_running_panes(space_index, workspace_index) {
+            return Err("stop all panes in the workspace before deleting it".into());
+        }
+        self.snapshot.spaces[space_index]
+            .workspaces
+            .remove(workspace_index);
+        let space = &mut self.snapshot.spaces[space_index];
+        if space.active_workspace_id == workspace_id {
+            space.active_workspace_id = space.workspaces[0].workspace_id.clone();
+        }
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
@@ -344,6 +440,24 @@ impl Session {
             .find(|workspace| workspace.workspace_id == workspace_id)
             .ok_or_else(|| format!("workspace '{workspace_id}' does not exist"))
     }
+
+    fn space_has_running_panes(&self, space_index: usize) -> bool {
+        (0..self.snapshot.spaces[space_index].workspaces.len())
+            .any(|workspace_index| self.workspace_has_running_panes(space_index, workspace_index))
+    }
+
+    fn workspace_has_running_panes(&self, space_index: usize, workspace_index: usize) -> bool {
+        let pane_ids: Vec<&str> = self.snapshot.spaces[space_index].workspaces[workspace_index]
+            .tabs
+            .iter()
+            .filter_map(|tab| tab.layout.as_ref())
+            .flat_map(LayoutNode::pane_ids)
+            .collect();
+        self.snapshot
+            .panes
+            .iter()
+            .any(|pane| pane_ids.contains(&pane.pane_id.as_str()) && pane.status.is_running())
+    }
 }
 
 fn next_pane_id(snapshot: &SessionSnapshot) -> u64 {
@@ -376,7 +490,8 @@ impl From<PaneManagerError> for String {
 
 #[cfg(test)]
 mod tests {
-    use super::Session;
+    use super::{PaneView, Session};
+    use crate::model::status::PaneStatus;
 
     #[test]
     fn workspace_and_tab_operations_update_active_state() {
@@ -415,5 +530,30 @@ mod tests {
         assert!(session.focus_pane("missing").is_err());
         assert!(session.switch_workspace("missing").is_err());
         assert!(session.switch_tab("missing").is_err());
+    }
+
+    #[test]
+    fn last_containers_cannot_be_deleted() {
+        let mut session = Session::default();
+        assert!(session.delete_space("space-1").is_err());
+        assert!(session.delete_workspace("workspace-1").is_err());
+    }
+
+    #[test]
+    fn running_panes_protect_their_space() {
+        let mut session = Session::default();
+        session.create_space("Second".into()).unwrap();
+        session.switch_space("space-1").unwrap();
+        session.snapshot.panes.push(PaneView {
+            pane_id: "pane-1".into(),
+            command: "powershell.exe".into(),
+            args: Vec::new(),
+            cwd: "C:/".into(),
+            status: PaneStatus::Running,
+            scrollback_bytes: 0,
+        });
+        session.snapshot.spaces[0].workspaces[0].tabs[0].layout =
+            Some(crate::model::layout::LayoutNode::pane("pane-1"));
+        assert!(session.delete_space("space-1").is_err());
     }
 }

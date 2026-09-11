@@ -72,6 +72,48 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
     let result = match request.op.as_str() {
         "ping" => Ok(json!({ "status": "ok" })),
         "attach" => Ok(json!({ "attached": true })),
+        "create_space" => {
+            let payload: NameRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.create_space(payload.name))
+        }
+        "switch_space" => {
+            let payload: IdRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.switch_space(&payload.id))
+        }
+        "rename_space" => {
+            let payload: IdNameRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.rename_space(&payload.id, payload.name)
+            })
+        }
+        "delete_space" => {
+            let payload: IdRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.delete_space(&payload.id))
+        }
         "get_snapshot" => {
             let mut session = session.lock().expect("session lock poisoned");
             session.poll();
@@ -179,6 +221,18 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
                 session.rename_workspace(&payload.id, payload.name)
+            })
+        }
+        "delete_workspace" => {
+            let payload: IdRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.delete_workspace(&payload.id)
             })
         }
         "create_tab" => {
