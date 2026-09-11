@@ -523,6 +523,10 @@ pub(crate) fn response_for_with_interactive(
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| session.focus_next())
         }
+        "focus_previous" => {
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.focus_previous())
+        }
         "resize_pane" => {
             let payload: LayoutResizeRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,

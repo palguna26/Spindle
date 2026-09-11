@@ -185,6 +185,9 @@ fn event_loop(
             Action::FocusNext => {
                 let _ = client.request("focus-next", "focus_next", json!({}));
             }
+            Action::FocusPrevious => {
+                let _ = client.request("focus-previous", "focus_previous", json!({}));
+            }
             Action::SplitHorizontal | Action::SplitVertical => {
                 let direction = if matches!(pressed, Action::SplitHorizontal) {
                     "horizontal"
@@ -390,6 +393,10 @@ fn execute_action(
         }
         Action::FocusNext => {
             let _ = client.request("palette-focus-next", "focus_next", json!({}));
+            Ok(false)
+        }
+        Action::FocusPrevious => {
+            let _ = client.request("palette-focus-previous", "focus_previous", json!({}));
             Ok(false)
         }
         Action::SplitHorizontal | Action::SplitVertical => {

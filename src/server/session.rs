@@ -717,6 +717,20 @@ impl Session {
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
+    pub fn focus_previous(&mut self) -> Result<Value, String> {
+        let current = self.snapshot.focused_pane_id.clone();
+        let previous = {
+            let tab = self.active_tab_mut()?;
+            tab.layout
+                .as_ref()
+                .and_then(|layout| layout.previous_pane(current.as_deref()))
+                .map(str::to_string)
+        };
+        let pane_id = previous.ok_or_else(|| "active tab has no panes".to_string())?;
+        self.snapshot.focused_pane_id = Some(pane_id.clone());
+        Ok(serde_json::json!({ "pane_id": pane_id }))
+    }
+
     pub fn resize_pane(&mut self, pane_id: &str, delta: f32) -> Result<Value, String> {
         let tab = self.active_tab_mut()?;
         let layout = tab

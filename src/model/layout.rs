@@ -121,6 +121,18 @@ impl LayoutNode {
         Some(ids[index])
     }
 
+    pub fn previous_pane<'a>(&'a self, current_pane_id: Option<&str>) -> Option<&'a str> {
+        let ids = self.pane_ids();
+        if ids.is_empty() {
+            return None;
+        }
+        let index = current_pane_id
+            .and_then(|current| ids.iter().position(|pane| *pane == current))
+            .map(|index| (index + ids.len() - 1) % ids.len())
+            .unwrap_or(ids.len() - 1);
+        Some(ids[index])
+    }
+
     pub fn pane_ids(&self) -> Vec<&str> {
         match self {
             Self::Pane { pane_id } => vec![pane_id.as_str()],
@@ -247,5 +259,7 @@ mod tests {
         let layout = LayoutNode::pane("one").split(Direction::Horizontal, 0.5, "two");
         assert_eq!(layout.next_pane(Some("one")), Some("two"));
         assert_eq!(layout.next_pane(Some("two")), Some("one"));
+        assert_eq!(layout.previous_pane(Some("one")), Some("two"));
+        assert_eq!(layout.previous_pane(Some("two")), Some("one"));
     }
 }
