@@ -160,8 +160,9 @@ fn pty_output_reaches_event_subscribers() {
             "create_pane",
             serde_json::json!({
                 "command": "cmd.exe",
-                "args": ["/C", "echo spindle-event"],
+                "args": ["/C", "echo from-env"],
                 "cwd": cwd,
+                "env": { "SPINDLE_EVENT": "from-env" },
                 "cols": 80,
                 "rows": 24
             }),
@@ -177,13 +178,30 @@ fn pty_output_reaches_event_subscribers() {
     for _ in 0..80 {
         let batch = client.subscribe_events(sequence).unwrap();
         sequence = batch.latest_sequence;
-        saw_output |= batch.events.iter().any(|event| {
-            event.event == "pane_output"
-                && event.payload["pane_id"] == pane_id
-                && event.payload["bytes"]
-                    .as_array()
-                    .is_some_and(|bytes| !bytes.is_empty())
-        });
+        for event in &batch.events {
+            if event.event != "pane_output" || event.payload["pane_id"] != pane_id {
+                continue;
+            }
+            let bytes: Vec<u8> = event.payload["bytes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|byte| byte.as_u64().and_then(|byte| u8::try_from(byte).ok()))
+                .collect();
+            if bytes.windows(4).any(|window| window == b"\x1b[6n") {
+                client
+                    .request(
+                        "cursor-response",
+                        "send_input",
+                        serde_json::json!({
+                            "pane_id": pane_id,
+                            "bytes": b"\x1b[1;1R",
+                        }),
+                    )
+                    .unwrap();
+            }
+            saw_output |= String::from_utf8_lossy(&bytes).contains("from-env");
+        }
         if saw_output {
             break;
         }
