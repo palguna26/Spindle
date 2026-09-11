@@ -60,6 +60,39 @@ fn default_rows() -> u16 {
     24
 }
 
+fn history_path(session_path: &Path) -> PathBuf {
+    session_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("session-history.json")
+}
+
+fn load_history(session_path: &Path, snapshot: &mut SessionSnapshot) -> Result<(), SnapshotError> {
+    let history = match load_versioned::<HistorySnapshot>(&history_path(session_path)) {
+        Ok(history) => history,
+        Err(SnapshotError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(())
+        }
+        Err(error) => return Err(error),
+    };
+    for pane in &mut snapshot.panes {
+        let Some(saved) = history
+            .panes
+            .iter()
+            .find(|saved| saved.pane_id == pane.pane_id)
+        else {
+            continue;
+        };
+        pane.scrollback = saved.scrollback.clone();
+        pane.scrollback_bytes = saved.scrollback.len();
+        pane.screen = saved.screen.clone();
+        pane.cursor = saved.cursor;
+        pane.title = saved.title.clone();
+        pane.alternate_screen = saved.alternate_screen;
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TabView {
     pub tab_id: String,
@@ -96,6 +129,21 @@ pub struct SessionSnapshot {
     pub focused_pane_id: Option<String>,
     #[serde(default)]
     pub event_sequence: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct HistorySnapshot {
+    panes: Vec<PaneHistory>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PaneHistory {
+    pane_id: String,
+    scrollback: Vec<u8>,
+    screen: String,
+    cursor: (u16, u16),
+    title: String,
+    alternate_screen: bool,
 }
 
 pub struct Session {
@@ -150,6 +198,7 @@ impl Session {
         let path = path.as_ref().to_path_buf();
         match load_versioned::<SessionSnapshot>(&path) {
             Ok(mut snapshot) => {
+                load_history(&path, &mut snapshot)?;
                 for pane in &mut snapshot.panes {
                     if pane.status.is_running() {
                         pane.status = PaneStatus::Interrupted {
@@ -179,7 +228,30 @@ impl Session {
 
     pub fn save(&self) -> Result<(), SnapshotError> {
         if let Some(path) = &self.snapshot_path {
-            save_versioned(path, &self.snapshot)?;
+            let mut metadata = self.snapshot.clone();
+            let history = HistorySnapshot {
+                panes: metadata
+                    .panes
+                    .iter()
+                    .map(|pane| PaneHistory {
+                        pane_id: pane.pane_id.clone(),
+                        scrollback: pane.scrollback.clone(),
+                        screen: pane.screen.clone(),
+                        cursor: pane.cursor,
+                        title: pane.title.clone(),
+                        alternate_screen: pane.alternate_screen,
+                    })
+                    .collect(),
+            };
+            for pane in &mut metadata.panes {
+                pane.scrollback.clear();
+                pane.screen.clear();
+                pane.cursor = (0, 0);
+                pane.title.clear();
+                pane.alternate_screen = false;
+            }
+            save_versioned(path, &metadata)?;
+            save_versioned(&history_path(path), &history)?;
         }
         Ok(())
     }
@@ -1046,6 +1118,47 @@ mod tests {
         assert!(Session::load_or_default(&path).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"not-json");
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn terminal_history_is_stored_separately_from_metadata() {
+        let directory =
+            std::env::temp_dir().join(format!("spindle-history-test-{}", std::process::id()));
+        let path = directory.join("session.json");
+        let mut session = Session::load_or_default(&path).unwrap();
+        session.snapshot.panes.push(PaneView {
+            pane_id: "pane-1".into(),
+            command: "cmd.exe".into(),
+            args: Vec::new(),
+            cwd: "C:/".into(),
+            cols: 80,
+            rows: 24,
+            label: None,
+            status: PaneStatus::Completed { exit_code: 0 },
+            scrollback_bytes: 3,
+            scrollback: vec![1, 2, 3],
+            screen: "screen".into(),
+            cursor: (2, 1),
+            title: "title".into(),
+            alternate_screen: true,
+        });
+        session.save().unwrap();
+        let metadata: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let history: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(directory.join("session-history.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            metadata["data"]["panes"][0]["scrollback"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            history["data"]["panes"][0]["scrollback"],
+            serde_json::json!([1, 2, 3])
+        );
+        let restored = Session::load_or_default(&path).unwrap();
+        assert_eq!(restored.snapshot().panes[0].scrollback, vec![1, 2, 3]);
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
