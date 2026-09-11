@@ -85,23 +85,50 @@ impl ServerLifecycle {
 pub fn run(state_dir: &Path) -> io::Result<()> {
     fs::create_dir_all(state_dir)?;
     #[cfg(not(windows))]
-    let listener = TcpListener::bind(("127.0.0.1", 0))?;
+    let control_listener = TcpListener::bind(("127.0.0.1", 0))?;
     #[cfg(not(windows))]
-    let address = listener.local_addr()?.to_string();
+    let address = control_listener.local_addr()?.to_string();
+    #[cfg(not(windows))]
+    let interactive_listener = TcpListener::bind(("127.0.0.1", 0))?;
+    #[cfg(not(windows))]
+    let interactive_address = interactive_listener.local_addr()?.to_string();
     #[cfg(windows)]
     let address = transport::endpoint(state_dir);
+    #[cfg(windows)]
+    let interactive_address = transport::interactive_endpoint(state_dir);
     let session = Arc::new(Mutex::new(
         session::Session::load_or_default(state_dir.join("session.json"))
             .map_err(|error| io::Error::other(format!("session snapshot is invalid: {error:?}")))?,
     ));
     let endpoint = state_dir.join("server.endpoint");
+    let interactive_endpoint = state_dir.join("server.interactive.endpoint");
     let identity = state_dir.join("server.pid");
     fs::write(&identity, std::process::id().to_string())?;
     fs::write(&endpoint, &address)?;
+    fs::write(&interactive_endpoint, &interactive_address)?;
 
     let stopping = Arc::new(AtomicBool::new(false));
+    let interactive_stopping = Arc::clone(&stopping);
+    let interactive_session = Arc::clone(&session);
+    let interactive_address_for_wake = interactive_address.clone();
+    thread::spawn(move || {
+        #[cfg(not(windows))]
+        let accept_next = || interactive_listener.accept().map(|(stream, _)| stream);
+        #[cfg(windows)]
+        let accept_next = || transport::accept(&interactive_address_for_wake);
+        while !interactive_stopping.load(Ordering::Acquire) {
+            let Ok(stream) = accept_next() else { break };
+            let session = Arc::clone(&interactive_session);
+            let stopping = Arc::clone(&interactive_stopping);
+            thread::spawn(move || {
+                if let Ok(true) = control::handle_connection(stream, session) {
+                    stopping.store(true, Ordering::Release);
+                }
+            });
+        }
+    });
     #[cfg(not(windows))]
-    let accept_next = || listener.accept().map(|(stream, _)| stream);
+    let accept_next = || control_listener.accept().map(|(stream, _)| stream);
     #[cfg(windows)]
     let accept_next = || transport::accept(&address);
 
@@ -110,15 +137,23 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
         let session = Arc::clone(&session);
         let stopping = Arc::clone(&stopping);
         let wake_address = address.clone();
+        let wake_interactive_address = interactive_address.clone();
+        let handler_interactive_address = interactive_address.clone();
         thread::spawn(move || {
-            if let Ok(true) = control::handle_connection(stream, session) {
+            if let Ok(true) = control::handle_connection_with_interactive(
+                stream,
+                session,
+                &handler_interactive_address,
+            ) {
                 stopping.store(true, Ordering::Release);
                 wake_server(&wake_address);
+                wake_server(&wake_interactive_address);
             }
         });
     }
 
     let _ = fs::remove_file(endpoint);
+    let _ = fs::remove_file(interactive_endpoint);
     let _ = fs::remove_file(identity);
     Ok(())
 }

@@ -32,11 +32,21 @@ const ERROR_PIPE_CONNECTED: u32 = 535;
 
 #[cfg(windows)]
 pub fn endpoint(state_dir: &Path) -> String {
+    endpoint_named(state_dir, "control")
+}
+
+#[cfg(windows)]
+pub fn interactive_endpoint(state_dir: &Path) -> String {
+    endpoint_named(state_dir, "interactive")
+}
+
+#[cfg(windows)]
+fn endpoint_named(state_dir: &Path, kind: &str) -> String {
     let id = state_dir
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("default");
-    format!(r"\\.\pipe\spindle-{id}")
+    format!(r"\\.\pipe\spindle-{id}-{kind}")
 }
 
 #[cfg(windows)]

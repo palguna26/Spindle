@@ -87,6 +87,17 @@ pub fn handle_connection<S>(stream: S, session: Arc<Mutex<Session>>) -> io::Resu
 where
     S: Read + Write,
 {
+    handle_connection_with_interactive(stream, session, "")
+}
+
+pub fn handle_connection_with_interactive<S>(
+    stream: S,
+    session: Arc<Mutex<Session>>,
+    interactive_address: &str,
+) -> io::Result<bool>
+where
+    S: Read + Write,
+{
     let mut reader = BufReader::new(stream);
     let frame = match read_frame(&mut reader) {
         Ok(frame) => frame,
@@ -104,7 +115,7 @@ where
     if streaming {
         return handle_event_stream(reader.into_inner(), &frame, session);
     }
-    let response = response_for(&frame, &session);
+    let response = response_for_with_interactive(&frame, &session, interactive_address);
     let mut writer = reader.into_inner();
     let encoded = serde_json::to_vec(&response).map_err(io::Error::other)?;
     write_frame(&mut writer, &encoded).map_err(frame_io_error)?;
@@ -148,6 +159,14 @@ where
 }
 
 fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> {
+    response_for_with_interactive(frame, session, "")
+}
+
+pub(crate) fn response_for_with_interactive(
+    frame: &[u8],
+    session: &Arc<Mutex<Session>>,
+    interactive_address: &str,
+) -> Response<Value> {
     let request: Request<Value> = match serde_json::from_slice(frame) {
         Ok(request) => request,
         Err(error) => return error_response("invalid_json", error.to_string()),
@@ -163,7 +182,7 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
     }
 
     let result = match request.op.as_str() {
-        "ping" => Ok(json!({ "status": "ok" })),
+        "ping" => Ok(json!({ "status": "ok", "interactive_endpoint": interactive_address })),
         "stream_events" => Ok(json!({ "streaming": true })),
         "attach" => {
             let payload: AttachRequest = match serde_json::from_value(request.payload) {

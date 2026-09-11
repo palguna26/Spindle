@@ -16,6 +16,7 @@ type ClientStream = std::fs::File;
 
 pub struct ControlClient {
     address: String,
+    interactive_address: String,
     client_id: String,
 }
 
@@ -76,15 +77,24 @@ impl From<serde_json::Error> for ClientError {
 
 impl ControlClient {
     pub fn connect(address: impl Into<String>) -> Result<Self, ClientError> {
-        let client = Self {
+        let mut client = Self {
             address: address.into(),
+            interactive_address: String::new(),
             client_id: format!(
                 "client-{}-{}",
                 std::process::id(),
                 NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed)
             ),
         };
-        client.request_once("connect".into(), "ping".into(), ())?;
+        let ping = client.request_once("connect".into(), "ping".into(), ())?;
+        client.interactive_address = ping
+            .payload
+            .as_ref()
+            .and_then(|payload| payload.get("interactive_endpoint"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|address| !address.is_empty())
+            .unwrap_or(&client.address)
+            .to_string();
         Ok(client)
     }
 
@@ -107,9 +117,9 @@ impl ControlClient {
     }
 
     pub fn open_event_stream(&self, after_sequence: u64) -> Result<EventStream, ClientError> {
-        let reader = open_stream_connection(&self.address, after_sequence)?;
+        let reader = open_stream_connection(&self.interactive_address, after_sequence)?;
         Ok(EventStream {
-            address: self.address.clone(),
+            address: self.interactive_address.clone(),
             after_sequence,
             reader,
         })
@@ -278,6 +288,7 @@ mod tests {
     fn unavailable_endpoint_can_be_retried() {
         let client = ControlClient {
             address: "127.0.0.1:1".into(),
+            interactive_address: "127.0.0.1:1".into(),
             client_id: "test-client".into(),
         };
         assert!(client
