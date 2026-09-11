@@ -3,4 +3,4 @@ mod control;
 pub mod input;
 pub mod renderer;
 
-pub use control::{ClientError, ControlClient};
+pub use control::{ClientError, ControlClient, EventStream};

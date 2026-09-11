@@ -9,6 +9,11 @@ use std::time::Duration;
 
 static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);
 
+#[cfg(not(windows))]
+type ClientStream = TcpStream;
+#[cfg(windows)]
+type ClientStream = std::fs::File;
+
 pub struct ControlClient {
     address: String,
     client_id: String,
@@ -18,6 +23,17 @@ pub struct ControlClient {
 pub struct EventBatch {
     pub events: Vec<Event<serde_json::Value>>,
     pub latest_sequence: u64,
+}
+
+pub struct EventStream {
+    reader: BufReader<ClientStream>,
+}
+
+impl EventStream {
+    pub fn next_batch(&mut self) -> Result<EventBatch, ClientError> {
+        let frame = read_frame(&mut self.reader)?;
+        serde_json::from_slice(&frame).map_err(ClientError::Json)
+    }
 }
 
 #[derive(Debug)]
@@ -76,6 +92,29 @@ impl ControlClient {
             serde_json::json!({ "after_sequence": after_sequence }),
         )?;
         serde_json::from_value(response.payload.unwrap_or_default()).map_err(ClientError::Json)
+    }
+
+    pub fn open_event_stream(&self, after_sequence: u64) -> Result<EventStream, ClientError> {
+        let mut stream = connect_stream_retry(&self.address)?;
+        let request = Request {
+            version: PROTOCOL_VERSION,
+            request_id: format!("stream-{after_sequence}"),
+            op: "stream_events".into(),
+            payload: serde_json::json!({
+                "after_sequence": after_sequence,
+            }),
+        };
+        write_frame(&mut stream, &serde_json::to_vec(&request)?)?;
+        let mut reader = BufReader::new(stream);
+        let response: Response<serde_json::Value> =
+            serde_json::from_slice(&read_frame(&mut reader)?)?;
+        if let Some(error) = response.error {
+            return Err(ClientError::Server(format!(
+                "{}: {}",
+                error.code, error.message
+            )));
+        }
+        Ok(EventStream { reader })
     }
 
     pub fn attach(&self) -> Result<Response<serde_json::Value>, ClientError> {

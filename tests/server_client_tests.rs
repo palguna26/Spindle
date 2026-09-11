@@ -114,3 +114,21 @@ fn client_can_subscribe_from_a_sequence() {
     thread.join().unwrap();
     let _ = std::fs::remove_dir_all(state_dir);
 }
+
+#[test]
+fn client_can_open_a_long_lived_event_stream() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let mut stream = client.open_event_stream(0).unwrap();
+    let batch = stream.next_batch().unwrap();
+    assert!(batch.events.is_empty());
+    assert_eq!(batch.latest_sequence, 0);
+    drop(stream);
+
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}

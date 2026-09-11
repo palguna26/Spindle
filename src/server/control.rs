@@ -82,14 +82,58 @@ where
     S: Read + Write,
 {
     let mut reader = BufReader::new(stream);
-    let response = match read_frame(&mut reader) {
-        Ok(frame) => response_for(&frame, &session),
-        Err(error) => error_response("invalid_frame", frame_error_message(error)),
+    let frame = match read_frame(&mut reader) {
+        Ok(frame) => frame,
+        Err(error) => {
+            let response = error_response("invalid_frame", frame_error_message(error));
+            let mut writer = reader.into_inner();
+            let encoded = serde_json::to_vec(&response).map_err(io::Error::other)?;
+            write_frame(&mut writer, &encoded).map_err(frame_io_error)?;
+            return Ok(false);
+        }
     };
+    let streaming = serde_json::from_slice::<Request<Value>>(&frame)
+        .map(|request| request.op == "stream_events")
+        .unwrap_or(false);
+    if streaming {
+        return handle_event_stream(reader.into_inner(), &frame, session);
+    }
+    let response = response_for(&frame, &session);
     let mut writer = reader.into_inner();
     let encoded = serde_json::to_vec(&response).map_err(io::Error::other)?;
     write_frame(&mut writer, &encoded).map_err(frame_io_error)?;
     Ok(response_requests_stop(&response))
+}
+
+fn handle_event_stream<S>(
+    mut writer: S,
+    frame: &[u8],
+    session: Arc<Mutex<Session>>,
+) -> io::Result<bool>
+where
+    S: Read + Write,
+{
+    let response = response_for(frame, &session);
+    let encoded = serde_json::to_vec(&response).map_err(io::Error::other)?;
+    write_frame(&mut writer, &encoded).map_err(frame_io_error)?;
+    if !response.ok {
+        return Ok(false);
+    }
+    let request: Request<Value> = serde_json::from_slice(frame).map_err(io::Error::other)?;
+    let payload: EventsRequest =
+        serde_json::from_value(request.payload).map_err(io::Error::other)?;
+    let mut sequence = payload.after_sequence;
+    loop {
+        let batch = {
+            let mut session = session.lock().expect("session lock poisoned");
+            let events = session.events_since(sequence);
+            sequence = session.snapshot().event_sequence;
+            json!({ "events": events, "latest_sequence": sequence })
+        };
+        let encoded = serde_json::to_vec(&batch).map_err(io::Error::other)?;
+        write_frame(&mut writer, &encoded).map_err(frame_io_error)?;
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
 }
 
 fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> {
@@ -109,6 +153,7 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
 
     let result = match request.op.as_str() {
         "ping" => Ok(json!({ "status": "ok" })),
+        "stream_events" => Ok(json!({ "streaming": true })),
         "attach" => {
             let payload: AttachRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,
