@@ -373,6 +373,16 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
                 session.rename_tab(&payload.id, payload.name)
             })
         }
+        "close_tab" => {
+            let payload: IdRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.close_tab(&payload.id))
+        }
         "focus_pane" => {
             let payload: PaneRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,

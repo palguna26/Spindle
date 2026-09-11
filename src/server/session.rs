@@ -428,6 +428,58 @@ impl Session {
         Ok(serde_json::json!({ "tab_id": tab_id }))
     }
 
+    pub fn close_tab(&mut self, tab_id: &str) -> Result<Value, String> {
+        let active_space_id = self.snapshot.active_space_id.clone();
+        let space = self
+            .snapshot
+            .spaces
+            .iter()
+            .find(|space| space.space_id == active_space_id)
+            .ok_or_else(|| "active space does not exist".to_string())?;
+        let workspace_id = space.active_workspace_id.clone();
+        let workspace = space
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.workspace_id == space.active_workspace_id)
+            .ok_or_else(|| "active workspace does not exist".to_string())?;
+        if workspace.tabs.len() == 1 {
+            return Err("cannot close the last tab".into());
+        }
+        let index = workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.tab_id == tab_id)
+            .ok_or_else(|| format!("tab '{tab_id}' does not exist"))?;
+        let pane_ids = workspace.tabs[index]
+            .layout
+            .as_ref()
+            .map(LayoutNode::pane_ids)
+            .unwrap_or_default();
+        if self
+            .snapshot
+            .panes
+            .iter()
+            .any(|pane| pane_ids.contains(&pane.pane_id.as_str()) && pane.status.is_running())
+        {
+            return Err("stop all panes in the tab before closing it".into());
+        }
+        let workspace = &mut self
+            .snapshot
+            .spaces
+            .iter_mut()
+            .find(|space| space.space_id == active_space_id)
+            .expect("active space was found")
+            .workspaces
+            .iter_mut()
+            .find(|workspace| workspace.workspace_id == workspace_id)
+            .expect("active workspace was found");
+        workspace.tabs.remove(index);
+        if workspace.active_tab_id == tab_id {
+            workspace.active_tab_id = workspace.tabs[0].tab_id.clone();
+        }
+        Ok(serde_json::json!({ "tab_id": tab_id }))
+    }
+
     pub fn focus_pane(&mut self, pane_id: &str) -> Result<Value, String> {
         if !self
             .snapshot
@@ -721,6 +773,16 @@ mod tests {
         let mut session = Session::default();
         assert!(session.delete_space("space-1").is_err());
         assert!(session.delete_workspace("workspace-1").is_err());
+        assert!(session.close_tab("tab-1").is_err());
+    }
+
+    #[test]
+    fn tabs_can_be_closed_without_closing_the_last_tab() {
+        let mut session = Session::default();
+        let tab = session.create_tab("Logs".into()).unwrap();
+        let tab_id = tab["tab_id"].as_str().unwrap().to_string();
+        session.close_tab(&tab_id).unwrap();
+        assert_eq!(session.snapshot().spaces[0].workspaces[0].tabs.len(), 1);
     }
 
     #[test]
