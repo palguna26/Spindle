@@ -11,8 +11,12 @@ use std::path::Path;
 
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{
-    GetLastError, GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE,
+    GetLastError, LocalFree, GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE,
 };
+#[cfg(windows)]
+use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
+#[cfg(windows)]
+use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_ATTRIBUTE_NORMAL, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
@@ -38,6 +42,7 @@ pub fn endpoint(state_dir: &Path) -> String {
 #[cfg(windows)]
 pub fn accept(name: &str) -> io::Result<File> {
     let wide = wide(name);
+    let security = security_attributes()?;
     let handle = unsafe {
         CreateNamedPipeW(
             wide.as_ptr(),
@@ -47,9 +52,10 @@ pub fn accept(name: &str) -> io::Result<File> {
             1024 * 1024,
             1024 * 1024,
             0,
-            std::ptr::null(),
+            &security,
         )
     };
+    unsafe { LocalFree(security.lpSecurityDescriptor) };
     if handle == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
     }
@@ -62,6 +68,29 @@ pub fn accept(name: &str) -> io::Result<File> {
     }
 
     Ok(unsafe { File::from_raw_handle(handle as _) })
+}
+
+#[cfg(windows)]
+fn security_attributes() -> io::Result<SECURITY_ATTRIBUTES> {
+    let descriptor = wide("D:(A;;GA;;;OW)");
+    let mut security_descriptor = std::ptr::null_mut();
+    let mut descriptor_size = 0;
+    let result = unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            descriptor.as_ptr(),
+            1,
+            &mut security_descriptor,
+            &mut descriptor_size,
+        )
+    };
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: security_descriptor,
+        bInheritHandle: 0,
+    })
 }
 
 #[cfg(windows)]
