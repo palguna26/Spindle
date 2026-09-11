@@ -327,6 +327,88 @@ fn split_panes_survive_workspace_switching() {
 }
 
 #[test]
+fn detach_preserves_multiple_live_panes() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let pane_request = serde_json::json!({
+        "command": "cmd.exe",
+        "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24
+    });
+    let first = client
+        .request("detach-first", "create_pane", pane_request.clone())
+        .unwrap()
+        .payload
+        .unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let second = client
+        .request(
+            "detach-second",
+            "split_pane",
+            serde_json::json!({
+                "direction": "vertical",
+                "command": "cmd.exe",
+                "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+                "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap()
+        .payload
+        .unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    client.attach().unwrap();
+    client.detach().unwrap();
+
+    let reconnected = ControlClient::connect(address.trim()).unwrap();
+    let snapshot = reconnected
+        .request(
+            "detach-snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    for pane_id in [&first, &second] {
+        let pane = snapshot["panes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|pane| pane["pane_id"] == *pane_id)
+            .unwrap();
+        assert_eq!(pane["status"], "Running");
+    }
+
+    for pane_id in [&first, &second] {
+        reconnected
+            .request(
+                format!("detach-stop-{pane_id}"),
+                "stop_pane",
+                serde_json::json!({ "pane_id": pane_id }),
+            )
+            .unwrap();
+    }
+    reconnected
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn resize_and_close_layout_changes_survive_restart() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
