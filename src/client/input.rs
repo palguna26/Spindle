@@ -19,6 +19,8 @@ pub enum Action {
     CreateWorkspace,
     RenameActiveSpace,
     CreateSpace,
+    DeleteActiveWorkspace,
+    DeleteActiveSpace,
     FocusNext,
     FocusPrevious,
     FocusLeft,

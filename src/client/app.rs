@@ -79,6 +79,8 @@ fn event_loop(
                         RenameTarget::CreateWorkspace => "Create workspace",
                         RenameTarget::Space => "Rename space",
                         RenameTarget::CreateSpace => "Create space",
+                        RenameTarget::DeleteWorkspace => "Delete workspace: type its name",
+                        RenameTarget::DeleteSpace => "Delete space: type its name",
                     };
                     renderer::render_prompt(frame, title, &prompt.input);
                 }
@@ -252,7 +254,9 @@ fn event_loop(
             | Action::RenameActiveWorkspace
             | Action::CreateWorkspace
             | Action::RenameActiveSpace
-            | Action::CreateSpace => {}
+            | Action::CreateSpace
+            | Action::DeleteActiveWorkspace
+            | Action::DeleteActiveSpace => {}
         }
         prefix_active = false;
     }
@@ -267,6 +271,8 @@ fn rename_target(action: Action) -> Option<RenameTarget> {
         Action::CreateWorkspace => Some(RenameTarget::CreateWorkspace),
         Action::RenameActiveSpace => Some(RenameTarget::Space),
         Action::CreateSpace => Some(RenameTarget::CreateSpace),
+        Action::DeleteActiveWorkspace => Some(RenameTarget::DeleteWorkspace),
+        Action::DeleteActiveSpace => Some(RenameTarget::DeleteSpace),
         _ => None,
     }
 }
@@ -277,6 +283,43 @@ fn submit_rename(
     target: RenameTarget,
     name: String,
 ) -> Result<(), ClientError> {
+    if matches!(
+        target,
+        RenameTarget::DeleteWorkspace | RenameTarget::DeleteSpace
+    ) {
+        let (operation, id, expected_name) = match target {
+            RenameTarget::DeleteWorkspace => {
+                let workspace = active_workspace(snapshot);
+                (
+                    "delete_workspace",
+                    workspace.map(|workspace| workspace.workspace_id.clone()),
+                    workspace.map(|workspace| workspace.name.clone()),
+                )
+            }
+            RenameTarget::DeleteSpace => {
+                let space = snapshot
+                    .spaces
+                    .iter()
+                    .find(|space| space.space_id == snapshot.active_space_id);
+                (
+                    "delete_space",
+                    space.map(|space| space.space_id.clone()),
+                    space.map(|space| space.name.clone()),
+                )
+            }
+            _ => unreachable!(),
+        };
+        if expected_name.as_deref() == Some(name.as_str()) {
+            if let Some(id) = id {
+                let _ = client.request(
+                    format!("confirm-{operation}"),
+                    operation,
+                    json!({ "id": id }),
+                )?;
+            }
+        }
+        return Ok(());
+    }
     let (operation, id) = match target {
         RenameTarget::Pane => ("rename_pane", snapshot.focused_pane_id.clone()),
         RenameTarget::Tab => ("rename_tab", active_tab_id(snapshot)),
@@ -298,6 +341,7 @@ fn submit_rename(
             let _ = client.request("create-space", "create_space", json!({ "name": name }))?;
             return Ok(());
         }
+        RenameTarget::DeleteWorkspace | RenameTarget::DeleteSpace => unreachable!(),
     };
     if let Some(id) = id {
         let _ = client.request(
@@ -307,6 +351,19 @@ fn submit_rename(
         )?;
     }
     Ok(())
+}
+
+fn active_workspace(snapshot: &SessionSnapshot) -> Option<&crate::server::session::WorkspaceView> {
+    snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)
+        .and_then(|space| {
+            space
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.workspace_id == space.active_workspace_id)
+        })
 }
 
 fn active_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
@@ -468,7 +525,9 @@ fn execute_action(
         | Action::RenameActiveWorkspace
         | Action::CreateWorkspace
         | Action::RenameActiveSpace
-        | Action::CreateSpace => Ok(false),
+        | Action::CreateSpace
+        | Action::DeleteActiveWorkspace
+        | Action::DeleteActiveSpace => Ok(false),
         _ => Ok(false),
     }
 }
