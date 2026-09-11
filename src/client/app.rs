@@ -15,7 +15,12 @@ use std::time::Duration;
 
 pub fn run(address: impl Into<String>) -> Result<(), ClientError> {
     let client = ControlClient::connect(address)?;
-    client.attach()?;
+    let terminal_size = size().map_err(ClientError::Io)?;
+    client.attach_with_terminal(
+        terminal_size.0,
+        terminal_size.1,
+        vec!["mouse".into(), "alternate_screen".into()],
+    )?;
     let mut terminal = setup_terminal().map_err(ClientError::Io)?;
     let result = event_loop(&mut terminal, &client);
     restore_terminal(&mut terminal).map_err(ClientError::Io)?;

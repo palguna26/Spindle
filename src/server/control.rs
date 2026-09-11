@@ -35,6 +35,12 @@ struct ResizeRequest {
 struct AttachRequest {
     #[serde(default = "default_client_id")]
     client_id: String,
+    #[serde(default)]
+    cols: u16,
+    #[serde(default)]
+    rows: u16,
+    #[serde(default)]
+    capabilities: Vec<String>,
 }
 
 fn default_client_id() -> String {
@@ -162,7 +168,13 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
                 }
             };
             let mut session = session.lock().expect("session lock poisoned");
-            Ok(session.attach(payload.client_id))
+            let mut response = session.attach(payload.client_id);
+            if let Some(object) = response.as_object_mut() {
+                object.insert("cols".into(), json!(payload.cols));
+                object.insert("rows".into(), json!(payload.rows));
+                object.insert("capabilities".into(), json!(payload.capabilities));
+            }
+            Ok(response)
         }
         "detach" => {
             let payload: AttachRequest = match serde_json::from_value(request.payload) {
@@ -561,6 +573,19 @@ mod tests {
         );
         assert!(response.ok);
         assert_eq!(response.request_id, "1");
+    }
+
+    #[test]
+    fn attach_returns_handshake_details() {
+        let response = response_for(
+            br#"{"version":1,"request_id":"a","op":"attach","payload":{"client_id":"client-a","cols":120,"rows":40,"capabilities":["mouse"]}}"#,
+            &session(),
+        );
+        assert!(response.ok);
+        let payload = response.payload.unwrap();
+        assert_eq!(payload["cols"], 120);
+        assert_eq!(payload["rows"], 40);
+        assert_eq!(payload["capabilities"][0], "mouse");
     }
 
     #[test]

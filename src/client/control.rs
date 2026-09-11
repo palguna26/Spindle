@@ -118,10 +118,24 @@ impl ControlClient {
     }
 
     pub fn attach(&self) -> Result<Response<serde_json::Value>, ClientError> {
+        self.attach_with_terminal(0, 0, Vec::new())
+    }
+
+    pub fn attach_with_terminal(
+        &self,
+        cols: u16,
+        rows: u16,
+        capabilities: Vec<String>,
+    ) -> Result<Response<serde_json::Value>, ClientError> {
         self.request(
             "attach",
             "attach",
-            serde_json::json!({ "client_id": self.client_id }),
+            serde_json::json!({
+                "client_id": self.client_id,
+                "cols": cols,
+                "rows": rows,
+                "capabilities": capabilities,
+            }),
         )
     }
 
