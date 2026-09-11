@@ -11,7 +11,7 @@ pub fn render(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(frame.area());
-    let body = snapshot
+    let mut body = snapshot
         .spaces
         .iter()
         .flat_map(|space| {
@@ -29,6 +29,18 @@ pub fn render(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
         })
         .map(Line::from)
         .collect::<Vec<_>>();
+    for pane in &snapshot.panes {
+        body.push(Line::from(vec![
+            Span::styled(
+                format!(" {} ", pane.status.indicator()),
+                Style::default().fg(status_color(&pane.status)),
+            ),
+            Span::raw(format!("{}: {}", pane.pane_id, pane.command)),
+        ]));
+        for line in pane.screen.lines().take(4) {
+            body.push(Line::from(format!("  {line}")));
+        }
+    }
     let focused = snapshot.focused_pane_id.as_deref().unwrap_or("none");
     let chrome = Line::from(vec![
         Span::styled(" Spindle ", Style::default().fg(Color::Cyan)),

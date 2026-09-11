@@ -1,6 +1,7 @@
 use super::PaneEvent;
 use crate::model::status::PaneStatus;
 use crate::pty::{PtyConfig, PtySession, PtySessionError};
+use crate::terminal::{TerminalEmulator, TerminalSnapshot};
 use std::collections::{HashMap, VecDeque};
 
 const DEFAULT_SCROLLBACK_BYTES: usize = 64 * 1024;
@@ -19,6 +20,7 @@ pub struct Pane {
     pub config: PaneConfig,
     pub status: PaneStatus,
     pub scrollback: VecDeque<u8>,
+    pub terminal: TerminalEmulator,
     session: PtySession,
 }
 
@@ -59,6 +61,8 @@ impl PaneManager {
         config: PaneConfig,
     ) -> Result<(), PaneManagerError> {
         let id = id.into();
+        let rows = config.rows;
+        let cols = config.cols;
         let session = PtySession::spawn(&PtyConfig {
             command: config.command.clone(),
             args: config.args.clone(),
@@ -73,6 +77,7 @@ impl PaneManager {
                 config,
                 status: PaneStatus::Running,
                 scrollback: VecDeque::with_capacity(self.scrollback_limit),
+                terminal: TerminalEmulator::new(rows, cols, self.scrollback_limit),
                 session,
             },
         );
@@ -99,12 +104,15 @@ impl PaneManager {
     }
 
     pub fn resize(&mut self, id: &str, cols: u16, rows: u16) -> Result<(), PaneManagerError> {
-        self.panes
+        let pane = self
+            .panes
             .get_mut(id)
-            .ok_or_else(|| PaneManagerError::MissingPane(id.into()))?
-            .session
+            .ok_or_else(|| PaneManagerError::MissingPane(id.into()))?;
+        pane.session
             .resize(cols, rows)
-            .map_err(Into::into)
+            .map_err(PaneManagerError::from)?;
+        pane.terminal.resize(rows, cols);
+        Ok(())
     }
 
     pub fn stop(&mut self, id: &str) -> Result<Vec<PaneEvent>, PaneManagerError> {
@@ -132,6 +140,7 @@ impl PaneManager {
                 while pane.scrollback.len() > self.scrollback_limit {
                     pane.scrollback.pop_front();
                 }
+                pane.terminal.process(&bytes);
                 events.push(PaneEvent::Output {
                     pane_id: pane.id.clone(),
                     bytes,
@@ -155,6 +164,13 @@ impl PaneManager {
             }
         }
         events
+    }
+
+    pub fn terminal_snapshot(&self, id: &str) -> Result<TerminalSnapshot, PaneManagerError> {
+        self.panes
+            .get(id)
+            .map(|pane| pane.terminal.snapshot())
+            .ok_or_else(|| PaneManagerError::MissingPane(id.into()))
     }
 }
 

@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
 use vt100::Parser;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TerminalSnapshot {
     pub rows: u16,
     pub cols: u16,

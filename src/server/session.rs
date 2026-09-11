@@ -24,6 +24,10 @@ pub struct PaneView {
     pub cwd: String,
     pub status: PaneStatus,
     pub scrollback_bytes: usize,
+    #[serde(default)]
+    pub screen: String,
+    #[serde(default)]
+    pub cursor: (u16, u16),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +173,8 @@ impl Session {
             cwd: request.cwd,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
+            screen: String::new(),
+            cursor: (0, 0),
         });
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
@@ -477,6 +483,9 @@ impl Session {
             if let Some(current) = self.pane_manager.get(&pane.pane_id) {
                 pane.status = current.status.clone();
                 pane.scrollback_bytes = current.scrollback.len();
+                let terminal = current.terminal.snapshot();
+                pane.screen = terminal.contents;
+                pane.cursor = terminal.cursor;
             }
         }
     }
@@ -551,6 +560,8 @@ mod tests {
             cwd: "C:/".into(),
             status: PaneStatus::Running,
             scrollback_bytes: 0,
+            screen: String::new(),
+            cursor: (0, 0),
         });
         session.snapshot.spaces[0].workspaces[0].tabs[0].layout =
             Some(crate::model::layout::LayoutNode::pane("pane-1"));
