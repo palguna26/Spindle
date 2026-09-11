@@ -210,6 +210,119 @@ fn split_panes_survive_workspace_switching() {
 }
 
 #[test]
+fn resize_and_close_layout_changes_survive_restart() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let create = |client: &ControlClient, request_id: &str| {
+        client
+            .request(
+                request_id,
+                "create_pane",
+                serde_json::json!({
+                    "command": "cmd.exe",
+                    "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+                    "cwd": cwd.clone(),
+                    "cols": 80,
+                    "rows": 24
+                }),
+            )
+            .unwrap()
+            .payload
+            .unwrap()["pane_id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let first_id = create(&client, "layout-first");
+    let second_id = client
+        .request(
+            "layout-second",
+            "split_pane",
+            serde_json::json!({
+                "direction": "vertical",
+                "command": "cmd.exe",
+                "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+                "cwd": cwd.clone(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap()
+        .payload
+        .unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    client
+        .request(
+            "layout-resize",
+            "resize_pane",
+            serde_json::json!({ "pane_id": second_id, "delta": 0.2 }),
+        )
+        .unwrap();
+    let resized = client
+        .request("layout-snapshot", "get_snapshot", serde_json::json!({}))
+        .unwrap()
+        .payload
+        .unwrap();
+    let ratio = resized["spaces"][0]["workspaces"][0]["tabs"][0]["layout"]["Split"]["ratio"]
+        .as_f64()
+        .unwrap();
+    assert!(
+        (ratio - 0.3).abs() < 0.0001,
+        "unexpected split ratio: {ratio}"
+    );
+
+    for pane_id in [&first_id, &second_id] {
+        client
+            .request(
+                format!("stop-{pane_id}"),
+                "stop_pane",
+                serde_json::json!({ "pane_id": pane_id }),
+            )
+            .unwrap();
+    }
+    client
+        .request(
+            "layout-close",
+            "close_pane",
+            serde_json::json!({ "pane_id": second_id }),
+        )
+        .unwrap();
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+
+    let (thread, address) = start_server(&state_dir);
+    let recovered = ControlClient::connect(address.trim()).unwrap();
+    let snapshot = recovered
+        .request("recovered-layout", "get_snapshot", serde_json::json!({}))
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(snapshot["panes"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        snapshot["spaces"][0]["workspaces"][0]["tabs"][0]["layout"]["Pane"]["pane_id"],
+        first_id
+    );
+    recovered
+        .request(
+            "stop-again",
+            "stop_server",
+            Value::Object(Default::default()),
+        )
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn client_loss_allows_geometry_ownership_takeover() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
