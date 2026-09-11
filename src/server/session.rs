@@ -37,6 +37,8 @@ pub struct PaneView {
     pub status: PaneStatus,
     pub scrollback_bytes: usize,
     #[serde(default)]
+    pub scrollback: Vec<u8>,
+    #[serde(default)]
     pub screen: String,
     #[serde(default)]
     pub cursor: (u16, u16),
@@ -170,6 +172,8 @@ impl Session {
 
     pub fn events_since(&mut self, sequence: u64) -> Vec<Event<Value>> {
         self.poll();
+        self.refresh_snapshot();
+        let _ = self.save();
         self.events
             .iter()
             .filter(|event| event.sequence > sequence)
@@ -291,6 +295,7 @@ impl Session {
             label: request.label,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
+            scrollback: Vec::new(),
             screen: String::new(),
             cursor: (0, 0),
             title: String::new(),
@@ -807,6 +812,7 @@ impl Session {
             if let Some(current) = self.pane_manager.get(&pane.pane_id) {
                 pane.status = current.status.clone();
                 pane.scrollback_bytes = current.scrollback.len();
+                pane.scrollback = current.scrollback.iter().copied().collect();
                 let terminal = current.terminal.snapshot();
                 pane.screen = terminal.contents;
                 pane.cursor = terminal.cursor;
@@ -893,6 +899,7 @@ mod tests {
             label: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
+            scrollback: Vec::new(),
             screen: String::new(),
             cursor: (0, 0),
             title: String::new(),
@@ -989,6 +996,7 @@ mod tests {
             label: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
+            scrollback: Vec::new(),
             screen: String::new(),
             cursor: (0, 0),
             title: String::new(),
@@ -1010,6 +1018,7 @@ mod tests {
             label: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
+            scrollback: Vec::new(),
             screen: String::new(),
             cursor: (0, 0),
             title: String::new(),

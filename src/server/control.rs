@@ -132,8 +132,8 @@ where
     loop {
         let batch = {
             let mut session = session.lock().expect("session lock poisoned");
-            let resync_required = session.event_gap(sequence);
             let events = session.events_since(sequence);
+            let resync_required = session.event_gap(sequence);
             sequence = session.snapshot().event_sequence;
             json!({
                 "events": events,
@@ -242,6 +242,13 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
             }
             session.poll();
             session.refresh_snapshot();
+            if let Err(error) = session.save() {
+                return request_error(
+                    request.request_id,
+                    "persistence_failed",
+                    format!("{error:?}"),
+                );
+            }
             serde_json::to_value(session.snapshot()).map_err(|error| error.to_string())
         }
         "subscribe_events" => {
@@ -252,8 +259,8 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
                 }
             };
             let mut session = session.lock().expect("session lock poisoned");
-            let resync_required = session.event_gap(payload.after_sequence);
             let events = session.events_since(payload.after_sequence);
+            let resync_required = session.event_gap(payload.after_sequence);
             Ok(json!({
                 "events": events,
                 "latest_sequence": session.snapshot().event_sequence,
