@@ -11,6 +11,7 @@ pub enum Action {
     NextSpace,
     PreviousSpace,
     StopFocusedPane,
+    RestartFocusedPane,
     FocusNext,
     SplitHorizontal,
     SplitVertical,
@@ -31,6 +32,7 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
             KeyCode::Char('}') => Action::NextSpace,
             KeyCode::Char('{') => Action::PreviousSpace,
             KeyCode::Char('x') => Action::StopFocusedPane,
+            KeyCode::Char('r') => Action::RestartFocusedPane,
             KeyCode::Char('o') => Action::FocusNext,
             KeyCode::Char('"') => Action::SplitHorizontal,
             KeyCode::Char('%') => Action::SplitVertical,
@@ -74,6 +76,10 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE)),
             Action::FocusNext
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE)),
+            Action::RestartFocusedPane
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)),

@@ -130,6 +130,15 @@ fn event_loop(
                     let _ = client.request("stop-pane", "stop_pane", json!({ "pane_id": pane_id }));
                 }
             }
+            Action::RestartFocusedPane => {
+                if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                    let _ = client.request(
+                        "restart-pane",
+                        "restart_pane",
+                        json!({ "pane_id": pane_id }),
+                    );
+                }
+            }
             Action::FocusNext => {
                 let _ = client.request("focus-next", "focus_next", json!({}));
             }
@@ -237,6 +246,16 @@ fn execute_action(
                 let _ = client.request(
                     "palette-stop-pane",
                     "stop_pane",
+                    json!({ "pane_id": pane_id }),
+                );
+            }
+            Ok(false)
+        }
+        Action::RestartFocusedPane => {
+            if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                let _ = client.request(
+                    "palette-restart-pane",
+                    "restart_pane",
                     json!({ "pane_id": pane_id }),
                 );
             }
