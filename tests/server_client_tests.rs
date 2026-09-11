@@ -1,10 +1,7 @@
 use serde_json::Value;
 use spindle::client::ControlClient;
-use spindle::protocol::frame::{read_frame, write_frame};
-use spindle::protocol::{Request, Response, PROTOCOL_VERSION};
+use spindle::protocol::Response;
 use spindle::server;
-use std::io::BufReader;
-use std::net::TcpStream;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -17,17 +14,10 @@ fn test_state_dir() -> PathBuf {
 }
 
 fn request(address: &str, operation: &str) -> Response<Value> {
-    let mut stream = TcpStream::connect(address).unwrap();
-    let message = Request {
-        version: PROTOCOL_VERSION,
-        request_id: operation.into(),
-        op: operation.into(),
-        payload: Value::Object(Default::default()),
-    };
-    write_frame(&mut stream, &serde_json::to_vec(&message).unwrap()).unwrap();
-    let mut reader = BufReader::new(stream);
-    let frame = read_frame(&mut reader).unwrap();
-    serde_json::from_slice(&frame).unwrap()
+    ControlClient::connect(address)
+        .unwrap()
+        .request(operation, operation, Value::Object(Default::default()))
+        .unwrap()
 }
 
 fn start_server(state_dir: &PathBuf) -> (std::thread::JoinHandle<()>, String) {

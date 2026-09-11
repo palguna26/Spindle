@@ -1,8 +1,11 @@
 pub mod control;
 pub mod session;
+#[cfg(windows)]
+pub(crate) mod transport;
 
 use std::fs;
 use std::io;
+#[cfg(not(windows))]
 use std::net::TcpListener;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -77,21 +80,36 @@ impl ServerLifecycle {
 
 pub fn run(state_dir: &Path) -> io::Result<()> {
     fs::create_dir_all(state_dir)?;
+    #[cfg(not(windows))]
     let listener = TcpListener::bind(("127.0.0.1", 0))?;
+    #[cfg(not(windows))]
     let address = listener.local_addr()?.to_string();
+    #[cfg(windows)]
+    let address = transport::endpoint(state_dir);
     let endpoint = state_dir.join("server.endpoint");
     fs::write(&endpoint, &address)?;
     let session = Arc::new(Mutex::new(session::Session::load_or_default(
         state_dir.join("session.json"),
     )));
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => match control::handle_connection(stream, Arc::clone(&session)) {
-                Ok(true) => break,
-                Ok(false) | Err(_) => {}
-            },
-            Err(error) => return Err(error),
+    #[cfg(not(windows))]
+    {
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => match control::handle_connection(stream, Arc::clone(&session)) {
+                    Ok(true) => break,
+                    Ok(false) | Err(_) => {}
+                },
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    #[cfg(windows)]
+    loop {
+        let stream = transport::accept(&address)?;
+        match control::handle_connection(stream, Arc::clone(&session)) {
+            Ok(true) => break,
+            Ok(false) | Err(_) => {}
         }
     }
 

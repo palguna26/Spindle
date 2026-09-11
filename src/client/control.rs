@@ -2,6 +2,7 @@ use crate::protocol::frame::{read_frame, write_frame, FrameError};
 use crate::protocol::{Event, Request, Response, PROTOCOL_VERSION};
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufReader};
+#[cfg(not(windows))]
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -134,7 +135,7 @@ impl ControlClient {
         operation: String,
         payload: T,
     ) -> Result<Response<serde_json::Value>, ClientError> {
-        let mut stream = TcpStream::connect(&self.address)?;
+        let mut stream = connect_stream(&self.address)?;
         let request = Request {
             version: PROTOCOL_VERSION,
             request_id,
@@ -153,6 +154,16 @@ impl ControlClient {
         }
         Ok(response)
     }
+}
+
+#[cfg(not(windows))]
+fn connect_stream(address: &str) -> io::Result<TcpStream> {
+    TcpStream::connect(address)
+}
+
+#[cfg(windows)]
+fn connect_stream(address: &str) -> io::Result<std::fs::File> {
+    crate::server::transport::connect(address)
 }
 
 #[cfg(test)]

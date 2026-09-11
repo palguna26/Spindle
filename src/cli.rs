@@ -1,13 +1,12 @@
 use std::env;
 use std::fs;
 use std::io;
-use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use crate::protocol::frame::{read_frame, write_frame};
-use crate::protocol::{Request, Response, PROTOCOL_VERSION};
+use crate::client::ControlClient;
+use crate::protocol::Response;
 use serde_json::Value;
 
 const APP_DIR: &str = "Spindle";
@@ -92,20 +91,15 @@ fn ping_server(project: &Project) -> io::Result<Response<Value>> {
 
 fn send_command(project: &Project, operation: &str) -> io::Result<Response<Value>> {
     let address = fs::read_to_string(project.endpoint_path())?;
-    let mut stream = TcpStream::connect(address.trim())?;
-    let request = Request {
-        version: PROTOCOL_VERSION,
-        request_id: format!("{}", std::process::id()),
-        op: operation.into(),
-        payload: Value::Object(Default::default()),
-    };
-    let encoded = serde_json::to_vec(&request).map_err(io::Error::other)?;
-    write_frame(&mut stream, &encoded)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, format!("{error:?}")))?;
-    let mut reader = std::io::BufReader::new(stream);
-    let response = read_frame(&mut reader)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, format!("{error:?}")))?;
-    serde_json::from_slice(&response).map_err(io::Error::other)
+    let client = ControlClient::connect(address.trim())
+        .map_err(|error| io::Error::other(format!("{error:?}")))?;
+    client
+        .request(
+            format!("cli-{}", std::process::id()),
+            operation,
+            Value::Object(Default::default()),
+        )
+        .map_err(|error| io::Error::other(format!("{error:?}")))
 }
 
 fn print_help() {
