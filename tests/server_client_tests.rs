@@ -263,3 +263,72 @@ fn live_event_stream_receives_new_pty_output() {
     thread.join().unwrap();
     let _ = std::fs::remove_dir_all(state_dir);
 }
+
+#[test]
+fn split_layout_survives_server_restart() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let pane = serde_json::json!({
+        "command": "cmd.exe",
+        "args": ["/C", "echo first"],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24
+    });
+    client
+        .request("first-pane", "create_pane", pane.clone())
+        .unwrap();
+    client
+        .request(
+            "second-pane",
+            "split_pane",
+            serde_json::json!({
+                "direction": "vertical",
+                "command": "cmd.exe",
+                "args": ["/C", "echo second"],
+                "cwd": pane["cwd"],
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap();
+    let before = client
+        .request(
+            "snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(before["panes"].as_array().unwrap().len(), 2);
+    assert!(before["spaces"][0]["workspaces"][0]["tabs"][0]["layout"].is_object());
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let after = client
+        .request(
+            "snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(after["panes"].as_array().unwrap().len(), 2);
+    assert!(after["spaces"][0]["workspaces"][0]["tabs"][0]["layout"].is_object());
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
