@@ -472,6 +472,21 @@ impl Session {
         {
             return Err("stop all panes in the tab before closing it".into());
         }
+        for pane_id in &pane_ids {
+            let _ = self.pane_manager.remove(pane_id);
+        }
+        self.snapshot
+            .panes
+            .retain(|pane| !pane_ids.iter().any(|id| *id == pane.pane_id));
+        if self
+            .snapshot
+            .focused_pane_id
+            .as_ref()
+            .is_some_and(|pane_id| pane_ids.iter().any(|id| *id == pane_id))
+        {
+            self.snapshot.focused_pane_id =
+                self.snapshot.panes.first().map(|pane| pane.pane_id.clone());
+        }
         let workspace = &mut self
             .snapshot
             .spaces
