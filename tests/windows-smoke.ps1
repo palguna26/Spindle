@@ -39,6 +39,11 @@ try {
         throw "server_started log record was not found"
     }
     Invoke-Spindle @("stop")
+    $staleEndpoint = Join-Path $projectState.FullName "server.endpoint"
+    Set-Content -LiteralPath $staleEndpoint -Value "127.0.0.1:1" -NoNewline
+    Invoke-Spindle @("start")
+    Invoke-Spindle @("doctor")
+    Invoke-Spindle @("stop")
     $markers = Get-ChildItem -LiteralPath (Join-Path $stateRoot "Spindle\projects") -Recurse -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -in @("server.endpoint", "server.interactive.endpoint", "server.pid", "server.json") }
     if ($markers.Count -ne 0) {
