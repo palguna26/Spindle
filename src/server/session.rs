@@ -1162,6 +1162,22 @@ mod tests {
     }
 
     #[test]
+    fn corrupt_history_is_rejected_without_replacing_files() {
+        let directory =
+            std::env::temp_dir().join(format!("spindle-corrupt-history-{}", std::process::id()));
+        let path = directory.join("session.json");
+        let session = Session::load_or_default(&path).unwrap();
+        session.save().unwrap();
+        let metadata_before = std::fs::read(&path).unwrap();
+        let history_path = directory.join("session-history.json");
+        std::fs::write(&history_path, b"not-json").unwrap();
+        assert!(Session::load_or_default(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), metadata_before);
+        assert_eq!(std::fs::read(&history_path).unwrap(), b"not-json");
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
     fn direct_pane_events_are_ordered_in_history() {
         let mut session = Session::default();
         session.record_pane_events(vec![
