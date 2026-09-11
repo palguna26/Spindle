@@ -5,6 +5,7 @@ pub enum Action {
     None,
     Detach,
     NewTab,
+    NewPane,
     CloseTab,
     NextTab,
     PreviousTab,

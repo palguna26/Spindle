@@ -4,6 +4,7 @@ use crossterm::event::KeyCode;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
     NewTab,
+    NewPane,
     CloseTab,
     NextTab,
     PreviousTab,
@@ -35,8 +36,9 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Self; 29] = [
+    pub const ALL: [Self; 30] = [
         Self::NewTab,
+        Self::NewPane,
         Self::CloseTab,
         Self::NextTab,
         Self::PreviousTab,
@@ -70,6 +72,7 @@ impl Command {
     pub fn label(self) -> &'static str {
         match self {
             Self::NewTab => "New tab",
+            Self::NewPane => "New PowerShell pane",
             Self::CloseTab => "Close tab",
             Self::NextTab => "Next tab",
             Self::PreviousTab => "Previous tab",
@@ -104,6 +107,7 @@ impl Command {
     pub fn action(self) -> Action {
         match self {
             Self::NewTab => Action::NewTab,
+            Self::NewPane => Action::NewPane,
             Self::CloseTab => Action::CloseTab,
             Self::NextTab => Action::NextTab,
             Self::PreviousTab => Action::PreviousTab,

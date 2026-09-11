@@ -145,6 +145,9 @@ fn event_loop(
             Action::NewTab => {
                 client.request("new-tab", "create_tab", json!({ "name": "Activity" }))?;
             }
+            Action::NewPane => {
+                let _ = client.request("new-pane", "create_pane", pane_request(terminal_size));
+            }
             Action::CloseTab => {
                 if let Some(tab_id) = active_tab_id(&snapshot) {
                     let _ = client.request("close-tab", "close_tab", json!({ "id": tab_id }));
@@ -449,6 +452,14 @@ fn execute_action(
             )?;
             Ok(false)
         }
+        Action::NewPane => {
+            let _ = client.request(
+                "palette-new-pane",
+                "create_pane",
+                pane_request(terminal_size),
+            );
+            Ok(false)
+        }
         Action::CloseTab => {
             if let Some(tab_id) = active_tab_id(snapshot) {
                 let _ = client.request("palette-close-tab", "close_tab", json!({ "id": tab_id }));
@@ -599,6 +610,20 @@ fn pane_size(terminal_size: (u16, u16)) -> (u16, u16) {
         terminal_size.0.max(1),
         terminal_size.1.saturating_sub(1).max(1),
     )
+}
+
+fn pane_request(terminal_size: (u16, u16)) -> serde_json::Value {
+    let cwd = std::env::current_dir()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| ".".into());
+    let (cols, rows) = pane_size(terminal_size);
+    json!({
+        "command": "powershell.exe",
+        "args": ["-NoLogo", "-NoProfile"],
+        "cwd": cwd,
+        "cols": cols,
+        "rows": rows
+    })
 }
 
 fn key_code_bytes(code: KeyCode) -> Option<Vec<u8>> {
