@@ -71,6 +71,12 @@ struct EventsRequest {
     after_sequence: u64,
 }
 
+#[derive(Debug, Deserialize)]
+struct ClientRequest {
+    #[serde(default)]
+    client_id: String,
+}
+
 pub fn handle_connection<S>(stream: S, session: Arc<Mutex<Session>>) -> io::Result<bool>
 where
     S: Read + Write,
@@ -167,6 +173,11 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
         }
         "get_snapshot" => {
             let mut session = session.lock().expect("session lock poisoned");
+            if let Ok(payload) = serde_json::from_value::<ClientRequest>(request.payload) {
+                if !payload.client_id.is_empty() {
+                    session.touch_client(&payload.client_id);
+                }
+            }
             session.poll();
             session.refresh_snapshot();
             serde_json::to_value(session.snapshot()).map_err(|error| error.to_string())

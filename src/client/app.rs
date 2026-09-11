@@ -140,7 +140,7 @@ fn current_snapshot(client: &ControlClient) -> Result<SessionSnapshot, ClientErr
     let response = client.request_with_retry(
         "snapshot",
         "get_snapshot",
-        json!({}),
+        json!({ "client_id": client.client_id() }),
         5,
         Duration::from_millis(50),
     )?;

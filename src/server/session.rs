@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+const GEOMETRY_LEASE: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreatePaneRequest {
@@ -80,6 +83,7 @@ pub struct Session {
     snapshot_path: Option<PathBuf>,
     events: VecDeque<Event<Value>>,
     geometry_owner: Option<String>,
+    geometry_owner_seen: Option<Instant>,
 }
 
 impl Default for Session {
@@ -112,6 +116,7 @@ impl Default for Session {
             snapshot_path: None,
             events: VecDeque::new(),
             geometry_owner: None,
+            geometry_owner_seen: None,
         }
     }
 }
@@ -135,6 +140,7 @@ impl Session {
                     snapshot_path: Some(path),
                     events: VecDeque::new(),
                     geometry_owner: None,
+                    geometry_owner_seen: None,
                 }
             }
             Err(_) => Self {
@@ -165,12 +171,22 @@ impl Session {
     }
 
     pub fn attach(&mut self, client_id: String) -> Value {
-        let owner = self.geometry_owner.get_or_insert(client_id.clone());
+        let can_claim = self.geometry_owner.is_none()
+            || self.geometry_owner.as_deref() == Some(client_id.as_str())
+            || self
+                .geometry_owner_seen
+                .map(|seen| seen.elapsed() >= GEOMETRY_LEASE)
+                .unwrap_or(false);
+        if can_claim {
+            self.geometry_owner = Some(client_id.clone());
+            self.geometry_owner_seen = Some(Instant::now());
+        }
+        let owner = self.geometry_owner.as_deref().unwrap_or("none");
         serde_json::json!({
             "attached": true,
             "client_id": client_id,
             "geometry_owner": owner,
-            "active": owner == &client_id,
+            "active": owner == client_id,
         })
     }
 
@@ -185,8 +201,15 @@ impl Session {
         let released = self.geometry_owner.as_deref() == Some(client_id);
         if released {
             self.geometry_owner = None;
+            self.geometry_owner_seen = None;
         }
         serde_json::json!({ "detached": true, "released_geometry": released })
+    }
+
+    pub fn touch_client(&mut self, client_id: &str) {
+        if self.geometry_owner.as_deref() == Some(client_id) {
+            self.geometry_owner_seen = Some(Instant::now());
+        }
     }
 
     pub fn create_pane(&mut self, request: CreatePaneRequest) -> Result<Value, String> {
@@ -760,6 +783,7 @@ impl From<PaneManagerError> for String {
 mod tests {
     use super::{CreatePaneRequest, PaneView, Session};
     use crate::model::status::PaneStatus;
+    use std::time::Duration;
 
     #[test]
     fn workspace_and_tab_operations_update_active_state() {
@@ -828,6 +852,15 @@ mod tests {
         let tab_id = tab["tab_id"].as_str().unwrap().to_string();
         session.close_tab(&tab_id).unwrap();
         assert_eq!(session.snapshot().spaces[0].workspaces[0].tabs.len(), 1);
+    }
+
+    #[test]
+    fn a_new_client_can_claim_an_expired_geometry_lease() {
+        let mut session = Session::default();
+        assert_eq!(session.attach("first".into())["active"], true);
+        assert_eq!(session.attach("second".into())["active"], false);
+        std::thread::sleep(Duration::from_millis(1_050));
+        assert_eq!(session.attach("second".into())["active"], true);
     }
 
     #[test]
