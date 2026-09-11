@@ -107,6 +107,20 @@ impl ControlClient {
         self.request_once(request_id.into(), operation.into(), payload)
     }
 
+    pub fn interactive_request<T: Serialize>(
+        &self,
+        request_id: impl Into<String>,
+        operation: impl Into<String>,
+        payload: T,
+    ) -> Result<Response<serde_json::Value>, ClientError> {
+        self.request_once_at(
+            &self.interactive_address,
+            request_id.into(),
+            operation.into(),
+            payload,
+        )
+    }
+
     pub fn subscribe_events(&self, after_sequence: u64) -> Result<EventBatch, ClientError> {
         let response = self.request(
             format!("events-{after_sequence}"),
@@ -193,7 +207,17 @@ impl ControlClient {
         operation: String,
         payload: T,
     ) -> Result<Response<serde_json::Value>, ClientError> {
-        let mut stream = connect_stream_retry(&self.address)?;
+        self.request_once_at(&self.address, request_id, operation, payload)
+    }
+
+    fn request_once_at<T: Serialize>(
+        &self,
+        address: &str,
+        request_id: String,
+        operation: String,
+        payload: T,
+    ) -> Result<Response<serde_json::Value>, ClientError> {
+        let mut stream = connect_stream_retry(address)?;
         let request = Request {
             version: PROTOCOL_VERSION,
             request_id,

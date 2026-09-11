@@ -243,7 +243,7 @@ fn event_loop(
             Action::Send(code) => {
                 if let Some(ref pane_id) = snapshot.focused_pane_id {
                     if let Some(bytes) = key_code_bytes(code) {
-                        let _ = client.request(
+                        let _ = client.interactive_request(
                             "input",
                             "send_input",
                             json!({ "pane_id": pane_id, "bytes": bytes }),
@@ -589,17 +589,15 @@ fn resize_panes(
 ) -> Result<(), ClientError> {
     let (cols, rows) = pane_size(terminal_size);
     for pane in &snapshot.panes {
-        let _ = client.request_with_retry(
+        let _ = client.interactive_request(
             format!("resize-{}", pane.pane_id),
             "resize_pty",
             json!({
-                "pane_id": pane.pane_id,
-                "cols": cols,
-                "rows": rows,
-                "client_id": client.client_id(),
-            }),
-            2,
-            Duration::from_millis(20),
+            "pane_id": pane.pane_id,
+            "cols": cols,
+            "rows": rows,
+            "client_id": client.client_id(),
+                }),
         );
     }
     Ok(())

@@ -925,14 +925,14 @@ fn interactive_pty_accepts_input_and_resize() {
         .unwrap()
         .to_string();
     client
-        .request(
+        .interactive_request(
             "interactive-resize",
             "resize_pty",
             serde_json::json!({ "pane_id": pane_id, "cols": 100, "rows": 30 }),
         )
         .unwrap();
     client
-        .request(
+        .interactive_request(
             "interactive-input",
             "send_input",
             serde_json::json!({ "pane_id": pane_id, "bytes": b"echo spindle-input\r" }),
@@ -957,7 +957,7 @@ fn interactive_pty_accepts_input_and_resize() {
                 output.extend(&bytes);
                 if bytes.windows(4).any(|window| window == b"\x1b[6n") {
                     client
-                        .request(
+                        .interactive_request(
                             "interactive-cursor",
                             "send_input",
                             serde_json::json!({
