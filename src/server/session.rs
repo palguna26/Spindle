@@ -604,10 +604,12 @@ impl Session {
     }
 
     pub fn stop_pane(&mut self, pane_id: &str) -> Result<(), String> {
-        self.pane_manager
+        let events = self
+            .pane_manager
             .stop(pane_id)
-            .map(|_| ())
-            .map_err(|error| format!("{error:?}"))
+            .map_err(|error| format!("{error:?}"))?;
+        self.record_pane_events(events);
+        Ok(())
     }
 
     pub fn restart_pane(&mut self, pane_id: &str) -> Result<Value, String> {
@@ -665,7 +667,12 @@ impl Session {
     }
 
     pub fn poll(&mut self) {
-        for event in self.pane_manager.poll() {
+        let events = self.pane_manager.poll();
+        self.record_pane_events(events);
+    }
+
+    fn record_pane_events(&mut self, events: Vec<PaneEvent>) {
+        for event in events {
             let (name, payload) = match event {
                 PaneEvent::Output { pane_id, bytes } => (
                     "pane_output",
@@ -786,6 +793,7 @@ impl From<PaneManagerError> for String {
 mod tests {
     use super::{CreatePaneRequest, PaneView, Session};
     use crate::model::status::PaneStatus;
+    use crate::pane::PaneEvent;
     use std::time::Duration;
 
     #[test]
@@ -876,6 +884,26 @@ mod tests {
         assert!(Session::load_or_default(&path).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"not-json");
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn direct_pane_events_are_ordered_in_history() {
+        let mut session = Session::default();
+        session.record_pane_events(vec![
+            PaneEvent::Status {
+                pane_id: "pane-1".into(),
+                status: PaneStatus::Halted {
+                    reason: "stopped".into(),
+                },
+            },
+            PaneEvent::Output {
+                pane_id: "pane-1".into(),
+                bytes: b"done".to_vec(),
+            },
+        ]);
+        assert_eq!(session.events.len(), 2);
+        assert_eq!(session.events[0].sequence, 1);
+        assert_eq!(session.events[1].sequence, 2);
     }
 
     #[test]
