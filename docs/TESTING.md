@@ -18,6 +18,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows-smoke.ps1
 The smoke flow uses an isolated `LOCALAPPDATA`, starts and stops a server,
 checks diagnostics, and verifies endpoint and PID markers are removed.
 
+To test the installer without changing the user PATH, pass a temporary
+destination:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Destination $env:TEMP\spindle-install-test
+```
+
 Before a release, also manually verify two PowerShell or fake CLI panes,
 detach/reattach, a second client, workspace switching, pane restart, and
 recovery from a server restart.

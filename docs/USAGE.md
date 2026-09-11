@@ -11,6 +11,7 @@ open a Visual Studio developer shell and run:
 ```powershell
 cargo build --release
 .\target\release\spindle.exe help
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -AddToUserPath
 ```
 
 ## Start and attach
