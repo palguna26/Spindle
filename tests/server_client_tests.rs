@@ -124,6 +124,16 @@ fn client_can_open_a_long_lived_event_stream() {
     let batch = stream.next_batch().unwrap();
     assert!(batch.events.is_empty());
     assert_eq!(batch.latest_sequence, 0);
+    assert!(
+        client
+            .request(
+                "ping-while-streaming",
+                "ping",
+                Value::Object(Default::default())
+            )
+            .unwrap()
+            .ok
+    );
     drop(stream);
 
     client
