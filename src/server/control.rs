@@ -13,6 +13,11 @@ struct PaneRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct IdRequest {
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct InputRequest {
     pane_id: String,
     bytes: Vec<u8>,
@@ -23,6 +28,17 @@ struct ResizeRequest {
     pane_id: String,
     cols: u16,
     rows: u16,
+}
+
+#[derive(Debug, Deserialize)]
+struct NameRequest {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct IdNameRequest {
+    id: String,
+    name: String,
 }
 
 pub fn handle_connection(stream: TcpStream, session: Arc<Mutex<Session>>) -> io::Result<bool> {
@@ -129,6 +145,94 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
             }
             result
         }
+        "create_workspace" => {
+            let payload: NameRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.create_workspace(payload.name)
+            })
+        }
+        "switch_workspace" => {
+            let payload: IdRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.switch_workspace(&payload.id)
+            })
+        }
+        "rename_workspace" => {
+            let payload: IdNameRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.rename_workspace(&payload.id, payload.name)
+            })
+        }
+        "create_tab" => {
+            let payload: NameRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.create_tab(payload.name))
+        }
+        "switch_tab" => {
+            let payload: IdRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.switch_tab(&payload.id))
+        }
+        "rename_tab" => {
+            let payload: IdNameRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.rename_tab(&payload.id, payload.name)
+            })
+        }
+        "focus_pane" => {
+            let payload: PaneRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.focus_pane(&payload.pane_id))
+        }
+        "close_pane" => {
+            let payload: PaneRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.close_pane(&payload.pane_id))
+        }
         "stop_server" => Ok(json!({ "stopping": true })),
         _ => Err(format!("unknown operation '{}'", request.op)),
     };
@@ -143,6 +247,17 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
         },
         Err(message) => request_error(request.request_id, "operation_failed", message),
     }
+}
+
+fn save_after(
+    session: &mut Session,
+    operation: impl FnOnce(&mut Session) -> Result<Value, String>,
+) -> Result<Value, String> {
+    let result = operation(session);
+    if result.is_ok() {
+        session.save().map_err(|error| format!("{error:?}"))?;
+    }
+    result
 }
 
 fn request_error(request_id: String, code: &str, message: String) -> Response<Value> {

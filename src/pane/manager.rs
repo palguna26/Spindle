@@ -83,6 +83,12 @@ impl PaneManager {
         self.panes.get(id)
     }
 
+    pub fn remove(&mut self, id: &str) -> Result<Pane, PaneManagerError> {
+        self.panes
+            .remove(id)
+            .ok_or_else(|| PaneManagerError::MissingPane(id.into()))
+    }
+
     pub fn send_input(&mut self, id: &str, input: &[u8]) -> Result<(), PaneManagerError> {
         self.panes
             .get_mut(id)

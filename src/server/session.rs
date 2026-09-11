@@ -173,6 +173,124 @@ impl Session {
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
+    pub fn create_workspace(&mut self, name: String) -> Result<Value, String> {
+        let space = self
+            .snapshot
+            .spaces
+            .iter_mut()
+            .find(|space| space.space_id == self.snapshot.active_space_id)
+            .ok_or_else(|| "active space does not exist".to_string())?;
+        let workspace_id = format!("workspace-{}", space.workspaces.len() + 1);
+        let tab_id = format!("tab-{}-1", workspace_id);
+        space.workspaces.push(WorkspaceView {
+            workspace_id: workspace_id.clone(),
+            name,
+            tabs: vec![TabView {
+                tab_id: tab_id.clone(),
+                name: "Main".into(),
+                layout: None,
+            }],
+            active_tab_id: tab_id,
+        });
+        space.active_workspace_id = workspace_id.clone();
+        Ok(serde_json::json!({ "workspace_id": workspace_id }))
+    }
+
+    pub fn switch_workspace(&mut self, workspace_id: &str) -> Result<Value, String> {
+        let space = self
+            .snapshot
+            .spaces
+            .iter_mut()
+            .find(|space| space.space_id == self.snapshot.active_space_id)
+            .ok_or_else(|| "active space does not exist".to_string())?;
+        if !space
+            .workspaces
+            .iter()
+            .any(|workspace| workspace.workspace_id == workspace_id)
+        {
+            return Err(format!("workspace '{workspace_id}' does not exist"));
+        }
+        space.active_workspace_id = workspace_id.into();
+        Ok(serde_json::json!({ "workspace_id": workspace_id }))
+    }
+
+    pub fn rename_workspace(&mut self, workspace_id: &str, name: String) -> Result<Value, String> {
+        let workspace = self.workspace_mut(workspace_id)?;
+        workspace.name = name;
+        Ok(serde_json::json!({ "workspace_id": workspace_id }))
+    }
+
+    pub fn create_tab(&mut self, name: String) -> Result<Value, String> {
+        let workspace = self.active_workspace_mut()?;
+        let tab_id = format!(
+            "tab-{}-{}",
+            workspace.workspace_id,
+            workspace.tabs.len() + 1
+        );
+        workspace.tabs.push(TabView {
+            tab_id: tab_id.clone(),
+            name,
+            layout: None,
+        });
+        workspace.active_tab_id = tab_id.clone();
+        Ok(serde_json::json!({ "tab_id": tab_id }))
+    }
+
+    pub fn switch_tab(&mut self, tab_id: &str) -> Result<Value, String> {
+        let workspace = self.active_workspace_mut()?;
+        if !workspace.tabs.iter().any(|tab| tab.tab_id == tab_id) {
+            return Err(format!("tab '{tab_id}' does not exist"));
+        }
+        workspace.active_tab_id = tab_id.into();
+        Ok(serde_json::json!({ "tab_id": tab_id }))
+    }
+
+    pub fn rename_tab(&mut self, tab_id: &str, name: String) -> Result<Value, String> {
+        let workspace = self.active_workspace_mut()?;
+        let tab = workspace
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.tab_id == tab_id)
+            .ok_or_else(|| format!("tab '{tab_id}' does not exist"))?;
+        tab.name = name;
+        Ok(serde_json::json!({ "tab_id": tab_id }))
+    }
+
+    pub fn focus_pane(&mut self, pane_id: &str) -> Result<Value, String> {
+        if !self
+            .snapshot
+            .panes
+            .iter()
+            .any(|pane| pane.pane_id == pane_id)
+        {
+            return Err(format!("pane '{pane_id}' does not exist"));
+        }
+        self.snapshot.focused_pane_id = Some(pane_id.into());
+        Ok(serde_json::json!({ "pane_id": pane_id }))
+    }
+
+    pub fn close_pane(&mut self, pane_id: &str) -> Result<Value, String> {
+        self.pane_manager
+            .remove(pane_id)
+            .map_err(|error| format!("{error:?}"))?;
+        let workspace = self.active_workspace_mut()?;
+        let tab = workspace
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.tab_id == workspace.active_tab_id)
+            .ok_or_else(|| "active tab does not exist".to_string())?;
+        tab.layout = tab
+            .layout
+            .take()
+            .and_then(|layout| layout.close_pane(pane_id));
+        self.snapshot.panes.retain(|pane| pane.pane_id != pane_id);
+        if self.snapshot.focused_pane_id.as_deref() == Some(pane_id) {
+            self.snapshot.focused_pane_id =
+                self.snapshot.panes.first().map(|pane| pane.pane_id.clone());
+        }
+        Ok(serde_json::json!({ "pane_id": pane_id }))
+    }
+
     pub fn send_input(&mut self, pane_id: &str, bytes: &[u8]) -> Result<(), String> {
         self.pane_manager
             .send_input(pane_id, bytes)
@@ -194,6 +312,37 @@ impl Session {
 
     pub fn poll(&mut self) {
         self.pane_manager.poll();
+    }
+
+    fn active_workspace_mut(&mut self) -> Result<&mut WorkspaceView, String> {
+        let active_space_id = self.snapshot.active_space_id.clone();
+        let space = self
+            .snapshot
+            .spaces
+            .iter_mut()
+            .find(|space| space.space_id == active_space_id)
+            .ok_or_else(|| "active space does not exist".to_string())?;
+        let workspace_id = space.active_workspace_id.clone();
+        space
+            .workspaces
+            .iter_mut()
+            .find(|workspace| workspace.workspace_id == workspace_id)
+            .ok_or_else(|| "active workspace does not exist".to_string())
+    }
+
+    fn workspace_mut(&mut self, workspace_id: &str) -> Result<&mut WorkspaceView, String> {
+        let active_space_id = self.snapshot.active_space_id.clone();
+        let space = self
+            .snapshot
+            .spaces
+            .iter_mut()
+            .find(|space| space.space_id == active_space_id)
+            .ok_or_else(|| "active space does not exist".to_string())?;
+        space
+            .workspaces
+            .iter_mut()
+            .find(|workspace| workspace.workspace_id == workspace_id)
+            .ok_or_else(|| format!("workspace '{workspace_id}' does not exist"))
     }
 }
 
@@ -222,5 +371,49 @@ impl Session {
 impl From<PaneManagerError> for String {
     fn from(error: PaneManagerError) -> Self {
         format!("{error:?}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Session;
+
+    #[test]
+    fn workspace_and_tab_operations_update_active_state() {
+        let mut session = Session::default();
+        let workspace = session.create_workspace("Feature".into()).unwrap();
+        let workspace_id = workspace["workspace_id"].as_str().unwrap();
+        assert_eq!(
+            session.snapshot().spaces[0].active_workspace_id,
+            workspace_id
+        );
+
+        let tab = session.create_tab("Logs".into()).unwrap();
+        let tab_id = tab["tab_id"].as_str().unwrap();
+        assert_eq!(
+            session.snapshot().spaces[0].workspaces[1].active_tab_id,
+            tab_id
+        );
+
+        session
+            .rename_workspace(workspace_id, "Feature work".into())
+            .unwrap();
+        session.rename_tab(tab_id, "Build logs".into()).unwrap();
+        assert_eq!(
+            session.snapshot().spaces[0].workspaces[1].name,
+            "Feature work"
+        );
+        assert_eq!(
+            session.snapshot().spaces[0].workspaces[1].tabs[1].name,
+            "Build logs"
+        );
+    }
+
+    #[test]
+    fn invalid_focus_and_switch_are_rejected() {
+        let mut session = Session::default();
+        assert!(session.focus_pane("missing").is_err());
+        assert!(session.switch_workspace("missing").is_err());
+        assert!(session.switch_tab("missing").is_err());
     }
 }
