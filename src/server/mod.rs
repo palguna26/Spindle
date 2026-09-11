@@ -95,6 +95,8 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
             .map_err(|error| io::Error::other(format!("session snapshot is invalid: {error:?}")))?,
     ));
     let endpoint = state_dir.join("server.endpoint");
+    let identity = state_dir.join("server.pid");
+    fs::write(&identity, std::process::id().to_string())?;
     fs::write(&endpoint, &address)?;
 
     let stopping = Arc::new(AtomicBool::new(false));
@@ -117,6 +119,7 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     }
 
     let _ = fs::remove_file(endpoint);
+    let _ = fs::remove_file(identity);
     Ok(())
 }
 

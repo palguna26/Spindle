@@ -41,6 +41,7 @@ fn start_server(state_dir: &Path) -> (std::thread::JoinHandle<()>, String) {
 fn server_accepts_attach_snapshot_and_stop() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
+    assert!(state_dir.join("server.pid").exists());
 
     let attach = request(address.trim(), "attach");
     assert!(attach.ok);
@@ -59,6 +60,7 @@ fn server_accepts_attach_snapshot_and_stop() {
     thread.join().unwrap();
     let endpoint = state_dir.join("server.endpoint");
     assert!(!endpoint.exists());
+    assert!(!state_dir.join("server.pid").exists());
     let _ = std::fs::remove_dir_all(state_dir);
 }
 
