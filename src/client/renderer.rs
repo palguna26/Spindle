@@ -67,12 +67,7 @@ fn render_layout(frame: &mut Frame<'_>, node: &LayoutNode, snapshot: &SessionSna
             let Some(pane) = snapshot.panes.iter().find(|pane| &pane.pane_id == pane_id) else {
                 return;
             };
-            let title = format!(
-                "{} {} {}",
-                pane.status.indicator(),
-                pane.pane_id,
-                pane.command
-            );
+            let title = pane_title(pane);
             let lines = pane.screen.lines().map(Line::from).collect::<Vec<_>>();
             let border_color = if snapshot.focused_pane_id.as_deref() == Some(pane_id) {
                 Color::White
@@ -114,6 +109,22 @@ fn render_layout(frame: &mut Frame<'_>, node: &LayoutNode, snapshot: &SessionSna
     }
 }
 
+fn pane_title(pane: &crate::server::session::PaneView) -> String {
+    let label = if pane.title.is_empty() {
+        pane.command.as_str()
+    } else {
+        pane.title.as_str()
+    };
+    let alternate = if pane.alternate_screen { " [alt]" } else { "" };
+    format!(
+        "{} {} {}{}",
+        pane.status.indicator(),
+        pane.pane_id,
+        label,
+        alternate
+    )
+}
+
 pub fn status_color(status: &PaneStatus) -> Color {
     match status {
         PaneStatus::Running => Color::Yellow,
@@ -124,9 +135,9 @@ pub fn status_color(status: &PaneStatus) -> Color {
 
 #[cfg(test)]
 mod tests {
-    use super::{render, status_color};
+    use super::{pane_title, render, status_color};
     use crate::model::status::PaneStatus;
-    use crate::server::session::Session;
+    use crate::server::session::{PaneView, Session};
     use ratatui::backend::TestBackend;
     use ratatui::style::Color;
     use ratatui::Terminal;
@@ -158,5 +169,22 @@ mod tests {
         let content: String = buffer.content().iter().map(|cell| cell.symbol()).collect();
         assert!(content.contains("Default"));
         assert!(content.contains("Current project"));
+    }
+
+    #[test]
+    fn pane_title_shows_terminal_title_and_alt_mode() {
+        let pane = PaneView {
+            pane_id: "pane-1".into(),
+            command: "powershell.exe".into(),
+            args: Vec::new(),
+            cwd: "C:/".into(),
+            status: PaneStatus::Running,
+            scrollback_bytes: 0,
+            screen: String::new(),
+            cursor: (0, 0),
+            title: "Editor".into(),
+            alternate_screen: true,
+        };
+        assert_eq!(pane_title(&pane), "◉ pane-1 Editor [alt]");
     }
 }
