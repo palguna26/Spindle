@@ -191,6 +191,13 @@ fn pty_output_reaches_event_subscribers() {
     }
     assert!(saw_output, "pane output was not published");
 
+    let observer = ControlClient::connect(address.trim()).unwrap();
+    let observer_batch = observer.subscribe_events(0).unwrap();
+    assert!(observer_batch
+        .events
+        .iter()
+        .any(|event| { event.event == "pane_output" && event.payload["pane_id"] == pane_id }));
+
     let snapshot = client
         .request(
             "snapshot",
