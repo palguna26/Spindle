@@ -783,6 +783,14 @@ impl Session {
     }
 
     pub fn close_pane(&mut self, pane_id: &str) -> Result<Value, String> {
+        let in_active_tab = self
+            .active_tab_mut()?
+            .layout
+            .as_ref()
+            .is_some_and(|layout| layout.pane_ids().contains(&pane_id));
+        if !in_active_tab {
+            return Err(format!("pane '{pane_id}' does not exist in the active tab"));
+        }
         self.pane_manager
             .remove(pane_id)
             .map_err(|error| format!("{error:?}"))?;
@@ -1038,6 +1046,7 @@ impl From<PaneManagerError> for String {
 #[cfg(test)]
 mod tests {
     use super::{CreatePaneRequest, PaneView, Session};
+    use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
     use crate::pane::PaneEvent;
     use std::time::Duration;
@@ -1174,6 +1183,32 @@ mod tests {
         let tab_id = tab["tab_id"].as_str().unwrap().to_string();
         session.close_tab(&tab_id).unwrap();
         assert_eq!(session.snapshot().spaces[0].workspaces[0].tabs.len(), 1);
+    }
+
+    #[test]
+    fn closing_a_pane_outside_the_active_tab_is_rejected_before_removal() {
+        let mut session = Session::default();
+        session.create_tab("Other".into()).unwrap();
+        session.switch_tab("tab-1").unwrap();
+        session.snapshot.panes.push(PaneView {
+            pane_id: "pane-1".into(),
+            command: "powershell.exe".into(),
+            args: Vec::new(),
+            cwd: "C:/".into(),
+            cols: 80,
+            rows: 24,
+            label: None,
+            status: PaneStatus::Completed { exit_code: 0 },
+            scrollback_bytes: 0,
+            scrollback: Vec::new(),
+            screen: String::new(),
+            cursor: (0, 0),
+            title: String::new(),
+            alternate_screen: false,
+        });
+        session.snapshot.spaces[0].workspaces[0].tabs[1].layout = Some(LayoutNode::pane("pane-1"));
+        assert!(session.close_pane("pane-1").is_err());
+        assert_eq!(session.snapshot.panes.len(), 1);
     }
 
     #[test]
