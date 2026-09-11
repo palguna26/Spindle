@@ -122,7 +122,7 @@ impl Default for Session {
 }
 
 impl Session {
-    pub fn load_or_default(path: impl AsRef<Path>) -> Self {
+    pub fn load_or_default(path: impl AsRef<Path>) -> Result<Self, SnapshotError> {
         let path = path.as_ref().to_path_buf();
         match load_versioned::<SessionSnapshot>(&path) {
             Ok(mut snapshot) => {
@@ -133,7 +133,7 @@ impl Session {
                         };
                     }
                 }
-                Self {
+                Ok(Self {
                     pane_manager: PaneManager::default(),
                     next_pane_id: next_pane_id(&snapshot),
                     snapshot,
@@ -141,12 +141,15 @@ impl Session {
                     events: VecDeque::new(),
                     geometry_owner: None,
                     geometry_owner_seen: None,
-                }
+                })
             }
-            Err(_) => Self {
-                snapshot_path: Some(path),
-                ..Self::default()
-            },
+            Err(SnapshotError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+                Ok(Self {
+                    snapshot_path: Some(path),
+                    ..Self::default()
+                })
+            }
+            Err(error) => Err(error),
         }
     }
 
@@ -861,6 +864,18 @@ mod tests {
         assert_eq!(session.attach("second".into())["active"], false);
         std::thread::sleep(Duration::from_millis(1_050));
         assert_eq!(session.attach("second".into())["active"], true);
+    }
+
+    #[test]
+    fn invalid_snapshot_is_not_replaced_with_empty_state() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-invalid-session-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, b"not-json").unwrap();
+        assert!(Session::load_or_default(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"not-json");
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

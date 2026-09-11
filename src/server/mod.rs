@@ -86,11 +86,12 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     let address = listener.local_addr()?.to_string();
     #[cfg(windows)]
     let address = transport::endpoint(state_dir);
+    let session = Arc::new(Mutex::new(
+        session::Session::load_or_default(state_dir.join("session.json"))
+            .map_err(|error| io::Error::other(format!("session snapshot is invalid: {error:?}")))?,
+    ));
     let endpoint = state_dir.join("server.endpoint");
     fs::write(&endpoint, &address)?;
-    let session = Arc::new(Mutex::new(session::Session::load_or_default(
-        state_dir.join("session.json"),
-    )));
 
     #[cfg(not(windows))]
     {
