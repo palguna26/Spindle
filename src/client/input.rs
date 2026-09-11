@@ -16,6 +16,7 @@ pub enum Action {
     RenameFocusedPane,
     RenameActiveTab,
     RenameActiveWorkspace,
+    CreateWorkspace,
     FocusNext,
     SplitHorizontal,
     SplitVertical,

@@ -76,6 +76,7 @@ fn event_loop(
                         RenameTarget::Pane => "Rename pane",
                         RenameTarget::Tab => "Rename tab",
                         RenameTarget::Workspace => "Rename workspace",
+                        RenameTarget::CreateWorkspace => "Create workspace",
                     };
                     renderer::render_prompt(frame, title, &prompt.input);
                 }
@@ -234,8 +235,10 @@ fn event_loop(
             }
             Action::None => {}
             Action::CommandPalette => {}
-            Action::RenameFocusedPane | Action::RenameActiveTab | Action::RenameActiveWorkspace => {
-            }
+            Action::RenameFocusedPane
+            | Action::RenameActiveTab
+            | Action::RenameActiveWorkspace
+            | Action::CreateWorkspace => {}
         }
         prefix_active = false;
     }
@@ -247,6 +250,7 @@ fn rename_target(action: Action) -> Option<RenameTarget> {
         Action::RenameFocusedPane => Some(RenameTarget::Pane),
         Action::RenameActiveTab => Some(RenameTarget::Tab),
         Action::RenameActiveWorkspace => Some(RenameTarget::Workspace),
+        Action::CreateWorkspace => Some(RenameTarget::CreateWorkspace),
         _ => None,
     }
 }
@@ -261,6 +265,18 @@ fn submit_rename(
         RenameTarget::Pane => ("rename_pane", snapshot.focused_pane_id.clone()),
         RenameTarget::Tab => ("rename_tab", active_tab_id(snapshot)),
         RenameTarget::Workspace => ("rename_workspace", active_workspace_id(snapshot)),
+        RenameTarget::CreateWorkspace => {
+            let repository_path = std::env::current_dir()
+                .map_err(ClientError::Io)?
+                .to_string_lossy()
+                .into_owned();
+            let _ = client.request(
+                "create-workspace",
+                "create_workspace",
+                json!({ "name": name, "repository_path": repository_path }),
+            )?;
+            return Ok(());
+        }
     };
     if let Some(id) = id {
         let _ = client.request(
@@ -404,9 +420,10 @@ fn execute_action(
             }
             Ok(false)
         }
-        Action::RenameFocusedPane | Action::RenameActiveTab | Action::RenameActiveWorkspace => {
-            Ok(false)
-        }
+        Action::RenameFocusedPane
+        | Action::RenameActiveTab
+        | Action::RenameActiveWorkspace
+        | Action::CreateWorkspace => Ok(false),
         _ => Ok(false),
     }
 }
