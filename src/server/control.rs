@@ -132,9 +132,14 @@ where
     loop {
         let batch = {
             let mut session = session.lock().expect("session lock poisoned");
+            let resync_required = session.event_gap(sequence);
             let events = session.events_since(sequence);
             sequence = session.snapshot().event_sequence;
-            json!({ "events": events, "latest_sequence": sequence })
+            json!({
+                "events": events,
+                "latest_sequence": sequence,
+                "resync_required": resync_required,
+            })
         };
         let encoded = serde_json::to_vec(&batch).map_err(io::Error::other)?;
         write_frame(&mut writer, &encoded).map_err(frame_io_error)?;
@@ -247,10 +252,12 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
                 }
             };
             let mut session = session.lock().expect("session lock poisoned");
+            let resync_required = session.event_gap(payload.after_sequence);
             let events = session.events_since(payload.after_sequence);
             Ok(json!({
                 "events": events,
-                "latest_sequence": session.snapshot().event_sequence
+                "latest_sequence": session.snapshot().event_sequence,
+                "resync_required": resync_required,
             }))
         }
         "create_pane" => {

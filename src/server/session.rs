@@ -177,6 +177,16 @@ impl Session {
             .collect()
     }
 
+    pub fn event_gap(&self, sequence: u64) -> bool {
+        if self.snapshot.event_sequence <= sequence {
+            return false;
+        }
+        self.events
+            .front()
+            .map(|event| event.sequence > sequence + 1)
+            .unwrap_or(true)
+    }
+
     pub fn attach(&mut self, client_id: String) -> Value {
         let can_claim = self.geometry_owner.is_none()
             || self.geometry_owner.as_deref() == Some(client_id.as_str())
@@ -950,6 +960,20 @@ mod tests {
         assert_eq!(session.events.len(), 2);
         assert_eq!(session.events[0].sequence, 1);
         assert_eq!(session.events[1].sequence, 2);
+    }
+
+    #[test]
+    fn evicted_history_requires_a_snapshot_resync() {
+        let mut session = Session::default();
+        for _ in 0..4097 {
+            session.record_pane_events(vec![PaneEvent::Output {
+                pane_id: "pane-1".into(),
+                bytes: vec![1],
+            }]);
+        }
+        assert!(session.event_gap(0));
+        assert_eq!(session.events_since(0).len(), 4096);
+        assert!(!session.event_gap(session.snapshot.event_sequence));
     }
 
     #[test]

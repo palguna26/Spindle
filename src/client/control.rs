@@ -23,6 +23,8 @@ pub struct ControlClient {
 pub struct EventBatch {
     pub events: Vec<Event<serde_json::Value>>,
     pub latest_sequence: u64,
+    #[serde(default)]
+    pub resync_required: bool,
 }
 
 pub struct EventStream {
