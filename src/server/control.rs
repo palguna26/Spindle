@@ -41,6 +41,19 @@ struct IdNameRequest {
     name: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct SplitRequest {
+    direction: String,
+    #[serde(flatten)]
+    pane: CreatePaneRequest,
+}
+
+#[derive(Debug, Deserialize)]
+struct LayoutResizeRequest {
+    pane_id: String,
+    delta: f32,
+}
+
 pub fn handle_connection(stream: TcpStream, session: Arc<Mutex<Session>>) -> io::Result<bool> {
     let reader_stream = stream.try_clone()?;
     let mut reader = BufReader::new(reader_stream);
@@ -139,6 +152,29 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
                 }
             }
             result
+        }
+        "split_pane" => {
+            let payload: SplitRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let direction = match payload.direction.as_str() {
+                "horizontal" => crate::model::layout::Direction::Horizontal,
+                "vertical" => crate::model::layout::Direction::Vertical,
+                _ => {
+                    return request_error(
+                        request.request_id,
+                        "invalid_payload",
+                        "direction must be horizontal or vertical".into(),
+                    )
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.split_pane(payload.pane, direction)
+            })
         }
         "send_input" => {
             let payload: InputRequest = match serde_json::from_value(request.payload) {
@@ -276,6 +312,22 @@ fn response_for(frame: &[u8], session: &Arc<Mutex<Session>>) -> Response<Value> 
             };
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| session.focus_pane(&payload.pane_id))
+        }
+        "focus_next" => {
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.focus_next())
+        }
+        "resize_pane" => {
+            let payload: LayoutResizeRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.resize_pane(&payload.pane_id, payload.delta)
+            })
         }
         "close_pane" => {
             let payload: PaneRequest = match serde_json::from_value(request.payload) {

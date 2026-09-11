@@ -57,7 +57,8 @@ fn event_loop(
             prefix_active = true;
             continue;
         }
-        match action(prefix_active, key) {
+        let pressed = action(prefix_active, key);
+        match pressed {
             Action::Detach => break,
             Action::NewTab => {
                 client.request("new-tab", "create_tab", json!({ "name": "Activity" }))?;
@@ -65,6 +66,46 @@ fn event_loop(
             Action::StopFocusedPane => {
                 if let Some(pane_id) = snapshot.focused_pane_id {
                     let _ = client.request("stop-pane", "stop_pane", json!({ "pane_id": pane_id }));
+                }
+            }
+            Action::FocusNext => {
+                let _ = client.request("focus-next", "focus_next", json!({}));
+            }
+            Action::SplitHorizontal | Action::SplitVertical => {
+                let direction = if matches!(pressed, Action::SplitHorizontal) {
+                    "horizontal"
+                } else {
+                    "vertical"
+                };
+                let cwd = std::env::current_dir()
+                    .map_err(ClientError::Io)?
+                    .to_string_lossy()
+                    .into_owned();
+                let _ = client.request(
+                    "split",
+                    "split_pane",
+                    json!({
+                        "direction": direction,
+                        "command": "powershell.exe",
+                        "args": ["-NoLogo", "-NoProfile"],
+                        "cwd": cwd,
+                        "cols": 80,
+                        "rows": 24
+                    }),
+                );
+            }
+            Action::ResizeSmaller | Action::ResizeLarger => {
+                if let Some(pane_id) = snapshot.focused_pane_id {
+                    let delta = if matches!(pressed, Action::ResizeLarger) {
+                        0.05
+                    } else {
+                        -0.05
+                    };
+                    let _ = client.request(
+                        "resize",
+                        "resize_pane",
+                        json!({ "pane_id": pane_id, "delta": delta }),
+                    );
                 }
             }
             Action::Send(code) => {

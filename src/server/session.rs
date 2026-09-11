@@ -139,6 +139,22 @@ impl Session {
     }
 
     pub fn create_pane(&mut self, request: CreatePaneRequest) -> Result<Value, String> {
+        self.create_pane_with_direction(request, crate::model::layout::Direction::Vertical)
+    }
+
+    pub fn split_pane(
+        &mut self,
+        request: CreatePaneRequest,
+        direction: crate::model::layout::Direction,
+    ) -> Result<Value, String> {
+        self.create_pane_with_direction(request, direction)
+    }
+
+    fn create_pane_with_direction(
+        &mut self,
+        request: CreatePaneRequest,
+        direction: crate::model::layout::Direction,
+    ) -> Result<Value, String> {
         if request.command.trim().is_empty() {
             return Err("command cannot be empty".into());
         }
@@ -160,10 +176,19 @@ impl Session {
             )
             .map_err(|error| format!("{error:?}"))?;
 
-        let tab = &mut self.snapshot.spaces[0].workspaces[0].tabs[0];
+        let focused = self.snapshot.focused_pane_id.clone();
+        let tab = self.active_tab_mut()?;
         tab.layout = Some(match tab.layout.take() {
             None => LayoutNode::pane(&pane_id),
-            Some(layout) => layout.split(crate::model::layout::Direction::Vertical, 0.5, &pane_id),
+            Some(layout) => {
+                match focused
+                    .as_deref()
+                    .and_then(|target| layout.clone().split_pane(target, direction, &pane_id))
+                {
+                    Some(layout) => layout,
+                    None => layout.split(direction, 0.5, &pane_id),
+                }
+            }
         });
         self.snapshot.focused_pane_id = Some(pane_id.clone());
         self.snapshot.panes.push(PaneView {
@@ -371,6 +396,32 @@ impl Session {
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
+    pub fn focus_next(&mut self) -> Result<Value, String> {
+        let current = self.snapshot.focused_pane_id.clone();
+        let next = {
+            let tab = self.active_tab_mut()?;
+            tab.layout
+                .as_ref()
+                .and_then(|layout| layout.next_pane(current.as_deref()))
+                .map(str::to_string)
+        };
+        let pane_id = next.ok_or_else(|| "active tab has no panes".to_string())?;
+        self.snapshot.focused_pane_id = Some(pane_id.clone());
+        Ok(serde_json::json!({ "pane_id": pane_id }))
+    }
+
+    pub fn resize_pane(&mut self, pane_id: &str, delta: f32) -> Result<Value, String> {
+        let tab = self.active_tab_mut()?;
+        let layout = tab
+            .layout
+            .as_mut()
+            .ok_or_else(|| "active tab has no panes".to_string())?;
+        if !layout.resize_pane(pane_id, delta) {
+            return Err(format!("pane '{pane_id}' does not exist in the active tab"));
+        }
+        Ok(serde_json::json!({ "pane_id": pane_id, "delta": delta }))
+    }
+
     pub fn close_pane(&mut self, pane_id: &str) -> Result<Value, String> {
         self.pane_manager
             .remove(pane_id)
@@ -430,6 +481,16 @@ impl Session {
             .iter_mut()
             .find(|workspace| workspace.workspace_id == workspace_id)
             .ok_or_else(|| "active workspace does not exist".to_string())
+    }
+
+    fn active_tab_mut(&mut self) -> Result<&mut TabView, String> {
+        let workspace = self.active_workspace_mut()?;
+        let tab_id = workspace.active_tab_id.clone();
+        workspace
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.tab_id == tab_id)
+            .ok_or_else(|| "active tab does not exist".to_string())
     }
 
     fn workspace_mut(&mut self, workspace_id: &str) -> Result<&mut WorkspaceView, String> {
