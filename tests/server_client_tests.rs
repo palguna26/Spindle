@@ -1,4 +1,5 @@
 use serde_json::Value;
+use spindle::client::ControlClient;
 use spindle::protocol::frame::{read_frame, write_frame};
 use spindle::protocol::{Request, Response, PROTOCOL_VERSION};
 use spindle::server;
@@ -29,20 +30,23 @@ fn request(address: &str, operation: &str) -> Response<Value> {
     serde_json::from_slice(&frame).unwrap()
 }
 
-#[test]
-fn server_accepts_attach_snapshot_and_stop() {
-    let state_dir = test_state_dir();
+fn start_server(state_dir: &PathBuf) -> (std::thread::JoinHandle<()>, String) {
     let server_state = state_dir.clone();
     let thread = std::thread::spawn(move || server::run(&server_state).unwrap());
     let endpoint = state_dir.join("server.endpoint");
-
     for _ in 0..80 {
         if endpoint.exists() {
-            break;
+            return (thread, std::fs::read_to_string(endpoint).unwrap());
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-    let address = std::fs::read_to_string(&endpoint).unwrap();
+    panic!("server endpoint was not created");
+}
+
+#[test]
+fn server_accepts_attach_snapshot_and_stop() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
 
     let attach = request(address.trim(), "attach");
     assert!(attach.ok);
@@ -59,6 +63,43 @@ fn server_accepts_attach_snapshot_and_stop() {
     let stop = request(address.trim(), "stop_server");
     assert!(stop.ok);
     thread.join().unwrap();
+    let endpoint = state_dir.join("server.endpoint");
     assert!(!endpoint.exists());
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
+fn session_metadata_survives_server_restart() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let created = client
+        .request(
+            "workspace",
+            "create_workspace",
+            serde_json::json!({ "name": "Feature" }),
+        )
+        .unwrap();
+    assert!(created.ok);
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let snapshot = client
+        .request(
+            "snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap();
+    let workspaces = &snapshot.payload.unwrap()["spaces"][0]["workspaces"];
+    assert_eq!(workspaces.as_array().unwrap().len(), 2);
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
     let _ = std::fs::remove_dir_all(state_dir);
 }

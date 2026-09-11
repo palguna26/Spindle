@@ -87,11 +87,10 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
 
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => {
-                if control::handle_connection(stream, Arc::clone(&session))? {
-                    break;
-                }
-            }
+            Ok(stream) => match control::handle_connection(stream, Arc::clone(&session)) {
+                Ok(true) => break,
+                Ok(false) | Err(_) => {}
+            },
             Err(error) => return Err(error),
         }
     }

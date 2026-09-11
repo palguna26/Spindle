@@ -40,7 +40,7 @@ impl ControlClient {
         let client = Self {
             address: address.into(),
         };
-        client.check_connection()?;
+        client.request_once("connect".into(), "ping".into(), ())?;
         Ok(client)
     }
 
@@ -82,11 +82,6 @@ impl ControlClient {
             }
         }
         Err(last_error.expect("at least one request attempt"))
-    }
-
-    fn check_connection(&self) -> Result<(), ClientError> {
-        TcpStream::connect(&self.address)?;
-        Ok(())
     }
 
     fn request_once<T: Serialize>(
