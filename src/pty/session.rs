@@ -1,6 +1,8 @@
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::io::{self, Read, Write};
 use std::path::Path;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::thread;
 
 #[derive(Debug, Clone)]
 pub struct PtyConfig {
@@ -14,8 +16,8 @@ pub struct PtyConfig {
 pub struct PtySession {
     child: Box<dyn Child + Send>,
     master: Box<dyn MasterPty + Send>,
-    reader: Box<dyn Read + Send>,
     writer: Box<dyn Write + Send>,
+    output: Receiver<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -53,16 +55,35 @@ impl PtySession {
             .slave
             .spawn_command(command)
             .map_err(PtySessionError::from)?;
+        drop(pair.slave);
         let reader = pair
             .master
             .try_clone_reader()
             .map_err(PtySessionError::from)?;
         let writer = pair.master.take_writer().map_err(PtySessionError::from)?;
+        let (output_sender, output) = mpsc::channel();
+        thread::Builder::new()
+            .name("spindle-pty-reader".into())
+            .spawn(move || {
+                let mut reader = reader;
+                let mut buffer = [0_u8; 8192];
+                loop {
+                    match reader.read(&mut buffer) {
+                        Ok(0) | Err(_) => break,
+                        Ok(size) => {
+                            if output_sender.send(buffer[..size].to_vec()).is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            })
+            .map_err(PtySessionError::from)?;
         Ok(Self {
             child,
             master: pair.master,
-            reader,
             writer,
+            output,
         })
     }
 
@@ -72,8 +93,11 @@ impl PtySession {
         Ok(())
     }
 
-    pub fn read_output(&mut self, buffer: &mut [u8]) -> Result<usize, PtySessionError> {
-        Ok(self.reader.read(buffer)?)
+    pub fn try_read_output(&self) -> Result<Option<Vec<u8>>, PtySessionError> {
+        match self.output.try_recv() {
+            Ok(output) => Ok(Some(output)),
+            Err(TryRecvError::Empty | TryRecvError::Disconnected) => Ok(None),
+        }
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<(), PtySessionError> {
@@ -118,12 +142,7 @@ mod tests {
     fn missing_command_returns_an_error() {
         let result = PtySession::spawn(&PtyConfig {
             command: "spindle-command-that-does-not-exist.exe".into(),
-            args: vec![
-                "-NoLogo".into(),
-                "-NoProfile".into(),
-                "-Command".into(),
-                "exit 0".into(),
-            ],
+            args: Vec::new(),
             cwd: std::env::current_dir()
                 .unwrap()
                 .to_string_lossy()
