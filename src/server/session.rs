@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const GEOMETRY_LEASE: Duration = Duration::from_secs(1);
+const MAX_EVENT_HISTORY_BYTES: usize = 512 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreatePaneRequest {
@@ -152,6 +153,7 @@ pub struct Session {
     next_pane_id: u64,
     snapshot_path: Option<PathBuf>,
     events: VecDeque<Event<Value>>,
+    event_bytes: usize,
     geometry_owner: Option<String>,
     geometry_owner_seen: Option<Instant>,
 }
@@ -187,6 +189,7 @@ impl Default for Session {
             next_pane_id: 1,
             snapshot_path: None,
             events: VecDeque::new(),
+            event_bytes: 0,
             geometry_owner: None,
             geometry_owner_seen: None,
         }
@@ -212,6 +215,7 @@ impl Session {
                     snapshot,
                     snapshot_path: Some(path),
                     events: VecDeque::new(),
+                    event_bytes: 0,
                     geometry_owner: None,
                     geometry_owner_seen: None,
                 })
@@ -905,8 +909,20 @@ impl Session {
                 event: name.into(),
                 payload,
             });
-            if self.events.len() > 4096 {
-                self.events.pop_front();
+            if let Some(event) = self.events.back() {
+                self.event_bytes += serde_json::to_vec(event)
+                    .map(|bytes| bytes.len())
+                    .unwrap_or(0);
+            }
+            while self.event_bytes > MAX_EVENT_HISTORY_BYTES {
+                let Some(event) = self.events.pop_front() else {
+                    break;
+                };
+                self.event_bytes = self.event_bytes.saturating_sub(
+                    serde_json::to_vec(&event)
+                        .map(|bytes| bytes.len())
+                        .unwrap_or(0),
+                );
             }
         }
     }
@@ -1294,15 +1310,28 @@ mod tests {
     #[test]
     fn evicted_history_requires_a_snapshot_resync() {
         let mut session = Session::default();
-        for _ in 0..4097 {
+        for _ in 0..6000 {
             session.record_pane_events(vec![PaneEvent::Output {
                 pane_id: "pane-1".into(),
                 bytes: vec![1],
             }]);
         }
         assert!(session.event_gap(0));
-        assert_eq!(session.events_since(0).len(), 4096);
+        let events = session.events_since(0);
+        assert!(!events.is_empty());
+        assert!(events.len() < 6000);
         assert!(!session.event_gap(session.snapshot.event_sequence));
+    }
+
+    #[test]
+    fn large_output_history_stays_within_the_byte_budget() {
+        let mut session = Session::default();
+        session.record_pane_events(vec![PaneEvent::Output {
+            pane_id: "pane-1".into(),
+            bytes: vec![1; 600 * 1024],
+        }]);
+        assert!(session.events.is_empty());
+        assert!(session.event_gap(0));
     }
 
     #[test]
