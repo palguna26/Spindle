@@ -35,6 +35,13 @@ pub fn run() -> io::Result<()> {
             println!("project: {}", project.describe());
             println!("state directory: {}", project.state_dir.display());
             println!("state directory exists: {}", project.state_dir.exists());
+            println!("endpoint exists: {}", project.endpoint_path().exists());
+            println!("server running: {}", ping_server(&project).is_ok());
+            let pid_path = project.state_dir.join("server.pid");
+            match fs::read_to_string(pid_path) {
+                Ok(pid) => println!("server pid: {}", pid.trim()),
+                Err(_) => println!("server pid: unavailable"),
+            }
         }
         "stop" => {
             send_command(&project, "stop_server")?;
