@@ -217,3 +217,49 @@ fn pty_output_reaches_event_subscribers() {
     thread.join().unwrap();
     let _ = std::fs::remove_dir_all(state_dir);
 }
+
+#[test]
+fn live_event_stream_receives_new_pty_output() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let mut stream = client.open_event_stream(0).unwrap();
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    client
+        .request(
+            "create-stream-pane",
+            "create_pane",
+            serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/C", "echo live-stream"],
+                "cwd": cwd,
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap();
+
+    let mut saw_output = false;
+    for _ in 0..20 {
+        let batch = stream.next_batch().unwrap();
+        saw_output |= batch.events.iter().any(|event| {
+            event.event == "pane_output"
+                && event.payload["bytes"]
+                    .as_array()
+                    .is_some_and(|bytes| !bytes.is_empty())
+        });
+        if saw_output {
+            break;
+        }
+    }
+    assert!(saw_output, "live stream did not receive pane output");
+    drop(stream);
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
