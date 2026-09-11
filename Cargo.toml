@@ -13,3 +13,6 @@ portable-pty = "0.9"
 ratatui = "0.29"
 crossterm = "0.28"
 vt100 = "0.15"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }

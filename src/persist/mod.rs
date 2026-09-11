@@ -50,7 +50,7 @@ pub fn save(path: &Path, snapshot: &Snapshot) -> Result<(), SnapshotError> {
     let mut file = File::create(&temporary)?;
     file.write_all(&data)?;
     file.sync_all()?;
-    fs::rename(temporary, path)?;
+    replace_file(&temporary, path)?;
     Ok(())
 }
 
@@ -84,8 +84,36 @@ pub fn save_versioned<T: Serialize>(path: &Path, value: &T) -> Result<(), Snapsh
     let mut file = File::create(&temporary)?;
     file.write_all(&data)?;
     file.sync_all()?;
-    fs::rename(temporary, path)?;
+    replace_file(&temporary, path)?;
     Ok(())
+}
+
+#[cfg(not(windows))]
+fn replace_file(temporary: &Path, path: &Path) -> io::Result<()> {
+    fs::rename(temporary, path)
+}
+
+#[cfg(windows)]
+fn replace_file(temporary: &Path, path: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let source: Vec<u16> = temporary.as_os_str().encode_wide().chain(Some(0)).collect();
+    let target: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let result = unsafe {
+        MoveFileExW(
+            source.as_ptr(),
+            target.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if result == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }
 
 pub fn load_versioned<T: DeserializeOwned>(path: &Path) -> Result<T, SnapshotError> {
@@ -145,5 +173,17 @@ mod tests {
             recovered.panes[0].status,
             PaneStatus::Interrupted { .. }
         ));
+    }
+
+    #[test]
+    fn versioned_snapshot_can_be_replaced() {
+        let path = temp_path();
+        super::save_versioned(&path, &snapshot()).unwrap();
+        super::save_versioned(&path, &snapshot()).unwrap();
+        assert_eq!(
+            super::load_versioned::<Snapshot>(&path).unwrap(),
+            snapshot()
+        );
+        std::fs::remove_file(path).unwrap();
     }
 }
