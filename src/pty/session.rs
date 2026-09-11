@@ -134,6 +134,14 @@ impl PtySession {
     }
 
     pub fn stop(&mut self) -> Result<(), PtySessionError> {
+        let _ = self.writer.write_all(b"\x03");
+        let _ = self.writer.flush();
+        for _ in 0..10 {
+            if self.try_wait()?.is_some() {
+                return Ok(());
+            }
+            thread::sleep(std::time::Duration::from_millis(10));
+        }
         self.child.kill().map_err(PtySessionError::from)?;
         Ok(())
     }
