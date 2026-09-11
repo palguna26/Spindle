@@ -4,6 +4,7 @@ pub mod session;
 pub(crate) mod transport;
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 #[cfg(not(windows))]
@@ -94,6 +95,7 @@ impl ServerLifecycle {
 
 pub fn run(state_dir: &Path) -> io::Result<()> {
     fs::create_dir_all(state_dir)?;
+    let logger = crate::logging::Logger::new(state_dir.join("server.log"))?;
     #[cfg(not(windows))]
     let control_listener = TcpListener::bind(("127.0.0.1", 0))?;
     #[cfg(not(windows))]
@@ -135,6 +137,11 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
         &identity_json,
         serde_json::to_vec_pretty(&server_identity).map_err(io::Error::other)?,
     )?;
+    let mut start_fields = BTreeMap::new();
+    start_fields.insert("pid".into(), std::process::id().to_string());
+    start_fields.insert("control_endpoint".into(), address.clone());
+    start_fields.insert("interactive_endpoint".into(), interactive_address.clone());
+    logger.info("server_started", start_fields)?;
 
     let stopping = Arc::new(AtomicBool::new(false));
     let interactive_stopping = Arc::clone(&stopping);
@@ -185,6 +192,9 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     let _ = fs::remove_file(interactive_endpoint);
     let _ = fs::remove_file(identity_json);
     let _ = fs::remove_file(identity);
+    let mut stop_fields = BTreeMap::new();
+    stop_fields.insert("pid".into(), std::process::id().to_string());
+    let _ = logger.info("server_stopped", stop_fields);
     Ok(())
 }
 

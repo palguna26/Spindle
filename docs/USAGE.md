@@ -68,8 +68,9 @@ State is stored per project under:
 ```
 
 The server writes `session.json`, `server.json`, endpoint markers, and a PID
-marker. `server.json` contains diagnostics only: PID, protocol version,
-endpoints, and start time.
+marker. It appends lifecycle records to `server.log`; PTY output is never
+written to that log. `server.json` contains diagnostics only: PID, protocol
+version, endpoints, and start time.
 
 If the server stops unexpectedly, previously running panes are restored as
 `interrupted`. Spindle does not claim to restore arbitrary child processes;

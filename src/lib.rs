@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod client;
+pub mod logging;
 pub mod model;
 pub mod pane;
 pub mod persist;
