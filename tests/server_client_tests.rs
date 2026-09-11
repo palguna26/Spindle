@@ -587,6 +587,33 @@ fn client_can_open_a_long_lived_event_stream() {
             .unwrap()
             .ok
     );
+    client
+        .request(
+            "stream-pane",
+            "create_pane",
+            serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/C", "echo", "stream-output"],
+                "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap();
+    let mut saw_output = false;
+    for _ in 0..30 {
+        let batch = stream.next_batch().unwrap();
+        if batch.events.iter().any(|event| {
+            event.event == "pane_output"
+                && event.payload["bytes"]
+                    .as_array()
+                    .is_some_and(|bytes| !bytes.is_empty())
+        }) {
+            saw_output = true;
+            break;
+        }
+    }
+    assert!(saw_output, "interactive stream did not receive PTY output");
     drop(stream);
 
     client
