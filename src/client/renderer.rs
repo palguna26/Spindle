@@ -11,9 +11,11 @@ pub(crate) use layout::{
 };
 use navigation::render_tabs;
 pub use navigation::{
-    hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll, sidebar_scroll_max,
-    sidebar_scroll_offset_from_drag_row, sidebar_scroll_region, sidebar_scroll_thumb_grab_offset,
-    ClickTarget,
+    hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
+    hit_test_with_sidebar_scroll_and_sort, sidebar_scroll_max, sidebar_scroll_max_with_sort,
+    sidebar_scroll_offset_from_drag_row, sidebar_scroll_offset_from_drag_row_with_sort,
+    sidebar_scroll_region, sidebar_scroll_thumb_grab_offset,
+    sidebar_scroll_thumb_grab_offset_with_sort, ClickTarget,
 };
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -63,13 +65,34 @@ pub fn render_with_sidebar_scroll_and_cursor(
     sidebar_scroll: usize,
     show_host_cursor: bool,
 ) {
+    render_with_sidebar_scroll_and_cursor_and_agent_sort(
+        frame,
+        snapshot,
+        connected,
+        sidebar_collapsed,
+        sidebar_scroll,
+        show_host_cursor,
+        false,
+    );
+}
+
+pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    connected: bool,
+    sidebar_collapsed: bool,
+    sidebar_scroll: usize,
+    show_host_cursor: bool,
+    agent_priority_sort: bool,
+) {
     let main = layout::main_areas_with_sidebar(frame.area(), sidebar_collapsed);
-    navigation::render_sidebar_with_scroll(
+    navigation::render_sidebar_with_scroll_and_sort(
         frame,
         snapshot,
         main.sidebar,
         sidebar_collapsed,
         sidebar_scroll,
+        agent_priority_sort,
     );
     render_tabs(frame, snapshot, main.tabs);
     let panes = pane_rectangles(snapshot, main.panes);
@@ -245,6 +268,7 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "",
         "Create, rename, and delete actions are in the command palette.",
         "Sidebar agent badges: W working, ! blocked, I idle, ? unknown.",
+        "Click the sidebar title to switch grouped/priority agent order.",
         "Press any key or click to close.",
     ]
     .into_iter()

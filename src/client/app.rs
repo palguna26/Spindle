@@ -60,6 +60,7 @@ struct PaneMouseCapture {
 #[derive(Default)]
 struct MouseState {
     sidebar_collapsed: bool,
+    agent_priority_sort: bool,
     sidebar_scroll: usize,
     sidebar_scroll_drag: Option<u16>,
     preferences_path: std::path::PathBuf,
@@ -135,6 +136,7 @@ pub fn run(
         &client,
         startup_error,
         preferences.sidebar_collapsed,
+        preferences.agent_priority_sort,
         &preferences_path,
     );
     restore_terminal(&mut terminal).map_err(ClientError::Io)?;
@@ -169,6 +171,7 @@ fn event_loop(
     client: &ControlClient,
     mut startup_error: Option<String>,
     sidebar_collapsed: bool,
+    agent_priority_sort: bool,
     preferences_path: &std::path::Path,
 ) -> Result<(), ClientError> {
     let mut prefix_active = false;
@@ -180,6 +183,7 @@ fn event_loop(
     let mut last_pane_sizes = None;
     let mut mouse_state = MouseState {
         sidebar_collapsed,
+        agent_priority_sort,
         preferences_path: preferences_path.to_path_buf(),
         ..MouseState::default()
     };
@@ -227,11 +231,15 @@ fn event_loop(
         }
         was_connected = connected;
         let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
-        mouse_state.sidebar_scroll = mouse_state.sidebar_scroll.min(renderer::sidebar_scroll_max(
-            &snapshot,
-            area,
-            mouse_state.sidebar_collapsed,
-        ));
+        mouse_state.sidebar_scroll =
+            mouse_state
+                .sidebar_scroll
+                .min(renderer::sidebar_scroll_max_with_sort(
+                    &snapshot,
+                    area,
+                    mouse_state.sidebar_collapsed,
+                    mouse_state.agent_priority_sort,
+                ));
         let pane_sizes = renderer::pane_sizes(
             &snapshot,
             renderer::pane_content_area_with_sidebar(area, mouse_state.sidebar_collapsed),
@@ -254,13 +262,14 @@ fn event_loop(
             && startup_error.is_none();
         terminal
             .draw(|frame| {
-                renderer::render_with_sidebar_scroll_and_cursor(
+                renderer::render_with_sidebar_scroll_and_cursor_and_agent_sort(
                     frame,
                     &snapshot,
                     connected,
                     mouse_state.sidebar_collapsed,
                     mouse_state.sidebar_scroll,
                     show_host_cursor,
+                    mouse_state.agent_priority_sort,
                 );
                 if let Some(selection) = &mouse_state.selection {
                     renderer::render_selection_with_sidebar(
@@ -470,6 +479,7 @@ fn event_loop(
                 &mouse_state.preferences_path,
                 super::preferences::ClientPreferences {
                     sidebar_collapsed: mouse_state.sidebar_collapsed,
+                    agent_priority_sort: mouse_state.agent_priority_sort,
                 },
             );
             prefix_active = false;
@@ -779,8 +789,12 @@ fn handle_mouse(
             mouse.column,
             mouse.row,
         ) {
-            let max_scroll =
-                renderer::sidebar_scroll_max(snapshot, area, mouse_state.sidebar_collapsed);
+            let max_scroll = renderer::sidebar_scroll_max_with_sort(
+                snapshot,
+                area,
+                mouse_state.sidebar_collapsed,
+                mouse_state.agent_priority_sort,
+            );
             mouse_state.sidebar_scroll = if mouse.kind == MouseEventKind::ScrollUp {
                 mouse_state.sidebar_scroll.saturating_sub(1)
             } else {
@@ -831,12 +845,13 @@ fn handle_mouse(
         )? {
             return Ok(());
         } else {
-            let target = renderer::hit_test_with_sidebar_scroll(
+            let target = renderer::hit_test_with_sidebar_scroll_and_sort(
                 snapshot,
                 area,
                 mouse,
                 mouse_state.sidebar_collapsed,
                 mouse_state.sidebar_scroll,
+                mouse_state.agent_priority_sort,
             );
             let agent_pane = if let Some(renderer::ClickTarget::Agent {
                 space_id,
@@ -892,13 +907,14 @@ fn handle_mouse(
     }
     if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
         mouse_state.sidebar_scroll_drag = None;
-        if let Some(grab_row_offset) = renderer::sidebar_scroll_thumb_grab_offset(
+        if let Some(grab_row_offset) = renderer::sidebar_scroll_thumb_grab_offset_with_sort(
             snapshot,
             area,
             mouse_state.sidebar_collapsed,
             mouse_state.sidebar_scroll,
             mouse.column,
             mouse.row,
+            mouse_state.agent_priority_sort,
         ) {
             mouse_state.sidebar_scroll_drag = Some(grab_row_offset);
             return Ok(());
@@ -948,12 +964,13 @@ fn handle_mouse(
         MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
     ) && mouse_state.sidebar_scroll_drag.is_some()
     {
-        mouse_state.sidebar_scroll = renderer::sidebar_scroll_offset_from_drag_row(
+        mouse_state.sidebar_scroll = renderer::sidebar_scroll_offset_from_drag_row_with_sort(
             snapshot,
             area,
             mouse_state.sidebar_collapsed,
             mouse.row,
             mouse_state.sidebar_scroll_drag.unwrap_or_default(),
+            mouse_state.agent_priority_sort,
         );
         if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
             mouse_state.sidebar_scroll_drag = None;
@@ -1028,12 +1045,13 @@ fn handle_mouse(
     if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
         return Ok(());
     }
-    let Some(target) = renderer::hit_test_with_sidebar_scroll(
+    let Some(target) = renderer::hit_test_with_sidebar_scroll_and_sort(
         snapshot,
         area,
         mouse,
         mouse_state.sidebar_collapsed,
         mouse_state.sidebar_scroll,
+        mouse_state.agent_priority_sort,
     ) else {
         return Ok(());
     };
@@ -1046,6 +1064,18 @@ fn handle_mouse(
                 &mouse_state.preferences_path,
                 super::preferences::ClientPreferences {
                     sidebar_collapsed: mouse_state.sidebar_collapsed,
+                    agent_priority_sort: mouse_state.agent_priority_sort,
+                },
+            );
+        }
+        renderer::ClickTarget::ToggleAgentSort => {
+            mouse_state.agent_priority_sort = !mouse_state.agent_priority_sort;
+            mouse_state.sidebar_scroll = 0;
+            let _ = super::preferences::store(
+                &mouse_state.preferences_path,
+                super::preferences::ClientPreferences {
+                    sidebar_collapsed: mouse_state.sidebar_collapsed,
+                    agent_priority_sort: mouse_state.agent_priority_sort,
                 },
             );
         }

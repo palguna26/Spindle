@@ -8,6 +8,8 @@ static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(1);
 pub(super) struct ClientPreferences {
     #[serde(default)]
     pub(super) sidebar_collapsed: bool,
+    #[serde(default)]
+    pub(super) agent_priority_sort: bool,
 }
 
 pub(super) fn load(path: &Path) -> ClientPreferences {
@@ -68,6 +70,16 @@ mod tests {
     }
 
     #[test]
+    fn old_sidebar_preferences_default_to_grouped_agent_rows() {
+        let path = test_path("legacy-sort");
+        std::fs::write(&path, br#"{"sidebar_collapsed":true}"#).unwrap();
+        let preferences = load(&path);
+        assert!(preferences.sidebar_collapsed);
+        assert!(!preferences.agent_priority_sort);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn sidebar_preference_survives_replacement() {
         let path = test_path("replacement");
         let _ = std::fs::remove_file(&path);
@@ -75,10 +87,12 @@ mod tests {
             &path,
             ClientPreferences {
                 sidebar_collapsed: true,
+                agent_priority_sort: true,
             },
         )
         .unwrap();
         assert!(load(&path).sidebar_collapsed);
+        assert!(load(&path).agent_priority_sort);
         store(&path, ClientPreferences::default()).unwrap();
         assert!(!load(&path).sidebar_collapsed);
         std::fs::remove_file(path).unwrap();

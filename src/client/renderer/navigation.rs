@@ -11,6 +11,7 @@ use super::layout::{pane_rectangles, split_handles};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickTarget {
     SidebarToggle,
+    ToggleAgentSort,
     SidebarScroll(usize),
     Space(String),
     Workspace {
@@ -48,6 +49,24 @@ pub fn hit_test_with_sidebar_scroll(
     sidebar_collapsed: bool,
     sidebar_scroll: usize,
 ) -> Option<ClickTarget> {
+    hit_test_with_sidebar_scroll_and_sort(
+        snapshot,
+        area,
+        mouse,
+        sidebar_collapsed,
+        sidebar_scroll,
+        false,
+    )
+}
+
+pub fn hit_test_with_sidebar_scroll_and_sort(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    mouse: MouseEvent,
+    sidebar_collapsed: bool,
+    sidebar_scroll: usize,
+    agent_priority_sort: bool,
+) -> Option<ClickTarget> {
     if !matches!(
         mouse.kind,
         MouseEventKind::Down(MouseButton::Left | MouseButton::Right)
@@ -63,11 +82,14 @@ pub fn hit_test_with_sidebar_scroll(
         {
             return Some(ClickTarget::SidebarToggle);
         }
+        if !sidebar_collapsed && y == main.sidebar.y && x > main.sidebar.x {
+            return Some(ClickTarget::ToggleAgentSort);
+        }
         let body = sidebar_body(main.sidebar);
         if !contains(body, x, y) {
             return None;
         }
-        let rows = sidebar_rows(snapshot);
+        let rows = sidebar_rows(snapshot, agent_priority_sort);
         let max_scroll = rows.len().saturating_sub(usize::from(body.height));
         if max_scroll > 0 && body.width > 1 && x == body.right().saturating_sub(1) {
             return Some(ClickTarget::SidebarScroll(sidebar_scroll_for_track_row(
@@ -101,6 +123,7 @@ pub fn hit_test_with_sidebar_scroll(
                 tab_id: tab_id.to_string(),
                 pane_id: pane.pane_id.clone(),
             },
+            SidebarRow::AgentHeader => ClickTarget::ToggleAgentSort,
         });
     }
     if contains(main.tabs, x, y) {
@@ -129,9 +152,18 @@ pub fn hit_test_with_sidebar_scroll(
 }
 
 pub fn sidebar_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -> usize {
+    sidebar_scroll_max_with_sort(snapshot, area, collapsed, false)
+}
+
+pub fn sidebar_scroll_max_with_sort(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    agent_priority_sort: bool,
+) -> usize {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    sidebar_rows(snapshot)
+    sidebar_rows(snapshot, agent_priority_sort)
         .len()
         .saturating_sub(usize::from(body.height))
 }
@@ -149,9 +181,21 @@ pub fn sidebar_scroll_thumb_grab_offset(
     x: u16,
     y: u16,
 ) -> Option<u16> {
+    sidebar_scroll_thumb_grab_offset_with_sort(snapshot, area, collapsed, scroll, x, y, false)
+}
+
+pub fn sidebar_scroll_thumb_grab_offset_with_sort(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    scroll: usize,
+    x: u16,
+    y: u16,
+    agent_priority_sort: bool,
+) -> Option<u16> {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    let max_scroll = sidebar_scroll_max(snapshot, area, collapsed);
+    let max_scroll = sidebar_scroll_max_with_sort(snapshot, area, collapsed, agent_priority_sort);
     if max_scroll == 0
         || body.width <= 1
         || x != body.right().saturating_sub(1)
@@ -159,8 +203,12 @@ pub fn sidebar_scroll_thumb_grab_offset(
     {
         return None;
     }
-    let (thumb_top, thumb_height) =
-        sidebar_scrollbar_thumb(body, scroll, max_scroll, sidebar_rows(snapshot).len())?;
+    let (thumb_top, thumb_height) = sidebar_scrollbar_thumb(
+        body,
+        scroll,
+        max_scroll,
+        sidebar_rows(snapshot, agent_priority_sort).len(),
+    )?;
     let row = y.saturating_sub(body.y);
     (row >= thumb_top && row < thumb_top.saturating_add(thumb_height)).then_some(row - thumb_top)
 }
@@ -172,10 +220,28 @@ pub fn sidebar_scroll_offset_from_drag_row(
     row: u16,
     grab_row_offset: u16,
 ) -> usize {
+    sidebar_scroll_offset_from_drag_row_with_sort(
+        snapshot,
+        area,
+        collapsed,
+        row,
+        grab_row_offset,
+        false,
+    )
+}
+
+pub fn sidebar_scroll_offset_from_drag_row_with_sort(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    row: u16,
+    grab_row_offset: u16,
+    agent_priority_sort: bool,
+) -> usize {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    let max_scroll = sidebar_scroll_max(snapshot, area, collapsed);
-    let rows = sidebar_rows(snapshot).len();
+    let max_scroll = sidebar_scroll_max_with_sort(snapshot, area, collapsed, agent_priority_sort);
+    let rows = sidebar_rows(snapshot, agent_priority_sort).len();
     let Some((_, thumb_height)) = sidebar_scrollbar_thumb(body, 0, max_scroll, rows) else {
         return 0;
     };
@@ -259,52 +325,64 @@ enum SidebarRow<'a> {
         workspace_id: &'a str,
         tab_id: &'a str,
         tab_name: &'a str,
+        workspace_name: &'a str,
         pane: &'a crate::server::session::PaneView,
     },
+    AgentHeader,
 }
 
-fn sidebar_rows(snapshot: &SessionSnapshot) -> Vec<SidebarRow<'_>> {
-    snapshot
-        .spaces
-        .iter()
-        .flat_map(|space| {
-            std::iter::once(SidebarRow::Space {
+fn sidebar_rows(snapshot: &SessionSnapshot, agent_priority_sort: bool) -> Vec<SidebarRow<'_>> {
+    let mut rows = Vec::new();
+    let mut priority_agents = Vec::new();
+    for space in &snapshot.spaces {
+        rows.push(SidebarRow::Space {
+            space_id: &space.space_id,
+            name: &space.name,
+        });
+        for workspace in &space.workspaces {
+            rows.push(SidebarRow::Workspace {
                 space_id: &space.space_id,
-                name: &space.name,
-            })
-            .chain(space.workspaces.iter().flat_map(move |workspace| {
-                std::iter::once(SidebarRow::Workspace {
-                    space_id: &space.space_id,
-                    workspace_id: &workspace.workspace_id,
-                    name: &workspace.name,
-                })
-                .chain(workspace.tabs.iter().flat_map(move |tab| {
-                    let pane_ids = tab
-                        .layout
-                        .as_ref()
-                        .map(|layout| layout.pane_ids())
-                        .unwrap_or_default();
-                    let mut agents = snapshot
-                        .panes
-                        .iter()
-                        .filter(move |pane| {
-                            pane.agent.is_some() && pane_ids.contains(&pane.pane_id.as_str())
-                        })
-                        .collect::<Vec<_>>();
-                    agents.sort_by_key(|pane| {
-                        std::cmp::Reverse(agent_state_priority(pane.agent_state))
-                    });
-                    agents.into_iter().map(move |pane| SidebarRow::Agent {
+                workspace_id: &workspace.workspace_id,
+                name: &workspace.name,
+            });
+            for tab in &workspace.tabs {
+                let pane_ids = tab
+                    .layout
+                    .as_ref()
+                    .map(|layout| layout.pane_ids())
+                    .unwrap_or_default();
+                let agents = snapshot.panes.iter().filter(|pane| {
+                    pane.agent.is_some() && pane_ids.contains(&pane.pane_id.as_str())
+                });
+                for pane in agents {
+                    let row = SidebarRow::Agent {
                         space_id: &space.space_id,
                         workspace_id: &workspace.workspace_id,
                         tab_id: &tab.tab_id,
                         tab_name: &tab.name,
+                        workspace_name: &workspace.name,
                         pane,
-                    })
-                }))
-            }))
-        })
-        .collect()
+                    };
+                    if agent_priority_sort {
+                        priority_agents.push(row);
+                    } else {
+                        rows.push(row);
+                    }
+                }
+            }
+        }
+    }
+    if agent_priority_sort {
+        priority_agents.sort_by_key(|row| {
+            let SidebarRow::Agent { pane, .. } = row else {
+                unreachable!()
+            };
+            std::cmp::Reverse(agent_state_priority(pane.agent_state))
+        });
+        rows.push(SidebarRow::AgentHeader);
+        rows.extend(priority_agents);
+    }
+    rows
 }
 
 fn agent_state_priority(state: Option<crate::detect::AgentState>) -> u8 {
@@ -331,6 +409,7 @@ pub(super) fn render_sidebar_with_collapsed(
     render_sidebar_with_scroll(frame, snapshot, area, collapsed, 0);
 }
 
+#[cfg(test)]
 pub(super) fn render_sidebar_with_scroll(
     frame: &mut Frame<'_>,
     snapshot: &SessionSnapshot,
@@ -338,7 +417,18 @@ pub(super) fn render_sidebar_with_scroll(
     collapsed: bool,
     scroll: usize,
 ) {
-    let rows = sidebar_rows(snapshot);
+    render_sidebar_with_scroll_and_sort(frame, snapshot, area, collapsed, scroll, false);
+}
+
+pub(super) fn render_sidebar_with_scroll_and_sort(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    scroll: usize,
+    agent_priority_sort: bool,
+) {
+    let rows = sidebar_rows(snapshot, agent_priority_sort);
     let body = sidebar_body(area);
     let max_scroll = rows.len().saturating_sub(usize::from(body.height));
     let start = scroll.min(max_scroll);
@@ -397,7 +487,12 @@ pub(super) fn render_sidebar_with_scroll(
                 ));
                 Line::from(spans)
             }
-            SidebarRow::Agent { pane, tab_name, .. } => {
+            SidebarRow::Agent {
+                pane,
+                tab_name,
+                workspace_name,
+                ..
+            } => {
                 let state = pane
                     .agent_state
                     .unwrap_or(crate::detect::AgentState::Unknown);
@@ -428,20 +523,36 @@ pub(super) fn render_sidebar_with_scroll(
                     .filter(|label| !label.is_empty())
                     .map(|label| format!("{kind} · {label}"))
                     .unwrap_or_else(|| kind.to_owned());
+                let context = if agent_priority_sort {
+                    format!("{workspace_name}/{tab_name}")
+                } else {
+                    tab_name.to_string()
+                };
                 Line::from(vec![
                     Span::raw("    "),
                     Span::styled(format!("{} ", state.sidebar_marker()), state_style),
                     Span::styled(label, label_style),
-                    Span::styled(format!(" · {tab_name}"), tab_style),
+                    Span::styled(format!(" · {context}"), tab_style),
                 ])
             }
+            SidebarRow::AgentHeader => Line::from(vec![
+                Span::styled("  Agents", Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(" · priority", Style::default().fg(Color::DarkGray)),
+            ]),
         })
         .collect::<Vec<_>>();
     frame.render_widget(
         Paragraph::new(lines).block(
             ratatui::widgets::Block::default()
                 .borders(ratatui::widgets::Borders::ALL)
-                .title("Spaces"),
+                .title(format!(
+                    "Spaces · agents {}",
+                    if agent_priority_sort {
+                        "priority"
+                    } else {
+                        "grouped"
+                    }
+                )),
         ),
         area,
     );
@@ -564,8 +675,9 @@ mod tests {
     use super::super::layout::main_areas;
     use super::super::layout::{pane_rectangles, pane_sizes, split_areas, split_handles};
     use super::{
-        hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll, render_sidebar,
-        render_sidebar_with_collapsed, render_sidebar_with_scroll, render_tabs, ClickTarget,
+        hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
+        hit_test_with_sidebar_scroll_and_sort, render_sidebar, render_sidebar_with_collapsed,
+        render_sidebar_with_scroll, render_tabs, ClickTarget,
     };
     use crate::model::layout::{Direction as SplitDirection, LayoutNode};
     use crate::server::session::{SessionSnapshot, SpaceView, TabView, WorkspaceView};
@@ -931,11 +1043,11 @@ mod tests {
             .unwrap();
         let buffer = terminal.backend().buffer();
         assert_eq!(
-            buffer.cell((sidebar.x + 8, sidebar.y + 4)).unwrap().bg,
+            buffer.cell((sidebar.x + 8, sidebar.y + 5)).unwrap().bg,
             ratatui::style::Color::DarkGray
         );
         assert_ne!(
-            buffer.cell((sidebar.x + 8, sidebar.y + 5)).unwrap().bg,
+            buffer.cell((sidebar.x + 8, sidebar.y + 4)).unwrap().bg,
             ratatui::style::Color::DarkGray
         );
     }
@@ -950,7 +1062,14 @@ mod tests {
         let area = Rect::new(0, 0, 100, 30);
         let sidebar = main_areas(area).sidebar;
         assert_eq!(
-            hit_test(&snapshot, area, click(sidebar.x + 3, sidebar.y + 4)),
+            hit_test_with_sidebar_scroll_and_sort(
+                &snapshot,
+                area,
+                click(sidebar.x + 3, sidebar.y + 5),
+                false,
+                0,
+                true,
+            ),
             Some(ClickTarget::Agent {
                 space_id: "space-1".into(),
                 workspace_id: "workspace-2".into(),
@@ -959,7 +1078,14 @@ mod tests {
             })
         );
         assert_eq!(
-            hit_test(&snapshot, area, click(sidebar.x + 3, sidebar.y + 5)),
+            hit_test_with_sidebar_scroll_and_sort(
+                &snapshot,
+                area,
+                click(sidebar.x + 3, sidebar.y + 6),
+                false,
+                0,
+                true,
+            ),
             Some(ClickTarget::Agent {
                 space_id: "space-1".into(),
                 workspace_id: "workspace-2".into(),
@@ -967,6 +1093,57 @@ mod tests {
                 pane_id: "pane-1".into(),
             })
         );
+        assert_eq!(
+            hit_test_with_sidebar_scroll_and_sort(
+                &snapshot,
+                area,
+                click(sidebar.x + 3, sidebar.y + 4),
+                false,
+                0,
+                true,
+            ),
+            Some(ClickTarget::ToggleAgentSort)
+        );
+        assert_eq!(
+            hit_test_with_sidebar_scroll_and_sort(
+                &snapshot,
+                area,
+                click(sidebar.x + 3, sidebar.y),
+                false,
+                0,
+                false,
+            ),
+            Some(ClickTarget::ToggleAgentSort)
+        );
+    }
+
+    #[test]
+    fn priority_sidebar_renders_a_global_agent_section_in_state_order() {
+        let mut snapshot = sample_snapshot();
+        snapshot.panes = vec![
+            agent_pane("pane-1", "codex", "working"),
+            agent_pane("pane-2", "open_code", "blocked"),
+        ];
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let sidebar = main_areas(Rect::new(0, 0, 100, 30)).sidebar;
+        terminal
+            .draw(|frame| {
+                super::render_sidebar_with_scroll_and_sort(
+                    frame, &snapshot, sidebar, false, 0, true,
+                )
+            })
+            .unwrap();
+        let content = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(content.contains("priority"));
+        assert!(content.contains("Agents"));
+        assert!(content.find("OpenCode").unwrap() < content.find("Codex").unwrap());
     }
 
     #[test]

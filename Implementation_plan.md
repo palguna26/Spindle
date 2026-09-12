@@ -146,8 +146,9 @@ and quick-start "Use the mouse". Spindle: `src/client/app.rs`,
   the sidebar. Pane chrome shows identity/state; the sidebar lists each detected
   agent under its workspace with a state marker and tab, and selecting a row
   opens that space/workspace/tab and focuses the pane; within each grouped tab,
-  blocked agents sort ahead of working, idle, and unknown agents. Herdr's global
-  priority-sort toggle and richer lifecycle transitions remain.
+  the sidebar supports Herdr-style grouped and priority views, with blocked
+  agents first in priority mode. The selected view is saved per client. Richer
+  lifecycle transitions remain.
 - [ ] Keep state associated with the correct pane, tab, and workspace through
   switches, restarts, and recovery.
 - [ ] Make detection optional/fault-tolerant so normal shell use is unaffected.
