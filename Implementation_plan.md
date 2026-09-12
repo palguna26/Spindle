@@ -63,9 +63,9 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
 - [x] Cover new tab/workspace/space shell creation and focus in integration
   tests. The ensure-shell flow verifies the server snapshot after creation and
   retries/reports an error instead of leaving a connected empty canvas.
-- [ ] Exercise the real client attach and detach/reattach flow end-to-end; the
-  current integration tests cover the server API and shell recovery, not the
-  rendered Windows TUI.
+- [x] Exercise the real client attach and detach/reattach flow end-to-end. On
+  Windows, the installed release showed the PowerShell prompt, accepted a
+  command, and reattached to the same live pane with its output intact.
 
 Reference: Herdr `Workspace::new`, `create_tab_with_runtime`, and quick-start
 "Create a workspace" / "Detach and come back". Spindle: `Session::default`,
