@@ -49,13 +49,14 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
 - [x] Answer terminal cursor-position queries from PowerShell so its first
   prompt is not blocked waiting for the host.
 - [x] Creating a tab, workspace, or space starts and focuses its first shell.
-- [ ] Closing the last pane/tab follows the same lifecycle rule as the
-  reference instead of leaving an unexplained blank canvas.
+- [x] Closing the last pane/tab follows Herdr's workspace lifecycle: close the
+  workspace when its final tab/pane closes, select a sibling when present, and
+  show a clear empty-state with a shortcut to create a workspace when none remain.
 - [x] Closing the only pane in a tab removes that tab when sibling tabs exist
   and focuses the remaining active tab, matching Herdr `Workspace::remove_pane`.
-- [ ] Match Herdr's last-tab/last-workspace close behavior; Spindle currently
-  preserves its required final workspace and ensures a replacement shell when
-  its last pane closes; explicit close-tab still refuses the final tab.
+- [x] Make active workspace optional so closing the final workspace does not
+  leave a stale ID; persist/reload the empty state and allow workspace creation
+  to restore a usable shell.
 - [x] Show shell-start errors in the UI and allow retry or detach.
 - [x] Wire attach, tab/workspace/space creation, and container switching to
   idempotent shell creation using the active workspace repository path.

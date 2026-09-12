@@ -453,8 +453,12 @@ fn event_loop(
                 break;
             }
             Action::NewTab => {
-                client.request("new-tab", "create_tab", json!({ "name": "Activity" }))?;
-                ensure_active_default_pane(client, terminal_size)?;
+                if active_workspace(&snapshot).is_some() {
+                    client.request("new-tab", "create_tab", json!({ "name": "Activity" }))?;
+                    ensure_active_default_pane(client, terminal_size)?;
+                } else {
+                    create_workspace_from_current_directory(client, terminal_size)?;
+                }
             }
             Action::NewPane => {
                 let _ = client.request(
@@ -475,7 +479,11 @@ fn event_loop(
             }
             Action::CloseTab => {
                 if let Some(tab_id) = active_tab_id(&snapshot) {
-                    let _ = client.request("close-tab", "close_tab", json!({ "id": tab_id }));
+                    let response =
+                        client.request("close-tab", "close_tab", json!({ "id": tab_id }))?;
+                    if response.ok {
+                        ensure_active_default_pane(client, terminal_size)?;
+                    }
                 }
             }
             Action::NextTab | Action::PreviousTab => {
@@ -1404,11 +1412,14 @@ fn submit_rename(
         };
         if expected_name.as_deref() == Some(name.as_str()) {
             if let Some(id) = id {
-                let _ = client.request(
+                let response = client.request(
                     format!("confirm-{operation}"),
                     operation,
                     json!({ "id": id }),
                 )?;
+                if response.ok {
+                    ensure_active_default_pane(client, terminal_size)?;
+                }
             }
         }
         return Ok(());
@@ -1465,10 +1476,12 @@ fn active_workspace(snapshot: &SessionSnapshot) -> Option<&crate::server::sessio
         .iter()
         .find(|space| space.space_id == snapshot.active_space_id)
         .and_then(|space| {
-            space
-                .workspaces
-                .iter()
-                .find(|workspace| workspace.workspace_id == space.active_workspace_id)
+            space.active_workspace_id.as_ref().and_then(|workspace_id| {
+                space
+                    .workspaces
+                    .iter()
+                    .find(|workspace| &workspace.workspace_id == workspace_id)
+            })
         })
 }
 
@@ -1477,7 +1490,7 @@ fn active_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
         .spaces
         .iter()
         .find(|space| space.space_id == snapshot.active_space_id)
-        .map(|space| space.active_workspace_id.clone())
+        .and_then(|space| space.active_workspace_id.clone())
 }
 
 fn workspace_id_by_name(snapshot: &SessionSnapshot, name: &str) -> Option<String> {
@@ -1502,10 +1515,9 @@ fn adjacent_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
     if space.workspaces.len() < 2 {
         return None;
     }
-    let index = space
-        .workspaces
-        .iter()
-        .position(|workspace| workspace.workspace_id == space.active_workspace_id)?;
+    let index = space.workspaces.iter().position(|workspace| {
+        Some(workspace.workspace_id.as_str()) == space.active_workspace_id.as_deref()
+    })?;
     Some(
         space.workspaces[(index + 1) % space.workspaces.len()]
             .workspace_id
@@ -1535,12 +1547,16 @@ fn execute_action(
             Ok(true)
         }
         Action::NewTab => {
-            client.request(
-                "palette-new-tab",
-                "create_tab",
-                json!({ "name": "Activity" }),
-            )?;
-            ensure_active_default_pane(client, terminal_size)?;
+            if active_workspace(snapshot).is_some() {
+                client.request(
+                    "palette-new-tab",
+                    "create_tab",
+                    json!({ "name": "Activity" }),
+                )?;
+                ensure_active_default_pane(client, terminal_size)?;
+            } else {
+                create_workspace_from_current_directory(client, terminal_size)?;
+            }
             Ok(false)
         }
         Action::NewPane => {
@@ -1564,7 +1580,11 @@ fn execute_action(
         }
         Action::CloseTab => {
             if let Some(tab_id) = active_tab_id(snapshot) {
-                let _ = client.request("palette-close-tab", "close_tab", json!({ "id": tab_id }));
+                let response =
+                    client.request("palette-close-tab", "close_tab", json!({ "id": tab_id }))?;
+                if response.ok {
+                    ensure_active_default_pane(client, terminal_size)?;
+                }
             }
             Ok(false)
         }
@@ -1751,6 +1771,9 @@ fn ensure_active_default_pane(
     terminal_size: (u16, u16),
 ) -> Result<(), ClientError> {
     let snapshot = current_snapshot(client)?;
+    if active_workspace(&snapshot).is_none() {
+        return Ok(());
+    }
     client.request(
         "ensure-default-pane",
         "ensure_active_pane",
@@ -1765,6 +1788,22 @@ fn ensure_active_default_pane(
                 .into(),
         ))
     }
+}
+
+fn create_workspace_from_current_directory(
+    client: &ControlClient,
+    terminal_size: (u16, u16),
+) -> Result<(), ClientError> {
+    let repository_path = std::env::current_dir()
+        .map_err(ClientError::Io)?
+        .to_string_lossy()
+        .into_owned();
+    client.request(
+        "create-workspace-after-close",
+        "create_workspace",
+        json!({ "name": "Current project", "repository_path": repository_path }),
+    )?;
+    ensure_active_default_pane(client, terminal_size)
 }
 
 fn startup_error_message(error: ClientError) -> String {
@@ -1820,10 +1859,9 @@ fn adjacent_tab_id(snapshot: &SessionSnapshot, forward: bool) -> Option<String> 
         .spaces
         .iter()
         .find(|space| space.space_id == snapshot.active_space_id)?;
-    let workspace = space
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.workspace_id == space.active_workspace_id)?;
+    let workspace = space.workspaces.iter().find(|workspace| {
+        Some(workspace.workspace_id.as_str()) == space.active_workspace_id.as_deref()
+    })?;
     if workspace.tabs.len() < 2 {
         return None;
     }
@@ -1844,10 +1882,9 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
         .spaces
         .iter()
         .find(|space| space.space_id == snapshot.active_space_id)?;
-    let workspace = space
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.workspace_id == space.active_workspace_id)?;
+    let workspace = space.workspaces.iter().find(|workspace| {
+        Some(workspace.workspace_id.as_str()) == space.active_workspace_id.as_deref()
+    })?;
     Some(workspace.active_tab_id.clone())
 }
 

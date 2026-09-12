@@ -353,7 +353,9 @@ pub(super) fn render_sidebar_with_scroll(
                     .iter()
                     .find(|space| space.space_id == *space_id);
                 let active = *space_id == snapshot.active_space_id
-                    && space.is_some_and(|space| space.active_workspace_id == *workspace_id);
+                    && space.is_some_and(|space| {
+                        space.active_workspace_id.as_deref() == Some(*workspace_id)
+                    });
                 if collapsed {
                     return Line::from(if active { "W " } else { "w " });
                 }
@@ -497,10 +499,12 @@ fn active_workspace(snapshot: &SessionSnapshot) -> Option<&WorkspaceView> {
         .spaces
         .iter()
         .find(|space| space.space_id == snapshot.active_space_id)?;
-    space
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.workspace_id == space.active_workspace_id)
+    space.active_workspace_id.as_ref().and_then(|workspace_id| {
+        space
+            .workspaces
+            .iter()
+            .find(|workspace| &workspace.workspace_id == workspace_id)
+    })
 }
 
 fn contains(area: Rect, x: u16, y: u16) -> bool {
@@ -585,7 +589,7 @@ mod tests {
                         active_tab_id: "tab-3".into(),
                     },
                 ],
-                active_workspace_id: "workspace-2".into(),
+                active_workspace_id: Some("workspace-2".into()),
             }],
             active_space_id: "space-1".into(),
             panes: Vec::new(),

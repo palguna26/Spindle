@@ -123,10 +123,11 @@ fn active_tab(snapshot: &SessionSnapshot) -> Option<&crate::server::session::Tab
         .spaces
         .iter()
         .find(|space| space.space_id == snapshot.active_space_id)?;
+    let workspace_id = space.active_workspace_id.as_ref()?;
     let workspace = space
         .workspaces
         .iter()
-        .find(|workspace| workspace.workspace_id == space.active_workspace_id)?;
+        .find(|workspace| &workspace.workspace_id == workspace_id)?;
     workspace
         .tabs
         .iter()

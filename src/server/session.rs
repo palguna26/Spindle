@@ -179,7 +179,8 @@ pub struct SpaceView {
     pub space_id: String,
     pub name: String,
     pub workspaces: Vec<WorkspaceView>,
-    pub active_workspace_id: String,
+    #[serde(default)]
+    pub active_workspace_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,7 +243,7 @@ impl Default for Session {
                         }],
                         active_tab_id: "tab-1".into(),
                     }],
-                    active_workspace_id: "workspace-1".into(),
+                    active_workspace_id: Some("workspace-1".into()),
                 }],
                 active_space_id: "space-1".into(),
                 panes: Vec::new(),
@@ -629,7 +630,7 @@ impl Session {
             }],
             active_tab_id: tab_id,
         });
-        space.active_workspace_id = workspace_id.clone();
+        space.active_workspace_id = Some(workspace_id.clone());
         self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
@@ -661,7 +662,7 @@ impl Session {
                 }],
                 active_tab_id: tab_id,
             }],
-            active_workspace_id: workspace_id,
+            active_workspace_id: Some(workspace_id),
         });
         self.snapshot.active_space_id = space_id.clone();
         self.sync_focus_to_active_tab()?;
@@ -728,7 +729,7 @@ impl Session {
         {
             return Err(format!("workspace '{workspace_id}' does not exist"));
         }
-        space.active_workspace_id = workspace_id.into();
+        space.active_workspace_id = Some(workspace_id.into());
         self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
@@ -741,31 +742,7 @@ impl Session {
 
     pub fn delete_workspace(&mut self, workspace_id: &str) -> Result<Value, String> {
         let active_space_id = self.snapshot.active_space_id.clone();
-        let space_index = self
-            .snapshot
-            .spaces
-            .iter()
-            .position(|space| space.space_id == active_space_id)
-            .ok_or_else(|| "active space does not exist".to_string())?;
-        if self.snapshot.spaces[space_index].workspaces.len() == 1 {
-            return Err("cannot delete the last workspace".into());
-        }
-        let workspace_index = self.snapshot.spaces[space_index]
-            .workspaces
-            .iter()
-            .position(|workspace| workspace.workspace_id == workspace_id)
-            .ok_or_else(|| format!("workspace '{workspace_id}' does not exist"))?;
-        if self.workspace_has_running_panes(space_index, workspace_index) {
-            return Err("stop all panes in the workspace before deleting it".into());
-        }
-        self.snapshot.spaces[space_index]
-            .workspaces
-            .remove(workspace_index);
-        let space = &mut self.snapshot.spaces[space_index];
-        if space.active_workspace_id == workspace_id {
-            space.active_workspace_id = space.workspaces[0].workspace_id.clone();
-        }
-        self.sync_focus_to_active_tab()?;
+        self.close_workspace(&active_space_id, workspace_id)?;
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
@@ -816,33 +793,29 @@ impl Session {
             .iter()
             .find(|space| space.space_id == active_space_id)
             .ok_or_else(|| "active space does not exist".to_string())?;
-        let workspace_id = space.active_workspace_id.clone();
+        let workspace_id = space
+            .active_workspace_id
+            .clone()
+            .ok_or_else(|| "active space has no workspace".to_string())?;
         let workspace = space
             .workspaces
             .iter()
-            .find(|workspace| workspace.workspace_id == space.active_workspace_id)
+            .find(|workspace| workspace.workspace_id == workspace_id)
             .ok_or_else(|| "active workspace does not exist".to_string())?;
-        if workspace.tabs.len() == 1 {
-            return Err("cannot close the last tab".into());
-        }
         let index = workspace
             .tabs
             .iter()
             .position(|tab| tab.tab_id == tab_id)
             .ok_or_else(|| format!("tab '{tab_id}' does not exist"))?;
+        if workspace.tabs.len() == 1 {
+            self.close_workspace(&active_space_id, &workspace_id)?;
+            return Ok(serde_json::json!({ "tab_id": tab_id, "closed_workspace": true }));
+        }
         let pane_ids = workspace.tabs[index]
             .layout
             .as_ref()
             .map(LayoutNode::pane_ids)
             .unwrap_or_default();
-        if self
-            .snapshot
-            .panes
-            .iter()
-            .any(|pane| pane_ids.contains(&pane.pane_id.as_str()) && pane.status.is_running())
-        {
-            return Err("stop all panes in the tab before closing it".into());
-        }
         for pane_id in &pane_ids {
             let _ = self.pane_manager.remove(pane_id);
         }
@@ -861,7 +834,9 @@ impl Session {
             .expect("active workspace was found");
         workspace.tabs.remove(index);
         if workspace.active_tab_id == tab_id {
-            workspace.active_tab_id = workspace.tabs[0].tab_id.clone();
+            workspace.active_tab_id = workspace.tabs[index.min(workspace.tabs.len() - 1)]
+                .tab_id
+                .clone();
         }
         self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "tab_id": tab_id }))
@@ -1011,7 +986,10 @@ impl Session {
             .iter()
             .find(|space| space.space_id == active_space_id)
             .ok_or_else(|| "active space does not exist".to_string())?;
-        let workspace_id = space.active_workspace_id.clone();
+        let workspace_id = space
+            .active_workspace_id
+            .clone()
+            .ok_or_else(|| "active space has no workspace".to_string())?;
         let workspace = space
             .workspaces
             .iter()
@@ -1034,12 +1012,19 @@ impl Session {
         {
             return Err(format!("pane '{pane_id}' does not exist in the active tab"));
         }
+        if pane_count == 1 && workspace.tabs.len() == 1 {
+            self.close_workspace(&active_space_id, &workspace_id)?;
+            return Ok(serde_json::json!({
+                "pane_id": pane_id,
+                "closed_workspace": true
+            }));
+        }
         self.pane_manager
             .remove(pane_id)
             .map_err(|error| format!("{error:?}"))?;
 
         // Herdr removes a tab when its only pane closes and sibling tabs exist.
-        if pane_count == 1 && workspace.tabs.len() > 1 {
+        if pane_count == 1 {
             self.snapshot.panes.retain(|pane| pane.pane_id != pane_id);
             let workspace = self
                 .snapshot
@@ -1223,6 +1208,58 @@ impl Session {
         }
     }
 
+    fn close_workspace(&mut self, space_id: &str, workspace_id: &str) -> Result<(), String> {
+        let space_index = self
+            .snapshot
+            .spaces
+            .iter()
+            .position(|space| space.space_id == space_id)
+            .ok_or_else(|| "space does not exist".to_string())?;
+        let workspace_index = self.snapshot.spaces[space_index]
+            .workspaces
+            .iter()
+            .position(|workspace| workspace.workspace_id == workspace_id)
+            .ok_or_else(|| format!("workspace '{workspace_id}' does not exist"))?;
+        let pane_ids = self.snapshot.spaces[space_index].workspaces[workspace_index]
+            .tabs
+            .iter()
+            .flat_map(|tab| {
+                tab.layout
+                    .as_ref()
+                    .map(LayoutNode::pane_ids)
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>();
+        for pane_id in &pane_ids {
+            let _ = self.pane_manager.remove(pane_id);
+        }
+        self.snapshot
+            .panes
+            .retain(|pane| !pane_ids.iter().any(|id| id == &pane.pane_id));
+
+        let space = &mut self.snapshot.spaces[space_index];
+        let was_active = space.active_workspace_id.as_deref() == Some(workspace_id);
+        space.workspaces.remove(workspace_index);
+        if was_active {
+            space.active_workspace_id = space
+                .workspaces
+                .get(workspace_index.min(space.workspaces.len().saturating_sub(1)))
+                .map(|workspace| workspace.workspace_id.clone());
+        }
+
+        if self.snapshot.spaces[space_index].workspaces.is_empty() {
+            let next_space = (1..self.snapshot.spaces.len())
+                .map(|offset| (space_index + offset) % self.snapshot.spaces.len())
+                .find(|index| !self.snapshot.spaces[*index].workspaces.is_empty());
+            if let Some(next_space) = next_space {
+                self.snapshot.active_space_id = self.snapshot.spaces[next_space].space_id.clone();
+            } else {
+                self.snapshot.spaces[space_index].active_workspace_id = None;
+            }
+        }
+        self.sync_focus_to_active_tab()
+    }
+
     fn active_workspace_mut(&mut self) -> Result<&mut WorkspaceView, String> {
         let active_space_id = self.snapshot.active_space_id.clone();
         let space = self
@@ -1231,7 +1268,10 @@ impl Session {
             .iter_mut()
             .find(|space| space.space_id == active_space_id)
             .ok_or_else(|| "active space does not exist".to_string())?;
-        let workspace_id = space.active_workspace_id.clone();
+        let workspace_id = space
+            .active_workspace_id
+            .clone()
+            .ok_or_else(|| "active space has no workspace".to_string())?;
         space
             .workspaces
             .iter_mut()
@@ -1251,10 +1291,28 @@ impl Session {
 
     fn sync_focus_to_active_tab(&mut self) -> Result<(), String> {
         let current_focus = self.snapshot.focused_pane_id.clone();
-        let focus = self
-            .active_tab_mut()?
-            .normalize_focus(current_focus.as_deref());
-        self.snapshot.focused_pane_id = focus;
+        let active_space_id = self.snapshot.active_space_id.clone();
+        let space = self
+            .snapshot
+            .spaces
+            .iter_mut()
+            .find(|space| space.space_id == active_space_id)
+            .ok_or_else(|| "active space does not exist".to_string())?;
+        let Some(workspace_id) = space.active_workspace_id.as_deref() else {
+            self.snapshot.focused_pane_id = None;
+            return Ok(());
+        };
+        let workspace = space
+            .workspaces
+            .iter_mut()
+            .find(|workspace| workspace.workspace_id == workspace_id)
+            .ok_or_else(|| "active workspace does not exist".to_string())?;
+        let tab = workspace
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.tab_id == workspace.active_tab_id)
+            .ok_or_else(|| "active tab does not exist".to_string())?;
+        self.snapshot.focused_pane_id = tab.normalize_focus(current_focus.as_deref());
         Ok(())
     }
 
@@ -1396,7 +1454,7 @@ mod tests {
         let workspace_id = workspace["workspace_id"].as_str().unwrap();
         assert_eq!(
             session.snapshot().spaces[0].active_workspace_id,
-            workspace_id
+            Some(workspace_id.to_owned())
         );
 
         let tab = session.create_tab("Logs".into()).unwrap();
@@ -1557,11 +1615,30 @@ mod tests {
     }
 
     #[test]
-    fn last_containers_cannot_be_deleted() {
+    fn closing_last_tab_leaves_an_empty_recoverable_space() {
         let mut session = Session::default();
         assert!(session.delete_space("space-1").is_err());
-        assert!(session.delete_workspace("workspace-1").is_err());
-        assert!(session.close_tab("tab-1").is_err());
+        session.close_tab("tab-1").unwrap();
+        assert!(session.snapshot().spaces[0].workspaces.is_empty());
+        assert_eq!(session.snapshot().spaces[0].active_workspace_id, None);
+        assert_eq!(session.snapshot().focused_pane_id, None);
+
+        let restored = session.create_workspace("Restored".into()).unwrap();
+        assert_eq!(
+            session.snapshot().spaces[0].active_workspace_id.as_deref(),
+            restored["workspace_id"].as_str()
+        );
+        assert_eq!(session.snapshot().spaces[0].workspaces.len(), 1);
+        session
+            .delete_workspace(restored["workspace_id"].as_str().unwrap())
+            .unwrap();
+        assert!(session.snapshot().spaces[0].workspaces.is_empty());
+
+        let restored_again = session.create_workspace("Restored again".into()).unwrap();
+        assert_eq!(
+            session.snapshot().spaces[0].active_workspace_id.as_deref(),
+            restored_again["workspace_id"].as_str()
+        );
     }
 
     #[test]
@@ -1571,6 +1648,40 @@ mod tests {
         let tab_id = tab["tab_id"].as_str().unwrap().to_string();
         session.close_tab(&tab_id).unwrap();
         assert_eq!(session.snapshot().spaces[0].workspaces[0].tabs.len(), 1);
+    }
+
+    #[test]
+    fn closing_a_workspace_last_tab_selects_a_sibling_workspace() {
+        let mut session = Session::default();
+        let created = session.create_workspace("Feature".into()).unwrap();
+        let closed_tab = format!("tab-{}-1", created["workspace_id"].as_str().unwrap());
+        session.close_tab(&closed_tab).unwrap();
+        assert_eq!(session.snapshot().spaces[0].workspaces.len(), 1);
+        assert_eq!(
+            session.snapshot().spaces[0].active_workspace_id.as_deref(),
+            Some("workspace-1")
+        );
+    }
+
+    #[test]
+    fn closing_last_workspace_in_space_focuses_next_nonempty_space() {
+        let mut session = Session::default();
+        let second_space = session.create_space("Other project".into()).unwrap();
+        let second_space_id = second_space["space_id"].as_str().unwrap();
+        let second_workspace = session.snapshot().spaces[1].workspaces[0]
+            .workspace_id
+            .clone();
+
+        session.delete_workspace(&second_workspace).unwrap();
+
+        assert_eq!(session.snapshot().active_space_id, "space-1");
+        assert_eq!(session.snapshot().spaces[1].active_workspace_id, None);
+        assert_ne!(session.snapshot().active_space_id, second_space_id);
+        assert_eq!(
+            session.snapshot().focused_pane_id,
+            None,
+            "focus should be empty because the sibling workspace has no shell yet"
+        );
     }
 
     #[test]

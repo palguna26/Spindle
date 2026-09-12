@@ -905,6 +905,125 @@ fn closing_a_tab_last_pane_selects_a_sibling_tab() {
 }
 
 #[test]
+fn closing_the_last_pane_closes_workspace_and_can_be_recovered() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let pane_request = serde_json::json!({
+        "command": "cmd.exe",
+        "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+        "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+        "cols": 80,
+        "rows": 24
+    });
+    let pane_id = client
+        .request("start-pane", "ensure_active_pane", pane_request.clone())
+        .unwrap()
+        .payload
+        .unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let closed = client
+        .request(
+            "close-final-pane",
+            "close_pane",
+            serde_json::json!({ "pane_id": pane_id }),
+        )
+        .unwrap();
+    assert!(closed.ok);
+    let empty = client
+        .request("empty-session", "get_snapshot", serde_json::json!({}))
+        .unwrap()
+        .payload
+        .unwrap();
+    assert!(empty["spaces"][0]["workspaces"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert!(empty["spaces"][0]["active_workspace_id"].is_null());
+    assert!(empty["panes"].as_array().unwrap().is_empty());
+    assert!(empty["focused_pane_id"].is_null());
+
+    client
+        .request(
+            "stop-empty-server",
+            "stop_server",
+            Value::Object(Default::default()),
+        )
+        .unwrap();
+    thread.join().unwrap();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let recovered = client
+        .request(
+            "recover-empty-session",
+            "get_snapshot",
+            serde_json::json!({}),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert!(recovered["spaces"][0]["workspaces"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert!(recovered["spaces"][0]["active_workspace_id"].is_null());
+
+    let workspace = client
+        .request(
+            "recreate-workspace",
+            "create_workspace",
+            serde_json::json!({ "name": "Recovered" }),
+        )
+        .unwrap();
+    assert!(workspace.ok);
+    let pane = client
+        .request("recreate-pane", "ensure_active_pane", pane_request)
+        .unwrap();
+    assert!(pane.ok);
+    let recreated_id = pane.payload.unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let active = client
+        .request("recreated-workspace", "get_snapshot", serde_json::json!({}))
+        .unwrap()
+        .payload
+        .unwrap();
+    let tab_id = active["spaces"][0]["workspaces"][0]["active_tab_id"]
+        .as_str()
+        .unwrap();
+    let closed = client
+        .request(
+            "close-recreated-tab",
+            "close_tab",
+            serde_json::json!({ "id": tab_id }),
+        )
+        .unwrap();
+    assert!(closed.ok);
+    let final_state = client
+        .request("after-final-close", "get_snapshot", serde_json::json!({}))
+        .unwrap()
+        .payload
+        .unwrap();
+    assert!(final_state["spaces"][0]["workspaces"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert!(!final_state["panes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|pane| pane["pane_id"] == recreated_id));
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn space_and_workspace_deletion_use_control_api_safely() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);

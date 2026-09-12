@@ -4,7 +4,7 @@ mod navigation;
 use super::context_menu::ContextMenu;
 use super::selection::TextSelection;
 use crate::model::status::PaneStatus;
-use crate::server::session::SessionSnapshot;
+use crate::server::session::{SessionSnapshot, WorkspaceView};
 pub(crate) use layout::{
     pane_content_area, pane_content_area_with_sidebar, pane_inner_size, pane_rectangles,
     pane_sizes, split_handles, PaneSize,
@@ -74,9 +74,13 @@ pub fn render_with_sidebar_scroll_and_cursor(
     render_tabs(frame, snapshot, main.tabs);
     let panes = pane_rectangles(snapshot, main.panes);
     if panes.is_empty() {
+        let message = if active_workspace(snapshot).is_some() {
+            active_title(snapshot)
+        } else {
+            "No active workspace\nPress Ctrl-b c to create one".into()
+        };
         frame.render_widget(
-            Paragraph::new(Line::from(active_title(snapshot)))
-                .block(Block::default().borders(Borders::ALL).title("Session")),
+            Paragraph::new(message).block(Block::default().borders(Borders::ALL).title("Session")),
             main.panes,
         );
     } else {
@@ -320,24 +324,34 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     }
 }
 
+fn active_workspace(snapshot: &SessionSnapshot) -> Option<&WorkspaceView> {
+    let space = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)?;
+    let workspace_id = space.active_workspace_id.as_ref()?;
+    space
+        .workspaces
+        .iter()
+        .find(|workspace| &workspace.workspace_id == workspace_id)
+}
+
 fn active_title(snapshot: &SessionSnapshot) -> String {
-    snapshot
+    let Some(space) = snapshot
         .spaces
         .iter()
         .find(|space| space.space_id == snapshot.active_space_id)
-        .and_then(|space| {
-            space
-                .workspaces
-                .iter()
-                .find(|workspace| workspace.workspace_id == space.active_workspace_id)
-                .and_then(|workspace| {
-                    workspace
-                        .tabs
-                        .iter()
-                        .find(|tab| tab.tab_id == workspace.active_tab_id)
-                        .map(|tab| format!("{} / {} / {}", space.name, workspace.name, tab.name))
-                })
-        })
+    else {
+        return "No active session".into();
+    };
+    let Some(workspace) = active_workspace(snapshot) else {
+        return "No active session".into();
+    };
+    workspace
+        .tabs
+        .iter()
+        .find(|tab| tab.tab_id == workspace.active_tab_id)
+        .map(|tab| format!("{} / {} / {}", space.name, workspace.name, tab.name))
         .unwrap_or_else(|| "No active session".into())
 }
 
@@ -444,6 +458,26 @@ mod tests {
     }
 
     #[test]
+    fn closed_last_workspace_shows_a_way_to_start_again() {
+        let backend = TestBackend::new(60, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut snapshot = Session::default().snapshot().clone();
+        snapshot.spaces[0].workspaces.clear();
+        snapshot.spaces[0].active_workspace_id = None;
+        snapshot.focused_pane_id = None;
+        terminal.draw(|frame| render(frame, &snapshot)).unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("No active workspace"));
+        assert!(content.contains("Ctrl-b c"));
+    }
+
+    #[test]
     fn disconnected_state_is_visible_in_status_chrome() {
         let backend = TestBackend::new(60, 8);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -536,7 +570,7 @@ mod tests {
                     }],
                     active_tab_id: "tab-1".into(),
                 }],
-                active_workspace_id: "workspace-1".into(),
+                active_workspace_id: Some("workspace-1".into()),
             }],
             active_space_id: "space-1".into(),
             panes: vec![PaneView {
