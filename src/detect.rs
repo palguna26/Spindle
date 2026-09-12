@@ -59,7 +59,9 @@ pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> Agent
     let blocked = match agent {
         AgentKind::Codex => {
             combined.contains("action required")
-                || combined.contains("do you trust the contents of this directory?")
+                || codex_trust_directory_prompt(
+                    &top_nonempty_lines(screen, 20).to_ascii_lowercase(),
+                )
                 || combined.contains("allow command?")
                 || combined.contains("press enter to confirm or esc to cancel")
                 || codex_recent_blocker(&recent)
@@ -128,6 +130,23 @@ fn recent_nonempty_lines(screen: &str, limit: usize) -> String {
         .rev()
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn top_nonempty_lines(screen: &str, limit: usize) -> String {
+    screen
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .take(limit)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn codex_trust_directory_prompt(top: &str) -> bool {
+    let Some(first_line) = top.lines().next() else {
+        return false;
+    };
+    let directory = first_line.strip_prefix("> you are in ").unwrap_or("");
+    !directory.trim().is_empty() && top.contains("do you trust the contents of this directory?")
 }
 
 fn codex_recent_blocker(recent: &str) -> bool {
@@ -581,6 +600,34 @@ mod tests {
                 "Codex"
             ),
             AgentState::Blocked
+        );
+    }
+
+    #[test]
+    fn codex_directory_trust_blocker_requires_herdr_prompt_header() {
+        assert_eq!(
+            detect_state(
+                AgentKind::Codex,
+                "> You are in C:\\repo\nDo you trust the contents of this directory?",
+                "",
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Codex,
+                "Do you trust the contents of this directory?",
+                "",
+            ),
+            AgentState::Unknown
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Codex,
+                "PowerShell\nThe help text asks: do you trust the contents of this directory?",
+                "",
+            ),
+            AgentState::Unknown
         );
     }
 
