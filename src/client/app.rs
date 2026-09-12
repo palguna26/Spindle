@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 const SPLIT_DRAG_INTERVAL: Duration = Duration::from_millis(33);
 const WHEEL_SCROLL_LINES: usize = 3;
 const MAX_SCROLLBACK_ROWS: usize = 4096;
+const ACTION_ERROR_DURATION: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StartupErrorAction {
@@ -184,7 +185,14 @@ fn event_loop(
     };
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
+    let mut action_error: Option<(String, Instant)> = None;
     loop {
+        if action_error
+            .as_ref()
+            .is_some_and(|(_, expires_at)| Instant::now() >= *expires_at)
+        {
+            action_error = None;
+        }
         let terminal_size = size().map_err(ClientError::Io)?;
         let mut connected = match current_snapshot(client) {
             Ok(current) => {
@@ -287,6 +295,8 @@ fn event_loop(
                 }
                 if let Some(error) = &startup_error {
                     renderer::render_startup_error(frame, error);
+                } else if let Some((error, _)) = &action_error {
+                    renderer::render_action_error(frame, error);
                 }
             })
             .map_err(ClientError::Io)?;
@@ -306,7 +316,7 @@ fn event_loop(
                     help_open = false;
                     continue;
                 }
-                handle_mouse(
+                if let Err(error) = handle_mouse(
                     client,
                     &snapshot,
                     mouse,
@@ -314,7 +324,9 @@ fn event_loop(
                     &mut mouse_state,
                     &mut context_menu,
                     &mut rename_prompt,
-                )?;
+                ) {
+                    record_action_error(&mut action_error, "handle mouse action", Err(error));
+                }
                 continue;
             }
             Event::Key(key) => key,
@@ -348,7 +360,11 @@ fn event_loop(
                 PromptResult::Submit(name) => {
                     let target = prompt.target;
                     rename_prompt = None;
-                    submit_rename(client, &snapshot, target, name, terminal_size)?;
+                    record_action_error(
+                        &mut action_error,
+                        "save name",
+                        submit_rename(client, &snapshot, target, name, terminal_size),
+                    );
                 }
             }
             continue;
@@ -362,9 +378,15 @@ fn event_loop(
                     let selected = menu.selected;
                     if let Some(action) = menu.items().get(selected).map(|(_, action)| *action) {
                         let menu = context_menu.take().expect("menu exists");
-                        rename_prompt =
-                            activate_context_menu(client, &snapshot, menu, action, terminal_size)?
-                                .map(RenamePrompt::new);
+                        match activate_context_menu(client, &snapshot, menu, action, terminal_size)
+                        {
+                            Ok(prompt) => rename_prompt = prompt.map(RenamePrompt::new),
+                            Err(error) => record_action_error(
+                                &mut action_error,
+                                "run pane menu action",
+                                Err(error),
+                            ),
+                        }
                     }
                 }
                 _ => {}
@@ -387,8 +409,14 @@ fn event_loop(
                     rename_prompt = Some(RenamePrompt::new(target));
                     continue;
                 }
-                if execute_action(command.action(), client, &snapshot, terminal_size)? {
-                    break;
+                match execute_action(command.action(), client, &snapshot, terminal_size) {
+                    Ok(true) => break,
+                    Ok(false) => {}
+                    Err(error) => record_action_error(
+                        &mut action_error,
+                        "run command palette action",
+                        Err(error),
+                    ),
                 }
             }
             continue;
@@ -449,94 +477,177 @@ fn event_loop(
         }
         match pressed {
             Action::Detach => {
-                client.detach()?;
-                break;
-            }
-            Action::NewTab => {
-                if active_workspace(&snapshot).is_some() {
-                    client.request("new-tab", "create_tab", json!({ "name": "Activity" }))?;
-                    ensure_active_default_pane(client, terminal_size)?;
-                } else {
-                    create_workspace_from_current_directory(client, terminal_size)?;
+                let result = client
+                    .detach()
+                    .and_then(|response| require_server_success(&response, "detach"));
+                match result {
+                    Ok(()) => break,
+                    Err(error) => record_action_error(&mut action_error, "detach", Err(error)),
                 }
             }
+            Action::NewTab => {
+                let result = if active_workspace(&snapshot).is_some() {
+                    request_action(
+                        client,
+                        "new-tab",
+                        "create_tab",
+                        json!({ "name": "Activity" }),
+                        "create tab",
+                    )
+                    .and_then(|()| ensure_active_default_pane(client, terminal_size))
+                } else {
+                    create_workspace_from_current_directory(client, terminal_size)
+                };
+                record_action_error(&mut action_error, "create tab", result);
+            }
             Action::NewPane => {
-                let _ = client.request(
-                    "new-pane",
-                    "create_pane",
-                    pane_request_for_snapshot(&snapshot, terminal_size),
+                record_action_error(
+                    &mut action_error,
+                    "create pane",
+                    request_action(
+                        client,
+                        "new-pane",
+                        "create_pane",
+                        pane_request_for_snapshot(&snapshot, terminal_size),
+                        "create pane",
+                    ),
                 );
             }
             Action::ClosePane => {
                 if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
-                    client.request(
+                    let result = request_action(
+                        client,
                         "keyboard-close-pane",
                         "close_pane",
                         json!({ "pane_id": pane_id }),
-                    )?;
-                    ensure_active_default_pane(client, terminal_size)?;
+                        "close pane",
+                    )
+                    .and_then(|()| ensure_active_default_pane(client, terminal_size));
+                    record_action_error(&mut action_error, "close pane", result);
                 }
             }
             Action::CloseTab => {
                 if let Some(tab_id) = active_tab_id(&snapshot) {
-                    let response =
-                        client.request("close-tab", "close_tab", json!({ "id": tab_id }))?;
-                    if response.ok {
-                        ensure_active_default_pane(client, terminal_size)?;
-                    }
+                    let result = request_action(
+                        client,
+                        "close-tab",
+                        "close_tab",
+                        json!({ "id": tab_id }),
+                        "close tab",
+                    )
+                    .and_then(|()| ensure_active_default_pane(client, terminal_size));
+                    record_action_error(&mut action_error, "close tab", result);
                 }
             }
             Action::NextTab | Action::PreviousTab => {
                 if let Some(tab_id) = adjacent_tab_id(&snapshot, matches!(pressed, Action::NextTab))
                 {
-                    let _ = client.request("switch-tab", "switch_tab", json!({ "id": tab_id }));
-                    ensure_active_default_pane(client, terminal_size)?;
+                    let result = request_action(
+                        client,
+                        "switch-tab",
+                        "switch_tab",
+                        json!({ "id": tab_id }),
+                        "switch tab",
+                    )
+                    .and_then(|()| ensure_active_default_pane(client, terminal_size));
+                    record_action_error(&mut action_error, "switch tab", result);
                 }
             }
             Action::NextSpace | Action::PreviousSpace => {
                 if let Some(space_id) =
                     adjacent_space_id(&snapshot, matches!(pressed, Action::NextSpace))
                 {
-                    let _ =
-                        client.request("switch-space", "switch_space", json!({ "id": space_id }));
-                    ensure_active_default_pane(client, terminal_size)?;
+                    let result = request_action(
+                        client,
+                        "switch-space",
+                        "switch_space",
+                        json!({ "id": space_id }),
+                        "switch space",
+                    )
+                    .and_then(|()| ensure_active_default_pane(client, terminal_size));
+                    record_action_error(&mut action_error, "switch space", result);
                 }
             }
             Action::NextWorkspace => {
                 if let Some(workspace_id) = adjacent_workspace_id(&snapshot) {
-                    let _ = client.request(
+                    let result = request_action(
+                        client,
                         "switch-workspace",
                         "switch_workspace",
                         json!({ "id": workspace_id }),
-                    );
-                    ensure_active_default_pane(client, terminal_size)?;
+                        "switch workspace",
+                    )
+                    .and_then(|()| ensure_active_default_pane(client, terminal_size));
+                    record_action_error(&mut action_error, "switch workspace", result);
                 }
             }
             Action::StopFocusedPane => {
                 if let Some(ref pane_id) = snapshot.focused_pane_id {
-                    let _ = client.request("stop-pane", "stop_pane", json!({ "pane_id": pane_id }));
+                    record_action_error(
+                        &mut action_error,
+                        "stop pane",
+                        request_action(
+                            client,
+                            "stop-pane",
+                            "stop_pane",
+                            json!({ "pane_id": pane_id }),
+                            "stop pane",
+                        ),
+                    );
                 }
             }
             Action::RestartFocusedPane => {
                 if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
-                    let _ = client.request(
-                        "restart-pane",
-                        "restart_pane",
-                        json!({ "pane_id": pane_id }),
+                    record_action_error(
+                        &mut action_error,
+                        "restart pane",
+                        request_action(
+                            client,
+                            "restart-pane",
+                            "restart_pane",
+                            json!({ "pane_id": pane_id }),
+                            "restart pane",
+                        ),
                     );
                 }
             }
             Action::FocusNext => {
-                let _ = client.request("focus-next", "focus_next", json!({}));
+                record_action_error(
+                    &mut action_error,
+                    "focus next pane",
+                    request_action(
+                        client,
+                        "focus-next",
+                        "focus_next",
+                        json!({}),
+                        "focus next pane",
+                    ),
+                );
             }
             Action::FocusPrevious => {
-                let _ = client.request("focus-previous", "focus_previous", json!({}));
+                record_action_error(
+                    &mut action_error,
+                    "focus previous pane",
+                    request_action(
+                        client,
+                        "focus-previous",
+                        "focus_previous",
+                        json!({}),
+                        "focus previous pane",
+                    ),
+                );
             }
             Action::FocusLeft | Action::FocusRight | Action::FocusUp | Action::FocusDown => {
-                let _ = client.request(
-                    "focus-direction",
-                    "focus_direction",
-                    json!({ "direction": focus_direction_name(pressed) }),
+                record_action_error(
+                    &mut action_error,
+                    "focus pane",
+                    request_action(
+                        client,
+                        "focus-direction",
+                        "focus_direction",
+                        json!({ "direction": focus_direction_name(pressed) }),
+                        "focus pane",
+                    ),
                 );
             }
             Action::SplitHorizontal | Action::SplitVertical => {
@@ -547,7 +658,11 @@ fn event_loop(
                 };
                 let mut request = pane_request_for_snapshot(&snapshot, terminal_size);
                 request["direction"] = json!(direction);
-                let _ = client.request("split", "split_pane", request);
+                record_action_error(
+                    &mut action_error,
+                    "split pane",
+                    request_action(client, "split", "split_pane", request, "split pane"),
+                );
             }
             Action::ResizeSmaller | Action::ResizeLarger => {
                 if let Some(ref pane_id) = snapshot.focused_pane_id {
@@ -556,39 +671,63 @@ fn event_loop(
                     } else {
                         -0.05
                     };
-                    let _ = client.request(
-                        "resize",
-                        "resize_pane",
-                        json!({ "pane_id": pane_id, "delta": delta }),
+                    record_action_error(
+                        &mut action_error,
+                        "resize pane",
+                        request_action(
+                            client,
+                            "resize",
+                            "resize_pane",
+                            json!({ "pane_id": pane_id, "delta": delta }),
+                            "resize pane",
+                        ),
                     );
                 }
             }
             Action::ToggleZoom => {
                 if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
-                    let _ = client.request(
-                        "toggle-zoom",
-                        "toggle_pane_zoom",
-                        json!({ "pane_id": pane_id }),
+                    record_action_error(
+                        &mut action_error,
+                        "toggle pane zoom",
+                        request_action(
+                            client,
+                            "toggle-zoom",
+                            "toggle_pane_zoom",
+                            json!({ "pane_id": pane_id }),
+                            "toggle pane zoom",
+                        ),
                     );
                 }
             }
             Action::ToggleSidebar => {}
             Action::ToggleRightClickPassthrough => {
                 if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
-                    client.request(
-                        "toggle-right-click",
-                        "toggle_right_click_passthrough",
-                        json!({ "pane_id": pane_id }),
-                    )?;
+                    record_action_error(
+                        &mut action_error,
+                        "toggle right-click passthrough",
+                        request_action(
+                            client,
+                            "toggle-right-click",
+                            "toggle_right_click_passthrough",
+                            json!({ "pane_id": pane_id }),
+                            "toggle right-click passthrough",
+                        ),
+                    );
                 }
             }
             Action::ClearPaneName => {
                 if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
-                    client.request(
-                        "clear-pane-name",
-                        "rename_pane",
-                        json!({ "pane_id": pane_id, "label": "" }),
-                    )?;
+                    record_action_error(
+                        &mut action_error,
+                        "clear pane name",
+                        request_action(
+                            client,
+                            "clear-pane-name",
+                            "rename_pane",
+                            json!({ "pane_id": pane_id, "label": "" }),
+                            "clear pane name",
+                        ),
+                    );
                 }
             }
             Action::Send(code) => {
@@ -813,10 +952,12 @@ fn handle_mouse(
                 .last_sent_at
                 .is_none_or(|last| now.duration_since(last) >= SPLIT_DRAG_INTERVAL);
             if releasing || due {
-                client.request(
+                request_action(
+                    client,
                     "mouse-set-split-ratio",
                     "set_split_ratio",
                     json!({ "path": drag.path, "ratio": drag.ratio_at(mouse) }),
+                    "resize split",
                 )?;
                 drag.last_sent_at = Some(now);
             }
@@ -893,47 +1034,52 @@ fn handle_mouse(
         }
         renderer::ClickTarget::SplitBorder(_) => {}
         renderer::ClickTarget::Space(space_id) => {
-            let response = client.request(
+            request_action(
+                client,
                 "mouse-switch-space",
                 "switch_space",
                 json!({ "id": space_id }),
+                "switch space",
             )?;
-            if response.ok {
-                ensure_active_default_pane(client, terminal_size)?;
-            }
+            ensure_active_default_pane(client, terminal_size)?;
         }
         renderer::ClickTarget::Workspace {
             space_id,
             workspace_id,
         } => {
-            let space = client.request(
+            request_action(
+                client,
                 "mouse-switch-workspace-space",
                 "switch_space",
                 json!({ "id": space_id }),
+                "switch space",
             )?;
-            if space.ok {
-                let workspace = client.request(
-                    "mouse-switch-workspace",
-                    "switch_workspace",
-                    json!({ "id": workspace_id }),
-                )?;
-                if workspace.ok {
-                    ensure_active_default_pane(client, terminal_size)?;
-                }
-            }
+            request_action(
+                client,
+                "mouse-switch-workspace",
+                "switch_workspace",
+                json!({ "id": workspace_id }),
+                "switch workspace",
+            )?;
+            ensure_active_default_pane(client, terminal_size)?;
         }
         renderer::ClickTarget::Tab(tab_id) => {
-            let response =
-                client.request("mouse-switch-tab", "switch_tab", json!({ "id": tab_id }))?;
-            if response.ok {
-                ensure_active_default_pane(client, terminal_size)?;
-            }
+            request_action(
+                client,
+                "mouse-switch-tab",
+                "switch_tab",
+                json!({ "id": tab_id }),
+                "switch tab",
+            )?;
+            ensure_active_default_pane(client, terminal_size)?;
         }
         renderer::ClickTarget::Pane(pane_id) => {
-            client.request(
+            request_action(
+                client,
                 "mouse-focus-pane",
                 "focus_pane",
                 json!({ "pane_id": pane_id }),
+                "focus pane",
             )?;
         }
     }
@@ -1073,17 +1219,20 @@ fn forward_mouse_to_pane(
     };
 
     if matches!(mouse.kind, MouseEventKind::Down(_)) {
-        client.request(
+        request_action(
+            client,
             "mouse-focus-terminal-pane",
             "focus_pane",
             json!({ "pane_id": pane_id }),
+            "focus pane",
         )?;
     }
-    client.interactive_request(
+    let response = client.interactive_request(
         "mouse-terminal-input",
         "send_input",
         json!({ "pane_id": pane_id, "bytes": bytes }),
     )?;
+    require_server_success(&response, "send terminal mouse input")?;
 
     match mouse.kind {
         MouseEventKind::Down(button) => {
@@ -1151,10 +1300,12 @@ fn begin_text_selection(
         pane.rect.width.saturating_sub(2),
         pane.rect.height.saturating_sub(2),
     );
-    client.request(
+    request_action(
+        client,
         "mouse-focus-selection-pane",
         "focus_pane",
         json!({ "pane_id": pane.pane_id.clone() }),
+        "focus pane for selection",
     )?;
     let row = mouse.row.saturating_sub(inner.y);
     let col = mouse.column.saturating_sub(inner.x);
@@ -1214,15 +1365,19 @@ fn activate_context_menu(
     let source_pane_id = menu.source_pane_id.clone();
     match menu.target {
         ContextMenuTarget::Workspace { space_id, id } => {
-            client.request(
+            request_action(
+                client,
                 "context-switch-space",
                 "switch_space",
                 json!({ "id": space_id }),
+                "switch space",
             )?;
-            client.request(
+            request_action(
+                client,
                 "context-switch-workspace",
                 "switch_workspace",
                 json!({ "id": id }),
+                "switch workspace",
             )?;
             ensure_active_default_pane(client, terminal_size)?;
             match action {
@@ -1240,20 +1395,26 @@ fn activate_context_menu(
             let Some((space_id, workspace_id)) = tab_context_ids(snapshot, &tab_id) else {
                 return Ok(None);
             };
-            client.request(
+            request_action(
+                client,
                 "context-tab-space",
                 "switch_space",
                 json!({ "id": space_id }),
+                "switch space",
             )?;
-            client.request(
+            request_action(
+                client,
                 "context-tab-workspace",
                 "switch_workspace",
                 json!({ "id": workspace_id }),
+                "switch workspace",
             )?;
-            client.request(
+            request_action(
+                client,
                 "context-activate-tab",
                 "switch_tab",
                 json!({ "id": tab_id }),
+                "switch tab",
             )?;
             ensure_active_default_pane(client, terminal_size)?;
             match action {
@@ -1264,7 +1425,13 @@ fn activate_context_menu(
                 }
                 ContextMenuAction::Rename => Ok(Some(RenameTarget::Tab)),
                 ContextMenuAction::Close => {
-                    client.request("context-close-tab", "close_tab", json!({ "id": tab_id }))?;
+                    request_action(
+                        client,
+                        "context-close-tab",
+                        "close_tab",
+                        json!({ "id": tab_id }),
+                        "close tab",
+                    )?;
                     ensure_active_default_pane(client, terminal_size)?;
                     Ok(None)
                 }
@@ -1272,31 +1439,37 @@ fn activate_context_menu(
             }
         }
         ContextMenuTarget::Pane(pane_id) => {
-            client.request(
+            request_action(
+                client,
                 "context-focus-pane",
                 "focus_pane",
                 json!({ "pane_id": pane_id }),
+                "focus pane",
             )?;
             match action {
                 ContextMenuAction::Focus => Ok(None),
                 ContextMenuAction::Rename => Ok(Some(RenameTarget::Pane)),
                 ContextMenuAction::ClearPaneName => {
-                    client.request(
+                    request_action(
+                        client,
                         "context-clear-pane-name",
                         "rename_pane",
                         json!({ "pane_id": pane_id, "label": "" }),
+                        "clear pane name",
                     )?;
                     Ok(None)
                 }
                 ContextMenuAction::SwapWithFocusedPane => {
                     if let Some(source_pane_id) = source_pane_id {
-                        client.request(
+                        request_action(
+                            client,
                             "context-swap-panes",
                             "swap_panes",
                             json!({
                                 "source_pane_id": source_pane_id,
                                 "target_pane_id": pane_id
                             }),
+                            "swap panes",
                         )?;
                     }
                     Ok(None)
@@ -1308,46 +1481,62 @@ fn activate_context_menu(
                     } else {
                         "vertical"
                     });
-                    client.request("context-split-pane", "split_pane", request)?;
+                    request_action(
+                        client,
+                        "context-split-pane",
+                        "split_pane",
+                        request,
+                        "split pane",
+                    )?;
                     Ok(None)
                 }
                 ContextMenuAction::Zoom => {
-                    client.request(
+                    request_action(
+                        client,
                         "context-zoom-pane",
                         "toggle_pane_zoom",
                         json!({ "pane_id": pane_id }),
+                        "toggle pane zoom",
                     )?;
                     Ok(None)
                 }
                 ContextMenuAction::ToggleRightClickPassthrough => {
-                    client.request(
+                    request_action(
+                        client,
                         "context-toggle-right-click",
                         "toggle_right_click_passthrough",
                         json!({ "pane_id": pane_id }),
+                        "toggle right-click passthrough",
                     )?;
                     Ok(None)
                 }
                 ContextMenuAction::Stop => {
-                    client.request(
+                    request_action(
+                        client,
                         "context-stop-pane",
                         "stop_pane",
                         json!({ "pane_id": pane_id }),
+                        "stop pane",
                     )?;
                     Ok(None)
                 }
                 ContextMenuAction::Restart => {
-                    client.request(
+                    request_action(
+                        client,
                         "context-restart-pane",
                         "restart_pane",
                         json!({ "pane_id": pane_id }),
+                        "restart pane",
                     )?;
                     Ok(None)
                 }
                 ContextMenuAction::Close => {
-                    client.request(
+                    request_action(
+                        client,
                         "context-close-pane",
                         "close_pane",
                         json!({ "pane_id": pane_id }),
+                        "close pane",
                     )?;
                     ensure_active_default_pane(client, terminal_size)?;
                     Ok(None)
@@ -1362,10 +1551,12 @@ fn create_context_tab(
     client: &ControlClient,
     terminal_size: (u16, u16),
 ) -> Result<(), ClientError> {
-    client.request(
+    request_action(
+        client,
         "context-new-tab",
         "create_tab",
         json!({ "name": "Activity" }),
+        "create tab",
     )?;
     ensure_active_default_pane(client, terminal_size)
 }
@@ -1457,14 +1648,19 @@ fn submit_rename(
         };
         if expected_name.as_deref() == Some(name.as_str()) {
             if let Some(id) = id {
-                let response = client.request(
-                    format!("confirm-{operation}"),
+                let action_name = if operation == "delete_workspace" {
+                    "delete workspace"
+                } else {
+                    "delete space"
+                };
+                request_action(
+                    client,
+                    &format!("confirm-{operation}"),
                     operation,
                     json!({ "id": id }),
+                    action_name,
                 )?;
-                if response.ok {
-                    ensure_active_default_pane(client, terminal_size)?;
-                }
+                ensure_active_default_pane(client, terminal_size)?;
             }
         }
         return Ok(());
@@ -1478,27 +1674,37 @@ fn submit_rename(
                 .map_err(ClientError::Io)?
                 .to_string_lossy()
                 .into_owned();
-            let _ = client.request(
+            request_action(
+                client,
                 "create-workspace",
                 "create_workspace",
                 json!({ "name": name, "repository_path": repository_path }),
+                "create workspace",
             )?;
             ensure_active_default_pane(client, terminal_size)?;
             return Ok(());
         }
         RenameTarget::Space => ("rename_space", Some(snapshot.active_space_id.clone())),
         RenameTarget::CreateSpace => {
-            let _ = client.request("create-space", "create_space", json!({ "name": name }))?;
+            request_action(
+                client,
+                "create-space",
+                "create_space",
+                json!({ "name": name }),
+                "create space",
+            )?;
             ensure_active_default_pane(client, terminal_size)?;
             return Ok(());
         }
         RenameTarget::DeleteWorkspace | RenameTarget::DeleteSpace => unreachable!(),
         RenameTarget::SwitchWorkspace => {
             if let Some(id) = workspace_id_by_name(snapshot, &name) {
-                let _ = client.request(
+                request_action(
+                    client,
                     "switch-workspace-by-name",
                     "switch_workspace",
                     json!({ "id": id }),
+                    "switch workspace",
                 )?;
                 ensure_active_default_pane(client, terminal_size)?;
             }
@@ -1506,10 +1712,19 @@ fn submit_rename(
         }
     };
     if let Some(id) = id {
-        let _ = client.request(
-            format!("rename-{}", operation),
+        let action_name = match operation {
+            "rename_pane" => "rename pane",
+            "rename_tab" => "rename tab",
+            "rename_workspace" => "rename workspace",
+            "rename_space" => "rename space",
+            _ => "rename item",
+        };
+        request_action(
+            client,
+            &format!("rename-{operation}"),
             operation,
             json!({ "id": id, "name": name }),
+            action_name,
         )?;
     }
     Ok(())
@@ -1588,15 +1803,18 @@ fn execute_action(
 ) -> Result<bool, ClientError> {
     match pressed {
         Action::Detach => {
-            client.detach()?;
+            let response = client.detach()?;
+            require_server_success(&response, "detach")?;
             Ok(true)
         }
         Action::NewTab => {
             if active_workspace(snapshot).is_some() {
-                client.request(
+                request_action(
+                    client,
                     "palette-new-tab",
                     "create_tab",
                     json!({ "name": "Activity" }),
+                    "create tab",
                 )?;
                 ensure_active_default_pane(client, terminal_size)?;
             } else {
@@ -1605,19 +1823,23 @@ fn execute_action(
             Ok(false)
         }
         Action::NewPane => {
-            let _ = client.request(
+            request_action(
+                client,
                 "palette-new-pane",
                 "create_pane",
                 pane_request_for_snapshot(snapshot, terminal_size),
-            );
+                "create pane",
+            )?;
             Ok(false)
         }
         Action::ClosePane => {
             if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
-                client.request(
+                request_action(
+                    client,
                     "palette-close-pane",
                     "close_pane",
                     json!({ "pane_id": pane_id }),
+                    "close pane",
                 )?;
                 ensure_active_default_pane(client, terminal_size)?;
             }
@@ -1625,17 +1847,26 @@ fn execute_action(
         }
         Action::CloseTab => {
             if let Some(tab_id) = active_tab_id(snapshot) {
-                let response =
-                    client.request("palette-close-tab", "close_tab", json!({ "id": tab_id }))?;
-                if response.ok {
-                    ensure_active_default_pane(client, terminal_size)?;
-                }
+                request_action(
+                    client,
+                    "palette-close-tab",
+                    "close_tab",
+                    json!({ "id": tab_id }),
+                    "close tab",
+                )?;
+                ensure_active_default_pane(client, terminal_size)?;
             }
             Ok(false)
         }
         Action::NextTab | Action::PreviousTab => {
             if let Some(tab_id) = adjacent_tab_id(snapshot, matches!(pressed, Action::NextTab)) {
-                let _ = client.request("palette-switch-tab", "switch_tab", json!({ "id": tab_id }));
+                request_action(
+                    client,
+                    "palette-switch-tab",
+                    "switch_tab",
+                    json!({ "id": tab_id }),
+                    "switch tab",
+                )?;
                 ensure_active_default_pane(client, terminal_size)?;
             }
             Ok(false)
@@ -1644,60 +1875,82 @@ fn execute_action(
             if let Some(space_id) =
                 adjacent_space_id(snapshot, matches!(pressed, Action::NextSpace))
             {
-                let _ = client.request(
+                request_action(
+                    client,
                     "palette-switch-space",
                     "switch_space",
                     json!({ "id": space_id }),
-                );
+                    "switch space",
+                )?;
                 ensure_active_default_pane(client, terminal_size)?;
             }
             Ok(false)
         }
         Action::NextWorkspace => {
             if let Some(workspace_id) = adjacent_workspace_id(snapshot) {
-                let _ = client.request(
+                request_action(
+                    client,
                     "palette-switch-workspace",
                     "switch_workspace",
                     json!({ "id": workspace_id }),
-                );
+                    "switch workspace",
+                )?;
                 ensure_active_default_pane(client, terminal_size)?;
             }
             Ok(false)
         }
         Action::StopFocusedPane => {
             if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
-                let _ = client.request(
+                request_action(
+                    client,
                     "palette-stop-pane",
                     "stop_pane",
                     json!({ "pane_id": pane_id }),
-                );
+                    "stop pane",
+                )?;
             }
             Ok(false)
         }
         Action::RestartFocusedPane => {
             if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
-                let _ = client.request(
+                request_action(
+                    client,
                     "palette-restart-pane",
                     "restart_pane",
                     json!({ "pane_id": pane_id }),
-                );
+                    "restart pane",
+                )?;
             }
             Ok(false)
         }
         Action::FocusNext => {
-            let _ = client.request("palette-focus-next", "focus_next", json!({}));
+            request_action(
+                client,
+                "palette-focus-next",
+                "focus_next",
+                json!({}),
+                "focus next pane",
+            )?;
             Ok(false)
         }
         Action::FocusPrevious => {
-            let _ = client.request("palette-focus-previous", "focus_previous", json!({}));
+            request_action(
+                client,
+                "palette-focus-previous",
+                "focus_previous",
+                json!({}),
+                "focus previous pane",
+            )?;
             Ok(false)
         }
         Action::FocusLeft | Action::FocusRight | Action::FocusUp | Action::FocusDown => {
-            let _ = client.request(
+            request_action(
+                client,
                 "palette-focus-direction",
                 "focus_direction",
                 json!({ "direction": focus_direction_name(pressed) }),
-            );
+                "focus pane",
+            )?;
             Ok(false)
         }
         Action::SplitHorizontal | Action::SplitVertical => {
@@ -1708,7 +1961,7 @@ fn execute_action(
             };
             let mut request = pane_request_for_snapshot(snapshot, terminal_size);
             request["direction"] = json!(direction);
-            let _ = client.request("palette-split", "split_pane", request);
+            request_action(client, "palette-split", "split_pane", request, "split pane")?;
             Ok(false)
         }
         Action::ResizeSmaller | Action::ResizeLarger => {
@@ -1718,30 +1971,36 @@ fn execute_action(
                 } else {
                     -0.05
                 };
-                let _ = client.request(
+                request_action(
+                    client,
                     "palette-resize",
                     "resize_pane",
                     json!({ "pane_id": pane_id, "delta": delta }),
-                );
+                    "resize pane",
+                )?;
             }
             Ok(false)
         }
         Action::ToggleRightClickPassthrough => {
             if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
-                client.request(
+                request_action(
+                    client,
                     "palette-toggle-right-click",
                     "toggle_right_click_passthrough",
                     json!({ "pane_id": pane_id }),
+                    "toggle right-click passthrough",
                 )?;
             }
             Ok(false)
         }
         Action::ClearPaneName => {
             if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
-                client.request(
+                request_action(
+                    client,
                     "palette-clear-pane-name",
                     "rename_pane",
                     json!({ "pane_id": pane_id, "label": "" }),
+                    "clear pane name",
                 )?;
             }
             Ok(false)
@@ -1861,6 +2120,31 @@ fn require_server_success<T>(
     Err(ClientError::Server(format!("{operation} failed: {detail}")))
 }
 
+fn request_action<T: serde::Serialize>(
+    client: &ControlClient,
+    request_id: &str,
+    operation: &str,
+    payload: T,
+    action_name: &str,
+) -> Result<(), ClientError> {
+    let response = client.request(request_id, operation, payload)?;
+    require_server_success(&response, action_name)
+}
+
+fn record_action_error(
+    action_error: &mut Option<(String, Instant)>,
+    action_name: &str,
+    result: Result<(), ClientError>,
+) {
+    if let Err(error) = result {
+        let message = match error {
+            ClientError::Server(message) => message,
+            error => format!("{action_name} failed: {}", startup_error_message(error)),
+        };
+        *action_error = Some((message, Instant::now() + ACTION_ERROR_DURATION));
+    }
+}
+
 fn create_workspace_from_current_directory(
     client: &ControlClient,
     terminal_size: (u16, u16),
@@ -1869,10 +2153,12 @@ fn create_workspace_from_current_directory(
         .map_err(ClientError::Io)?
         .to_string_lossy()
         .into_owned();
-    client.request(
+    request_action(
+        client,
         "create-workspace-after-close",
         "create_workspace",
         json!({ "name": "Current project", "repository_path": repository_path }),
+        "create workspace",
     )?;
     ensure_active_default_pane(client, terminal_size)
 }
@@ -1964,9 +2250,9 @@ mod tests {
     use super::{
         active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
         adjust_scrollback_offset, apply_scrollback_views, key_code_bytes, page_key_bytes,
-        pane_size, reconnect_requires_reattach, require_server_success, snapshot_has_focused_pane,
-        startup_error_action, workspace_id_by_name, CachedScrollbackView, PaneClick,
-        SplitDirection, SplitDrag, StartupErrorAction,
+        pane_size, reconnect_requires_reattach, record_action_error, require_server_success,
+        snapshot_has_focused_pane, startup_error_action, workspace_id_by_name,
+        CachedScrollbackView, PaneClick, SplitDirection, SplitDrag, StartupErrorAction,
     };
     use crate::protocol::{ProtocolError, Response, PROTOCOL_VERSION};
     use crate::server::session::Session;
@@ -2101,6 +2387,21 @@ mod tests {
             }
             other => panic!("expected server error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn action_failures_are_kept_for_a_short_visible_window() {
+        let mut action_error = None;
+        record_action_error(
+            &mut action_error,
+            "split pane",
+            Err(super::ClientError::Server("pane is missing".into())),
+        );
+
+        let (message, expires_at) = action_error.expect("action error should be visible");
+        assert_eq!(message, "pane is missing");
+        assert!(expires_at > Instant::now());
+        assert!(expires_at <= Instant::now() + super::ACTION_ERROR_DURATION);
     }
 
     #[test]

@@ -279,6 +279,31 @@ pub fn render_startup_error(frame: &mut Frame<'_>, error: &str) {
     );
 }
 
+pub fn render_action_error(frame: &mut Frame<'_>, error: &str) {
+    let frame_area = frame.area();
+    let height = 5;
+    let width = frame_area.width.min(90);
+    if frame_area.height < height || width < 5 {
+        return;
+    }
+    let area = Rect::new(
+        frame_area.x + frame_area.width.saturating_sub(width) / 2,
+        frame_area.bottom().saturating_sub(height + 1),
+        width,
+        height,
+    );
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(error).wrap(Wrap { trim: true }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Action failed")
+                .border_style(Style::default().fg(Color::Red)),
+        ),
+        area,
+    );
+}
+
 pub fn render_prompt(frame: &mut Frame<'_>, title: &str, input: &str) {
     let area = centered_rect(60, 25, frame.area());
     frame.render_widget(
@@ -415,7 +440,7 @@ mod tests {
     use super::super::selection::TextSelection;
     use super::{
         active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, render,
-        render_help, render_palette, render_selection, render_startup_error,
+        render_action_error, render_help, render_palette, render_selection, render_startup_error,
         render_with_connection, status_color,
     };
     use crate::model::layout::LayoutNode;
@@ -568,6 +593,25 @@ mod tests {
         assert!(content.contains("Shell start failed"));
         assert!(content.contains("powershell.exe was not found"));
         assert!(content.contains("Press Enter or r to retry"));
+    }
+
+    #[test]
+    fn action_error_toast_shows_the_failure_without_replacing_the_session() {
+        let backend = TestBackend::new(60, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_action_error(frame, "split pane failed: pane is missing"))
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("Action failed"));
+        assert!(content.contains("split pane failed"));
+        assert!(content.contains("pane is missing"));
     }
 
     #[test]
