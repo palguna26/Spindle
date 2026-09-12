@@ -63,6 +63,8 @@ commit `68d86ad` as partial startup work; do not count it as completion.
 
 - [ ] Add a workspace/space sidebar with active selection and useful names.
 - [ ] Add visible tab controls and a focused-pane/status area.
+- [x] Save focused pane per tab and restore it when switching tabs or
+  workspaces, matching Herdr's focus in each tab layout.
 - [ ] Render the active pane tree in the remaining area with clear focus and
   lifecycle states.
 - [ ] Calculate pane rectangles once and share the results between rendering,

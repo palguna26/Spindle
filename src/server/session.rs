@@ -99,6 +99,30 @@ pub struct TabView {
     pub tab_id: String,
     pub name: String,
     pub layout: Option<LayoutNode>,
+    #[serde(default)]
+    pub focused_pane_id: Option<String>,
+}
+
+impl TabView {
+    fn normalize_focus(&mut self, fallback: Option<&str>) -> Option<String> {
+        let pane_ids = self
+            .layout
+            .as_ref()
+            .map(LayoutNode::pane_ids)
+            .unwrap_or_default();
+        let focus = self
+            .focused_pane_id
+            .clone()
+            .filter(|focused| pane_ids.contains(&focused.as_str()))
+            .or_else(|| {
+                fallback
+                    .filter(|focused| pane_ids.contains(focused))
+                    .map(str::to_owned)
+            })
+            .or_else(|| pane_ids.first().map(|pane_id| (*pane_id).to_owned()));
+        self.focused_pane_id = focus.clone();
+        focus
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,6 +200,7 @@ impl Default for Session {
                             tab_id: "tab-1".into(),
                             name: "Main".into(),
                             layout: None,
+                            focused_pane_id: None,
                         }],
                         active_tab_id: "tab-1".into(),
                     }],
@@ -352,27 +377,8 @@ impl Session {
     }
 
     pub fn ensure_active_pane(&mut self, request: CreatePaneRequest) -> Result<Value, String> {
-        let focused_pane = self.snapshot.focused_pane_id.clone();
-        let pane_ids = self
-            .active_tab_mut()?
-            .layout
-            .as_ref()
-            .map(|layout| {
-                layout
-                    .pane_ids()
-                    .into_iter()
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let existing_pane = pane_ids.first().cloned();
-        if let Some(pane_id) = existing_pane {
-            if !focused_pane
-                .as_deref()
-                .is_some_and(|focused| pane_ids.iter().any(|id| id == focused))
-            {
-                self.snapshot.focused_pane_id = Some(pane_id.clone());
-            }
+        self.sync_focus_to_active_tab()?;
+        if let Some(pane_id) = self.active_tab_mut()?.focused_pane_id.clone() {
             return Ok(serde_json::json!({ "pane_id": pane_id, "created": false }));
         }
 
@@ -418,8 +424,12 @@ impl Session {
             )
             .map_err(|error| format!("{error:?}"))?;
 
-        let focused = self.snapshot.focused_pane_id.clone();
         let tab = self.active_tab_mut()?;
+        let focused = tab.focused_pane_id.clone().or_else(|| {
+            tab.layout
+                .as_ref()
+                .and_then(|layout| layout.pane_ids().first().map(|id| (*id).to_owned()))
+        });
         tab.layout = Some(match tab.layout.take() {
             None => LayoutNode::pane(&pane_id),
             Some(layout) => {
@@ -432,6 +442,7 @@ impl Session {
                 }
             }
         });
+        tab.focused_pane_id = Some(pane_id.clone());
         self.snapshot.focused_pane_id = Some(pane_id.clone());
         self.snapshot.panes.push(PaneView {
             pane_id: pane_id.clone(),
@@ -489,10 +500,12 @@ impl Session {
                 tab_id: tab_id.clone(),
                 name: "Main".into(),
                 layout: None,
+                focused_pane_id: None,
             }],
             active_tab_id: tab_id,
         });
         space.active_workspace_id = workspace_id.clone();
+        self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
@@ -518,12 +531,14 @@ impl Session {
                     tab_id: tab_id.clone(),
                     name: "Main".into(),
                     layout: None,
+                    focused_pane_id: None,
                 }],
                 active_tab_id: tab_id,
             }],
             active_workspace_id: workspace_id,
         });
         self.snapshot.active_space_id = space_id.clone();
+        self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "space_id": space_id }))
     }
 
@@ -537,6 +552,7 @@ impl Session {
             return Err(format!("space '{space_id}' does not exist"));
         }
         self.snapshot.active_space_id = space_id.into();
+        self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "space_id": space_id }))
     }
 
@@ -568,6 +584,7 @@ impl Session {
         if self.snapshot.active_space_id == space_id {
             self.snapshot.active_space_id = self.snapshot.spaces[0].space_id.clone();
         }
+        self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "space_id": space_id }))
     }
 
@@ -586,6 +603,7 @@ impl Session {
             return Err(format!("workspace '{workspace_id}' does not exist"));
         }
         space.active_workspace_id = workspace_id.into();
+        self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
@@ -621,6 +639,7 @@ impl Session {
         if space.active_workspace_id == workspace_id {
             space.active_workspace_id = space.workspaces[0].workspace_id.clone();
         }
+        self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
@@ -634,8 +653,10 @@ impl Session {
             tab_id: tab_id.clone(),
             name,
             layout: None,
+            focused_pane_id: None,
         });
         workspace.active_tab_id = tab_id.clone();
+        self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "tab_id": tab_id }))
     }
 
@@ -645,6 +666,7 @@ impl Session {
             return Err(format!("tab '{tab_id}' does not exist"));
         }
         workspace.active_tab_id = tab_id.into();
+        self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "tab_id": tab_id }))
     }
 
@@ -700,15 +722,6 @@ impl Session {
         self.snapshot
             .panes
             .retain(|pane| !pane_ids.iter().any(|id| *id == pane.pane_id));
-        if self
-            .snapshot
-            .focused_pane_id
-            .as_ref()
-            .is_some_and(|pane_id| pane_ids.iter().any(|id| *id == pane_id))
-        {
-            self.snapshot.focused_pane_id =
-                self.snapshot.panes.first().map(|pane| pane.pane_id.clone());
-        }
         let workspace = &mut self
             .snapshot
             .spaces
@@ -723,18 +736,20 @@ impl Session {
         if workspace.active_tab_id == tab_id {
             workspace.active_tab_id = workspace.tabs[0].tab_id.clone();
         }
+        self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "tab_id": tab_id }))
     }
 
     pub fn focus_pane(&mut self, pane_id: &str) -> Result<Value, String> {
-        if !self
-            .snapshot
-            .panes
-            .iter()
-            .any(|pane| pane.pane_id == pane_id)
+        let tab = self.active_tab_mut()?;
+        if !tab
+            .layout
+            .as_ref()
+            .is_some_and(|layout| layout.pane_ids().contains(&pane_id))
         {
-            return Err(format!("pane '{pane_id}' does not exist"));
+            return Err(format!("pane '{pane_id}' does not exist in the active tab"));
         }
+        tab.focused_pane_id = Some(pane_id.into());
         self.snapshot.focused_pane_id = Some(pane_id.into());
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
@@ -751,29 +766,29 @@ impl Session {
     }
 
     pub fn focus_next(&mut self) -> Result<Value, String> {
-        let current = self.snapshot.focused_pane_id.clone();
-        let next = {
-            let tab = self.active_tab_mut()?;
-            tab.layout
-                .as_ref()
-                .and_then(|layout| layout.next_pane(current.as_deref()))
-                .map(str::to_string)
-        };
+        let tab = self.active_tab_mut()?;
+        let current = tab.focused_pane_id.clone();
+        let next = tab
+            .layout
+            .as_ref()
+            .and_then(|layout| layout.next_pane(current.as_deref()))
+            .map(str::to_string);
         let pane_id = next.ok_or_else(|| "active tab has no panes".to_string())?;
+        tab.focused_pane_id = Some(pane_id.clone());
         self.snapshot.focused_pane_id = Some(pane_id.clone());
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
     pub fn focus_previous(&mut self) -> Result<Value, String> {
-        let current = self.snapshot.focused_pane_id.clone();
-        let previous = {
-            let tab = self.active_tab_mut()?;
-            tab.layout
-                .as_ref()
-                .and_then(|layout| layout.previous_pane(current.as_deref()))
-                .map(str::to_string)
-        };
+        let tab = self.active_tab_mut()?;
+        let current = tab.focused_pane_id.clone();
+        let previous = tab
+            .layout
+            .as_ref()
+            .and_then(|layout| layout.previous_pane(current.as_deref()))
+            .map(str::to_string);
         let pane_id = previous.ok_or_else(|| "active tab has no panes".to_string())?;
+        tab.focused_pane_id = Some(pane_id.clone());
         self.snapshot.focused_pane_id = Some(pane_id.clone());
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
@@ -786,18 +801,18 @@ impl Session {
             "down" => crate::model::layout::FocusDirection::Down,
             other => return Err(format!("unknown focus direction '{other}'")),
         };
-        let current = self
-            .snapshot
+        let tab = self.active_tab_mut()?;
+        let current = tab
             .focused_pane_id
             .clone()
             .ok_or_else(|| "no pane is focused".to_string())?;
-        let pane_id = self
-            .active_tab_mut()?
+        let pane_id = tab
             .layout
             .as_ref()
             .and_then(|layout| layout.directional_pane(&current, movement))
             .map(str::to_string)
             .ok_or_else(|| "no pane in that direction".to_string())?;
+        tab.focused_pane_id = Some(pane_id.clone());
         self.snapshot.focused_pane_id = Some(pane_id.clone());
         Ok(serde_json::json!({ "pane_id": pane_id, "direction": direction }))
     }
@@ -826,21 +841,28 @@ impl Session {
         self.pane_manager
             .remove(pane_id)
             .map_err(|error| format!("{error:?}"))?;
-        let workspace = self.active_workspace_mut()?;
-        let tab = workspace
-            .tabs
-            .iter_mut()
-            .find(|tab| tab.tab_id == workspace.active_tab_id)
-            .ok_or_else(|| "active tab does not exist".to_string())?;
-        tab.layout = tab
-            .layout
-            .take()
-            .and_then(|layout| layout.close_pane(pane_id));
+        let focused_pane_id = {
+            let workspace = self.active_workspace_mut()?;
+            let tab = workspace
+                .tabs
+                .iter_mut()
+                .find(|tab| tab.tab_id == workspace.active_tab_id)
+                .ok_or_else(|| "active tab does not exist".to_string())?;
+            let was_focused = tab.focused_pane_id.as_deref() == Some(pane_id);
+            tab.layout = tab
+                .layout
+                .take()
+                .and_then(|layout| layout.close_pane(pane_id));
+            if was_focused {
+                tab.focused_pane_id = tab
+                    .layout
+                    .as_ref()
+                    .and_then(|layout| layout.pane_ids().first().map(|id| (*id).to_owned()));
+            }
+            tab.focused_pane_id.clone()
+        };
         self.snapshot.panes.retain(|pane| pane.pane_id != pane_id);
-        if self.snapshot.focused_pane_id.as_deref() == Some(pane_id) {
-            self.snapshot.focused_pane_id =
-                self.snapshot.panes.first().map(|pane| pane.pane_id.clone());
-        }
+        self.snapshot.focused_pane_id = focused_pane_id;
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
@@ -917,7 +939,15 @@ impl Session {
         pane.status = PaneStatus::Running;
         pane.screen.clear();
         pane.cursor = (0, 0);
-        self.snapshot.focused_pane_id = Some(pane_id.into());
+        let tab = self.active_tab_mut()?;
+        if tab
+            .layout
+            .as_ref()
+            .is_some_and(|layout| layout.pane_ids().contains(&pane_id))
+        {
+            tab.focused_pane_id = Some(pane_id.into());
+            self.snapshot.focused_pane_id = Some(pane_id.into());
+        }
         self.record_pane_events(vec![PaneEvent::Status {
             pane_id: pane_id.into(),
             status: PaneStatus::Running,
@@ -991,6 +1021,15 @@ impl Session {
             .iter_mut()
             .find(|tab| tab.tab_id == tab_id)
             .ok_or_else(|| "active tab does not exist".to_string())
+    }
+
+    fn sync_focus_to_active_tab(&mut self) -> Result<(), String> {
+        let current_focus = self.snapshot.focused_pane_id.clone();
+        let focus = self
+            .active_tab_mut()?
+            .normalize_focus(current_focus.as_deref());
+        self.snapshot.focused_pane_id = focus;
+        Ok(())
     }
 
     fn workspace_mut(&mut self, workspace_id: &str) -> Result<&mut WorkspaceView, String> {
@@ -1165,6 +1204,17 @@ mod tests {
         }))
         .unwrap();
         assert_eq!((pane.cols, pane.rows), (80, 24));
+    }
+
+    #[test]
+    fn old_tab_snapshots_default_to_no_saved_focus() {
+        let tab: super::TabView = serde_json::from_value(serde_json::json!({
+            "tab_id": "tab-1",
+            "name": "Main",
+            "layout": { "Pane": { "pane_id": "pane-1" } }
+        }))
+        .unwrap();
+        assert_eq!(tab.focused_pane_id, None);
     }
 
     #[test]

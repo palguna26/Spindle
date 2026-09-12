@@ -116,7 +116,7 @@ fn session_metadata_survives_server_restart() {
 }
 
 #[test]
-fn ensuring_active_pane_is_idempotent() {
+fn ensuring_active_pane_is_idempotent_and_restores_tab_focus() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
     let client = ControlClient::connect(address.trim()).unwrap();
@@ -162,6 +162,20 @@ fn ensuring_active_pane_is_idempotent() {
         .payload
         .unwrap();
     assert_eq!(tab_pane["created"], true);
+    let mut split_request = pane_request.clone();
+    split_request["direction"] = serde_json::json!("vertical");
+    let other_tab_pane = client
+        .request("ensure-split-activity", "split_pane", split_request)
+        .unwrap()
+        .payload
+        .unwrap();
+    client
+        .request(
+            "ensure-focus-second-activity-pane",
+            "focus_pane",
+            serde_json::json!({ "pane_id": other_tab_pane["pane_id"] }),
+        )
+        .unwrap();
 
     client
         .request(
@@ -201,13 +215,34 @@ fn ensuring_active_pane_is_idempotent() {
             serde_json::json!({ "id": new_tab["tab_id"] }),
         )
         .unwrap();
-    client
+    let activity_focus_before_ensure = client
+        .request(
+            "ensure-activity-focus-snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(
+        activity_focus_before_ensure["focused_pane_id"],
+        other_tab_pane["pane_id"]
+    );
+    let restored_activity_focus = client
         .request(
             "ensure-refocus-activity",
             "ensure_active_pane",
             pane_request.clone(),
         )
+        .unwrap()
+        .payload
         .unwrap();
+    assert_eq!(restored_activity_focus["created"], false);
+    assert_eq!(
+        restored_activity_focus["pane_id"],
+        other_tab_pane["pane_id"]
+    );
+    assert_ne!(restored_activity_focus["pane_id"], tab_pane["pane_id"]);
 
     client
         .request(
@@ -269,7 +304,7 @@ fn ensuring_active_pane_is_idempotent() {
         .unwrap()
         .payload
         .unwrap();
-    assert_eq!(snapshot["panes"].as_array().unwrap().len(), 4);
+    assert_eq!(snapshot["panes"].as_array().unwrap().len(), 5);
     assert_eq!(snapshot["focused_pane_id"], space_pane["pane_id"]);
 
     client
@@ -672,6 +707,7 @@ fn split_panes_survive_workspace_switching() {
         2
     );
     assert_eq!(snapshot["spaces"][0]["active_workspace_id"], "workspace-1");
+    assert_eq!(snapshot["focused_pane_id"], second_id);
     assert!(!workspace_id.is_empty());
 
     for pane_id in [first_id, second_id] {
@@ -1314,10 +1350,12 @@ fn split_layout_survives_server_restart() {
         "cols": 80,
         "rows": 24
     });
-    client
+    let first = client
         .request("first-pane", "create_pane", pane.clone())
+        .unwrap()
+        .payload
         .unwrap();
-    client
+    let second = client
         .request(
             "second-pane",
             "split_pane",
@@ -1330,6 +1368,8 @@ fn split_layout_survives_server_restart() {
                 "rows": 24
             }),
         )
+        .unwrap()
+        .payload
         .unwrap();
     let before = client
         .request(
@@ -1342,6 +1382,12 @@ fn split_layout_survives_server_restart() {
         .unwrap();
     assert_eq!(before["panes"].as_array().unwrap().len(), 2);
     assert!(before["spaces"][0]["workspaces"][0]["tabs"][0]["layout"].is_object());
+    assert_eq!(before["focused_pane_id"], second["pane_id"]);
+    assert_eq!(
+        before["spaces"][0]["workspaces"][0]["tabs"][0]["focused_pane_id"],
+        second["pane_id"]
+    );
+    assert_ne!(first["pane_id"], second["pane_id"]);
     client
         .request("stop", "stop_server", Value::Object(Default::default()))
         .unwrap();
@@ -1360,6 +1406,11 @@ fn split_layout_survives_server_restart() {
         .unwrap();
     assert_eq!(after["panes"].as_array().unwrap().len(), 2);
     assert!(after["spaces"][0]["workspaces"][0]["tabs"][0]["layout"].is_object());
+    assert_eq!(after["focused_pane_id"], second["pane_id"]);
+    assert_eq!(
+        after["spaces"][0]["workspaces"][0]["tabs"][0]["focused_pane_id"],
+        second["pane_id"]
+    );
     client
         .request("stop", "stop_server", Value::Object(Default::default()))
         .unwrap();
