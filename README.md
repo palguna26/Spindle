@@ -26,8 +26,9 @@ New tabs and workspaces also start a PowerShell pane in the workspace's
 repository directory.
 
 The screen shows spaces and workspaces on the left, tabs above the panes, and
-supports clicking those items or a pane to switch focus. Right-click menus,
-drag resizing, and mouse input inside terminal apps are not supported yet.
+supports clicking to switch focus. Drag split borders to resize, right-click
+for pane/tab/workspace actions, and drag terminal text to select and copy it.
+Mouse-aware terminal apps receive mouse input when they request it.
 
 ```text
 spindle          attach (and start when needed)
@@ -37,12 +38,14 @@ spindle doctor   show server health and state paths
 spindle list     show project identity and state path
 ```
 
-Press `Ctrl-b`, then:
+Press `Ctrl-b`, then `?` for the in-app mouse and keyboard guide. Press `:` to
+open the command palette. Other common keys:
 
 | Keys | Action |
 | --- | --- |
 | `n` | New tab |
-| `?` | Command palette |
+| `?` | In-app help |
+| `:` | Command palette |
 | `d` | Detach |
 | `"` / `%` | Horizontal / vertical split |
 | `o` / `p` | Next / previous pane |

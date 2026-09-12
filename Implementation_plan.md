@@ -87,8 +87,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   the matching Herdr action exists.
 - [x] Support drag-select/copy and terminal mouse passthrough without stealing
   input from applications that request it.
-- [ ] Keep equivalent keyboard actions and show help/onboarding for both input
-  methods.
+- [ ] Keep keyboard actions for every pane, tab, and workspace action that is
+  available through the mouse.
+- [x] Add in-app help that explains both keyboard shortcuts and mouse controls.
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior; manually verify in Windows Terminal and PowerShell.
 

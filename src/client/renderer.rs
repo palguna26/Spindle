@@ -139,6 +139,39 @@ pub fn render_palette(frame: &mut Frame<'_>, selected: usize) {
     );
 }
 
+pub fn render_help(frame: &mut Frame<'_>) {
+    let area = centered_rect(72, 90, frame.area());
+    let rows = [
+        "Mouse",
+        "Click sidebar, tabs, or panes to switch or focus.",
+        "Drag split borders to resize; right-click for actions.",
+        "Drag text to select/copy; double-click selects a word.",
+        "Terminal apps receive mouse events when requested.",
+        "",
+        "Keyboard (press Ctrl-b, then the key)",
+        "n / c: new / close tab",
+        "[ / ]: previous / next tab; { / }: previous / next space",
+        "w: next workspace; o / p / arrows: focus panes",
+        "\" / %: split; < / >: resize; x / r: stop / restart",
+        "? / : / d: help / command palette / detach",
+        "",
+        "Create, rename, and delete actions are in the command palette.",
+        "Press any key or click to close.",
+    ]
+    .into_iter()
+    .map(Line::from)
+    .collect::<Vec<_>>();
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(rows).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Spindle help — mouse and keyboard"),
+        ),
+        area,
+    );
+}
+
 pub fn render_prompt(frame: &mut Frame<'_>, title: &str, input: &str) {
     let area = centered_rect(60, 25, frame.area());
     frame.render_widget(
@@ -256,7 +289,7 @@ mod tests {
     use super::super::selection::TextSelection;
     use super::{
         active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, render,
-        render_selection, render_with_connection, status_color,
+        render_help, render_selection, render_with_connection, status_color,
     };
     use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
@@ -316,6 +349,23 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect();
         assert!(content.contains("connection lost"));
+    }
+
+    #[test]
+    fn help_overlay_explains_mouse_and_keyboard_controls() {
+        let backend = TestBackend::new(60, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(render_help).unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("Spindle help"));
+        assert!(content.contains("right-click for actions"));
+        assert!(content.contains("command palette"));
     }
 
     #[test]

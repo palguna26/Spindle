@@ -33,6 +33,7 @@ pub enum Action {
     SplitVertical,
     ResizeSmaller,
     ResizeLarger,
+    Help,
     CommandPalette,
     Send(KeyCode),
 }
@@ -60,7 +61,8 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
             KeyCode::Char('%') => Action::SplitVertical,
             KeyCode::Char('<') => Action::ResizeSmaller,
             KeyCode::Char('>') => Action::ResizeLarger,
-            KeyCode::Char('?') => Action::CommandPalette,
+            KeyCode::Char('?') => Action::Help,
+            KeyCode::Char(':') => Action::CommandPalette,
             _ => Action::None,
         };
     }
@@ -94,6 +96,14 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE)),
             Action::NewTab
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('?'), KeyModifiers::SHIFT)),
+            Action::Help
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char(':'), KeyModifiers::SHIFT)),
+            Action::CommandPalette
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE)),

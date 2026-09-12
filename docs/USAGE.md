@@ -31,9 +31,10 @@ Running `spindle` without a server starts the server and attaches. The server
 runs independently of the attached terminal.
 
 The screen shows spaces and workspaces in a left sidebar and tabs above the
-panes. Click a space, workspace, or tab to switch; click a pane to focus it.
-Right-click menus, split dragging, and mouse input inside terminal apps are
-not supported yet.
+panes. Click a space, workspace, tab, or pane to switch focus. Drag split
+borders to resize. Right-click panes, tabs, and workspaces for actions. Drag
+terminal text to select and copy it; double-click a word to select it. Mouse-
+aware terminal apps receive mouse input when they request it.
 
 Useful commands:
 
@@ -47,7 +48,8 @@ spindle doctor   Show server health and identity
 
 ## Keybindings
 
-`Ctrl-b` is the command prefix. Press `Ctrl-b`, then:
+`Ctrl-b` is the command prefix. Press `Ctrl-b`, then `?` for the in-app guide
+to mouse and keyboard controls. Press `:` for the command palette. Other keys:
 
 | Keys | Action |
 | --- | --- |
@@ -63,7 +65,8 @@ spindle doctor   Show server health and identity
 | `"` | Horizontal split |
 | `%` | Vertical split |
 | `<` / `>` | Resize pane |
-| `?` | Open command palette |
+| `?` | Open mouse and keyboard help |
+| `:` | Open command palette |
 
 The command palette supports arrow keys or `j`/`k`, Enter to select, and Esc
 to close. It includes pane, tab, space, and workspace rename actions, named

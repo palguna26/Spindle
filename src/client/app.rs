@@ -127,6 +127,7 @@ fn event_loop(
     let mut palette_open = false;
     let mut rename_prompt: Option<RenamePrompt> = None;
     let mut context_menu: Option<ContextMenu> = None;
+    let mut help_open = false;
     let mut last_pane_sizes = None;
     let mut mouse_state = MouseState::default();
     let mut was_connected = true;
@@ -168,6 +169,9 @@ fn event_loop(
                 if palette_open {
                     renderer::render_palette(frame, palette_selected);
                 }
+                if help_open {
+                    renderer::render_help(frame);
+                }
                 if let Some(prompt) = &rename_prompt {
                     let title = match prompt.target {
                         RenameTarget::Pane => "Rename pane",
@@ -194,6 +198,10 @@ fn event_loop(
         let key = match input {
             Event::Mouse(mouse) => {
                 if rename_prompt.is_some() {
+                    continue;
+                }
+                if help_open {
+                    help_open = false;
                     continue;
                 }
                 handle_mouse(
@@ -245,6 +253,10 @@ fn event_loop(
             }
             continue;
         }
+        if help_open {
+            help_open = false;
+            continue;
+        }
         if palette_open {
             if let Some(next) = move_selection(palette_selected, key.code) {
                 palette_selected = next;
@@ -271,6 +283,11 @@ fn event_loop(
         if pressed == Action::CommandPalette {
             palette_open = true;
             palette_selected = 0;
+            prefix_active = false;
+            continue;
+        }
+        if pressed == Action::Help {
+            help_open = true;
             prefix_active = false;
             continue;
         }
@@ -384,6 +401,7 @@ fn event_loop(
                 }
             }
             Action::None => {}
+            Action::Help => {}
             Action::CommandPalette => {}
             Action::RenameFocusedPane
             | Action::RenameActiveTab
