@@ -18,8 +18,9 @@ Open a new PowerShell or CMD window after adding the install directory to PATH.
 
 ## Use
 
-Run `spindle` in a repository. It starts a per-project server and attaches the
-client. The server remains alive when the client detaches.
+Run `spindle` in a repository. It starts a per-project server, attaches the
+client, and opens a PowerShell pane in an empty active tab. The server remains
+alive when the client detaches.
 
 ```text
 spindle          attach (and start when needed)
@@ -45,7 +46,7 @@ Press `Ctrl-b`, then:
 | `}` / `{` | Next / previous space |
 | `w` | Next workspace |
 
-The command palette also creates the first PowerShell pane, renames objects,
+The command palette can create more PowerShell panes, rename objects,
 switches to a workspace by name, and requires typing the exact name before
 deleting a space or workspace.
 

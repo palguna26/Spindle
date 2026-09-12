@@ -23,6 +23,11 @@ pub fn run(address: impl Into<String>) -> Result<(), ClientError> {
         terminal_size.1,
         vec!["mouse".into(), "alternate_screen".into()],
     )?;
+    client.request(
+        "ensure-default-pane",
+        "ensure_active_pane",
+        pane_request(terminal_size),
+    )?;
     let mut terminal = setup_terminal().map_err(ClientError::Io)?;
     let result = event_loop(&mut terminal, &client);
     restore_terminal(&mut terminal).map_err(ClientError::Io)?;

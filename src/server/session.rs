@@ -351,6 +351,24 @@ impl Session {
         self.create_pane_with_direction(request, crate::model::layout::Direction::Vertical)
     }
 
+    pub fn ensure_active_pane(&mut self, request: CreatePaneRequest) -> Result<Value, String> {
+        let existing_pane = self
+            .active_tab_mut()?
+            .layout
+            .as_ref()
+            .and_then(|layout| layout.pane_ids().into_iter().next())
+            .map(str::to_owned);
+        if let Some(pane_id) = existing_pane {
+            return Ok(serde_json::json!({ "pane_id": pane_id, "created": false }));
+        }
+
+        let mut result = self.create_pane(request)?;
+        if let Some(object) = result.as_object_mut() {
+            object.insert("created".into(), serde_json::json!(true));
+        }
+        Ok(result)
+    }
+
     pub fn split_pane(
         &mut self,
         request: CreatePaneRequest,

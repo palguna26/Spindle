@@ -320,6 +320,16 @@ pub(crate) fn response_for_with_interactive(
             }
             result
         }
+        "ensure_active_pane" => {
+            let payload: CreatePaneRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.ensure_active_pane(payload))
+        }
         "split_pane" => {
             let payload: SplitRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,

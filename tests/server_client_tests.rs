@@ -116,6 +116,52 @@ fn session_metadata_survives_server_restart() {
 }
 
 #[test]
+fn ensuring_active_pane_is_idempotent() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let pane_request = serde_json::json!({
+        "command": "cmd.exe",
+        "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+        "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+        "cols": 80,
+        "rows": 24
+    });
+
+    let first = client
+        .request("ensure-first", "ensure_active_pane", pane_request.clone())
+        .unwrap();
+    assert!(first.ok);
+    let first_payload = first.payload.unwrap();
+    assert_eq!(first_payload["created"], true);
+
+    let second = client
+        .request("ensure-second", "ensure_active_pane", pane_request)
+        .unwrap();
+    assert!(second.ok);
+    let second_payload = second.payload.unwrap();
+    assert_eq!(second_payload["created"], false);
+    assert_eq!(first_payload["pane_id"], second_payload["pane_id"]);
+
+    let snapshot = client
+        .request(
+            "ensure-snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(snapshot["panes"].as_array().unwrap().len(), 1);
+
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn terminal_screen_and_scrollback_survive_server_restart() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);

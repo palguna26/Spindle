@@ -23,6 +23,9 @@ spindle start
 spindle attach
 ```
 
+Attaching to an empty active tab starts one PowerShell pane. Reattaching does
+not add another pane when that tab already has one.
+
 Running `spindle` without a server starts the server and attaches. The server
 runs independently of the attached terminal.
 
