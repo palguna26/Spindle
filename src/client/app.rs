@@ -19,10 +19,13 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
 use ratatui::Terminal;
 use serde_json::json;
+use std::collections::HashMap;
 use std::io::{self, stdout};
 use std::time::{Duration, Instant};
 
 const SPLIT_DRAG_INTERVAL: Duration = Duration::from_millis(33);
+const WHEEL_SCROLL_LINES: usize = 3;
+const MAX_SCROLLBACK_ROWS: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StartupErrorAction {
@@ -59,6 +62,8 @@ struct MouseState {
     pane_capture: Option<PaneMouseCapture>,
     selection: Option<TextSelection>,
     last_click: Option<PaneClick>,
+    scroll_offsets: HashMap<String, usize>,
+    scrollback_views: HashMap<String, CachedScrollbackView>,
 }
 
 struct PaneClick {
@@ -66,6 +71,14 @@ struct PaneClick {
     row: u16,
     col: u16,
     at: Instant,
+}
+
+struct CachedScrollbackView {
+    bytes: Vec<u8>,
+    rows: u16,
+    cols: u16,
+    offset: usize,
+    screen: String,
 }
 
 impl PaneClick {
@@ -159,6 +172,11 @@ fn event_loop(
             }
             Err(_) => false,
         };
+        apply_scrollback_views(
+            &mut snapshot,
+            &mut mouse_state.scroll_offsets,
+            &mut mouse_state.scrollback_views,
+        );
         if snapshot_has_focused_pane(&snapshot) {
             startup_error = None;
         } else if connected && startup_error.is_none() {
@@ -269,6 +287,7 @@ fn event_loop(
         }
         mouse_state.selection = None;
         mouse_state.last_click = None;
+        mouse_state.scroll_offsets.clear();
         if let Some(prompt) = &mut rename_prompt {
             match prompt.apply_key(key.code) {
                 PromptResult::Continue => {}
@@ -502,6 +521,33 @@ fn handle_mouse(
     rename_prompt: &mut Option<RenamePrompt>,
 ) -> Result<(), ClientError> {
     let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
+    if matches!(
+        mouse.kind,
+        MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+    ) {
+        if forward_mouse_to_pane(client, snapshot, area, mouse, &mut mouse_state.pane_capture)? {
+            return Ok(());
+        }
+        if let Some(renderer::ClickTarget::Pane(pane_id)) =
+            renderer::hit_test(snapshot, area, mouse)
+        {
+            if let Some(pane) = snapshot.panes.iter().find(|pane| pane.pane_id == pane_id) {
+                if !pane.alternate_screen {
+                    let offset = mouse_state.scroll_offsets.entry(pane_id).or_default();
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => {
+                            *offset = offset.saturating_add(WHEEL_SCROLL_LINES);
+                        }
+                        MouseEventKind::ScrollDown => {
+                            *offset = offset.saturating_sub(WHEEL_SCROLL_LINES);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            return Ok(());
+        }
+    }
     if mouse.kind == MouseEventKind::Down(MouseButton::Right) {
         mouse_state.split_drag = None;
         mouse_state.selection = None;
@@ -679,6 +725,52 @@ fn handle_mouse(
         }
     }
     Ok(())
+}
+
+fn apply_scrollback_views(
+    snapshot: &mut SessionSnapshot,
+    scroll_offsets: &mut HashMap<String, usize>,
+    cached_views: &mut HashMap<String, CachedScrollbackView>,
+) {
+    scroll_offsets.retain(|pane_id, _| snapshot.panes.iter().any(|pane| &pane.pane_id == pane_id));
+    for pane in &mut snapshot.panes {
+        let Some(offset) = scroll_offsets.get_mut(&pane.pane_id) else {
+            continue;
+        };
+        if pane.alternate_screen || pane.scrollback.is_empty() {
+            *offset = 0;
+            continue;
+        }
+        if let Some(cached) = cached_views.get(&pane.pane_id) {
+            if cached.bytes == pane.scrollback
+                && cached.rows == pane.rows
+                && cached.cols == pane.cols
+                && cached.offset == *offset
+            {
+                pane.screen.clone_from(&cached.screen);
+                continue;
+            }
+        }
+        let mut parser =
+            vt100::Parser::new(pane.rows.max(1), pane.cols.max(1), MAX_SCROLLBACK_ROWS);
+        parser.process(&pane.scrollback);
+        parser.set_scrollback(*offset);
+        let screen = parser.screen();
+        *offset = screen.scrollback();
+        pane.screen = screen.contents();
+        cached_views.insert(
+            pane.pane_id.clone(),
+            CachedScrollbackView {
+                bytes: pane.scrollback.clone(),
+                rows: pane.rows,
+                cols: pane.cols,
+                offset: *offset,
+                screen: pane.screen.clone(),
+            },
+        );
+    }
+    scroll_offsets.retain(|_, offset| *offset > 0);
+    cached_views.retain(|pane_id, _| scroll_offsets.contains_key(pane_id));
 }
 
 fn forward_mouse_to_pane(
@@ -1557,14 +1649,45 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id, key_code_bytes,
-        pane_size, reconnect_requires_reattach, snapshot_has_focused_pane, startup_error_action,
-        workspace_id_by_name, PaneClick, SplitDirection, SplitDrag, StartupErrorAction,
+        active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
+        apply_scrollback_views, key_code_bytes, pane_size, reconnect_requires_reattach,
+        snapshot_has_focused_pane, startup_error_action, workspace_id_by_name,
+        CachedScrollbackView, PaneClick, SplitDirection, SplitDrag, StartupErrorAction,
     };
     use crate::server::session::Session;
     use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
     use ratatui::layout::Rect;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn scrollback_offset_shows_history_and_returns_to_live_screen() {
+        let mut snapshot = Session::default().snapshot().clone();
+        snapshot.panes.push(
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-1",
+                "command": "powershell.exe",
+                "args": [],
+                "cwd": "C:/",
+                "cols": 20,
+                "rows": 2,
+                "status": "Running",
+                "scrollback_bytes": 24,
+                "scrollback": b"one\r\ntwo\r\nthree\r\nfour".to_vec()
+            }))
+            .unwrap(),
+        );
+        let mut offsets = std::collections::HashMap::from([("pane-1".into(), 1)]);
+        let mut cached_views = std::collections::HashMap::<String, CachedScrollbackView>::new();
+
+        apply_scrollback_views(&mut snapshot, &mut offsets, &mut cached_views);
+        assert!(snapshot.panes[0].screen.contains("three"));
+        assert!(!snapshot.panes[0].screen.contains("four"));
+
+        offsets.insert("pane-1".into(), 0);
+        apply_scrollback_views(&mut snapshot, &mut offsets, &mut cached_views);
+        assert!(snapshot.panes[0].screen.contains("four"));
+        assert!(!offsets.contains_key("pane-1"));
+    }
 
     #[test]
     fn common_keys_encode_for_a_pty() {

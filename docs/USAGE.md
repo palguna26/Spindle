@@ -33,8 +33,9 @@ runs independently of the attached terminal.
 The screen shows spaces and workspaces in a left sidebar and tabs above the
 panes. Click a space, workspace, tab, or pane to switch focus. Drag split
 borders to resize. Right-click panes, tabs, and workspaces for actions. Drag
-terminal text to select and copy it; double-click a word to select it. Mouse-
-aware terminal apps receive mouse input when they request it.
+terminal text to select and copy it; double-click a word to select it. Scroll
+the wheel over a pane to browse its recent output. Mouse-aware terminal apps
+receive mouse input when they request it.
 
 Useful commands:
 
