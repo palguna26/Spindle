@@ -54,6 +54,8 @@ pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> Agent
     let screen_lower = screen.to_ascii_lowercase();
     let title_lower = title.to_ascii_lowercase();
     let combined = format!("{title_lower}\n{screen_lower}");
+    let recent = recent_nonempty_lines(screen, 20).to_ascii_lowercase();
+    let bottom_three = recent_nonempty_lines(screen, 3).to_ascii_lowercase();
     let blocked = combined.contains("action required")
         || combined.contains("permission required")
         || combined.contains("do you trust the contents of this directory?")
@@ -62,7 +64,8 @@ pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> Agent
         || (combined.contains("esc dismiss")
             && (combined.contains("enter confirm")
                 || combined.contains("enter submit")
-                || combined.contains("enter toggle")));
+                || combined.contains("enter toggle")))
+        || (agent == AgentKind::Codex && codex_recent_blocker(&recent));
     if blocked {
         return AgentState::Blocked;
     }
@@ -70,10 +73,10 @@ pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> Agent
     let working = match agent {
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
-                || screen.lines().rev().take(3).any(|line| {
-                    line.to_ascii_lowercase().contains("working (")
-                        && line.to_ascii_lowercase().contains("esc to interrupt")
-                })
+                || (!bottom_three.contains("conversation interrupted")
+                    && bottom_three.lines().any(|line| {
+                        line.contains("working (") && line.contains("esc to interrupt")
+                    }))
         }
         AgentKind::OpenCode => {
             [
@@ -95,6 +98,37 @@ pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> Agent
     } else {
         AgentState::Unknown
     }
+}
+
+fn recent_nonempty_lines(screen: &str, limit: usize) -> String {
+    screen
+        .lines()
+        .rev()
+        .filter(|line| !line.trim().is_empty())
+        .take(limit)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn codex_recent_blocker(recent: &str) -> bool {
+    let startup_update = recent.contains("update available!")
+        && recent.contains("update now")
+        && recent.contains("skip until next version")
+        && recent.contains("press enter to continue");
+    let weak_choice = recent.contains("[y/n]") || recent.contains("yes (y)");
+    let question_with_choice = recent.lines().enumerate().any(|(index, line)| {
+        let prompt = line.contains("do you want to") || line.contains("would you like to");
+        prompt
+            && recent
+                .lines()
+                .skip(index + 1)
+                .take(4)
+                .any(|choice| choice.contains("yes") || choice.contains('❯'))
+    });
+    startup_update || weak_choice || question_with_choice
 }
 
 fn is_codex_spinner(character: char) -> bool {
@@ -506,6 +540,54 @@ mod tests {
         assert_eq!(
             detect_state(AgentKind::Codex, "plain shell", ""),
             AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_codex_manifest_blocker_prompts() {
+        assert_eq!(
+            detect_state(
+                AgentKind::Codex,
+                "Update available! Update now?\nSkip until next version\nPress enter to continue",
+                "Codex"
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Codex, "Run this command? [y/n]", "Codex"),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Codex,
+                "Do you want to continue?\nNo\nYes",
+                "Codex"
+            ),
+            AgentState::Blocked
+        );
+    }
+
+    #[test]
+    fn codex_interrupted_banner_suppresses_working_fallback() {
+        assert_ne!(
+            detect_state(
+                AgentKind::Codex,
+                "• Working (12s) · esc to interrupt\n■ Conversation interrupted",
+                ""
+            ),
+            AgentState::Working
+        );
+    }
+
+    #[test]
+    fn old_interrupted_banner_does_not_hide_new_codex_work() {
+        assert_eq!(
+            detect_state(
+                AgentKind::Codex,
+                "■ Conversation interrupted\none\ntwo\nthree\n• Working (2s) · esc to interrupt",
+                ""
+            ),
+            AgentState::Working
         );
     }
 
