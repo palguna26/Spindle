@@ -5,12 +5,12 @@ use super::context_menu::ContextMenu;
 use super::selection::TextSelection;
 use crate::model::status::PaneStatus;
 use crate::server::session::SessionSnapshot;
-use layout::main_areas;
 pub(crate) use layout::{
-    pane_content_area, pane_inner_size, pane_rectangles, pane_sizes, split_handles, PaneSize,
+    pane_content_area, pane_content_area_with_sidebar, pane_inner_size, pane_rectangles,
+    pane_sizes, split_handles, PaneSize,
 };
-pub use navigation::{hit_test, ClickTarget};
-use navigation::{render_sidebar, render_tabs};
+use navigation::render_tabs;
+pub use navigation::{hit_test, hit_test_with_sidebar, ClickTarget};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -22,8 +22,17 @@ pub fn render(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
 }
 
 pub fn render_with_connection(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, connected: bool) {
-    let main = main_areas(frame.area());
-    render_sidebar(frame, snapshot, main.sidebar);
+    render_with_sidebar(frame, snapshot, connected, false);
+}
+
+pub fn render_with_sidebar(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    connected: bool,
+    sidebar_collapsed: bool,
+) {
+    let main = layout::main_areas_with_sidebar(frame.area(), sidebar_collapsed);
+    navigation::render_sidebar_with_collapsed(frame, snapshot, main.sidebar, sidebar_collapsed);
     render_tabs(frame, snapshot, main.tabs);
     let panes = pane_rectangles(snapshot, main.panes);
     if panes.is_empty() {
@@ -78,18 +87,30 @@ pub fn render_with_connection(frame: &mut Frame<'_>, snapshot: &SessionSnapshot,
     frame.render_widget(Paragraph::new(chrome), footer_area(frame.area()));
 }
 
+#[cfg(test)]
 pub(crate) fn render_selection(
     frame: &mut Frame<'_>,
     snapshot: &SessionSnapshot,
     selection: &TextSelection,
 ) {
+    render_selection_with_sidebar(frame, snapshot, selection, false);
+}
+
+pub(crate) fn render_selection_with_sidebar(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    selection: &TextSelection,
+    sidebar_collapsed: bool,
+) {
     if !selection.has_range() {
         return;
     }
-    let Some(pane) = pane_rectangles(snapshot, pane_content_area(frame.area()))
-        .into_iter()
-        .find(|pane| pane.pane_id == selection.pane_id)
-    else {
+    let Some(pane) = pane_rectangles(
+        snapshot,
+        pane_content_area_with_sidebar(frame.area(), sidebar_collapsed),
+    )
+    .into_iter()
+    .find(|pane| pane.pane_id == selection.pane_id) else {
         return;
     };
     let inner = Block::default().borders(Borders::ALL).inner(pane.rect);
@@ -157,6 +178,7 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "Keyboard (press Ctrl-b, then the key)",
         "c: new tab; n / p: next / previous tab",
         "x / Shift+x: close pane / tab; s / r: stop / restart",
+        "b: toggle compact sidebar",
         "h/j/k/l or arrows: focus direction; o / O: cycle panes",
         "v / -: split vertical / horizontal; z: zoom pane",
         "?: help; colon: palette; q / d: detach",

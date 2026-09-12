@@ -58,6 +58,7 @@ struct PaneMouseCapture {
 
 #[derive(Default)]
 struct MouseState {
+    sidebar_collapsed: bool,
     split_drag: Option<SplitDrag>,
     pane_capture: Option<PaneMouseCapture>,
     selection: Option<TextSelection>,
@@ -198,16 +199,29 @@ fn event_loop(
         }
         was_connected = connected;
         let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
-        let pane_sizes = renderer::pane_sizes(&snapshot, renderer::pane_content_area(area));
+        let pane_sizes = renderer::pane_sizes(
+            &snapshot,
+            renderer::pane_content_area_with_sidebar(area, mouse_state.sidebar_collapsed),
+        );
         if connected && last_pane_sizes.as_ref() != Some(&pane_sizes) {
             resize_panes(client, &pane_sizes)?;
             last_pane_sizes = Some(pane_sizes);
         }
         terminal
             .draw(|frame| {
-                renderer::render_with_connection(frame, &snapshot, connected);
+                renderer::render_with_sidebar(
+                    frame,
+                    &snapshot,
+                    connected,
+                    mouse_state.sidebar_collapsed,
+                );
                 if let Some(selection) = &mouse_state.selection {
-                    renderer::render_selection(frame, &snapshot, selection);
+                    renderer::render_selection_with_sidebar(
+                        frame,
+                        &snapshot,
+                        selection,
+                        mouse_state.sidebar_collapsed,
+                    );
                 }
                 if palette_open {
                     renderer::render_palette(frame, palette_selected);
@@ -381,6 +395,13 @@ fn event_loop(
             prefix_active = false;
             continue;
         }
+        if pressed == Action::ToggleSidebar {
+            mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
+            mouse_state.selection = None;
+            mouse_state.last_click = None;
+            prefix_active = false;
+            continue;
+        }
         match pressed {
             Action::Detach => {
                 client.detach()?;
@@ -498,6 +519,7 @@ fn event_loop(
                     );
                 }
             }
+            Action::ToggleSidebar => {}
             Action::ToggleRightClickPassthrough => {
                 if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
                     client.request(
@@ -550,11 +572,18 @@ fn handle_mouse(
         mouse.kind,
         MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
     ) {
-        if forward_mouse_to_pane(client, snapshot, area, mouse, &mut mouse_state.pane_capture)? {
+        if forward_mouse_to_pane(
+            client,
+            snapshot,
+            area,
+            mouse,
+            &mut mouse_state.pane_capture,
+            mouse_state.sidebar_collapsed,
+        )? {
             return Ok(());
         }
         if let Some(renderer::ClickTarget::Pane(pane_id)) =
-            renderer::hit_test(snapshot, area, mouse)
+            renderer::hit_test_with_sidebar(snapshot, area, mouse, mouse_state.sidebar_collapsed)
         {
             if let Some(pane) = snapshot.panes.iter().find(|pane| pane.pane_id == pane_id) {
                 if !pane.alternate_screen {
@@ -581,11 +610,17 @@ fn handle_mouse(
             area,
             mouse,
             &mut mouse_state.pane_capture,
+            mouse_state.sidebar_collapsed,
         )? {
             return Ok(());
         } else {
-            *context_menu = renderer::hit_test(snapshot, area, mouse)
-                .and_then(|target| ContextMenu::from_target(target, mouse.column, mouse.row));
+            *context_menu = renderer::hit_test_with_sidebar(
+                snapshot,
+                area,
+                mouse,
+                mouse_state.sidebar_collapsed,
+            )
+            .and_then(|target| ContextMenu::from_target(target, mouse.column, mouse.row));
         }
         return Ok(());
     }
@@ -604,7 +639,8 @@ fn handle_mouse(
         return Ok(());
     }
     if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
-        let pane_area = renderer::pane_content_area(area);
+        let pane_area =
+            renderer::pane_content_area_with_sidebar(area, mouse_state.sidebar_collapsed);
         if let Some(handle) = renderer::split_handles(snapshot, pane_area)
             .into_iter()
             .find(|handle| {
@@ -632,7 +668,14 @@ fn handle_mouse(
         }
         mouse_state.split_drag = None;
         mouse_state.selection = None;
-        if begin_text_selection(client, snapshot, area, mouse, mouse_state)? {
+        if begin_text_selection(
+            client,
+            snapshot,
+            area,
+            mouse,
+            mouse_state,
+            mouse_state.sidebar_collapsed,
+        )? {
             return Ok(());
         }
     }
@@ -689,16 +732,30 @@ fn handle_mouse(
         }
         return Ok(());
     }
-    if forward_mouse_to_pane(client, snapshot, area, mouse, &mut mouse_state.pane_capture)? {
+    if forward_mouse_to_pane(
+        client,
+        snapshot,
+        area,
+        mouse,
+        &mut mouse_state.pane_capture,
+        mouse_state.sidebar_collapsed,
+    )? {
         return Ok(());
     }
     if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
         return Ok(());
     }
-    let Some(target) = renderer::hit_test(snapshot, area, mouse) else {
+    let Some(target) =
+        renderer::hit_test_with_sidebar(snapshot, area, mouse, mouse_state.sidebar_collapsed)
+    else {
         return Ok(());
     };
     match target {
+        renderer::ClickTarget::SidebarToggle => {
+            mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
+            mouse_state.selection = None;
+            mouse_state.last_click = None;
+        }
         renderer::ClickTarget::SplitBorder(_) => {}
         renderer::ClickTarget::Space(space_id) => {
             let response = client.request(
@@ -808,6 +865,7 @@ fn forward_mouse_to_pane(
     area: Rect,
     mouse: MouseEvent,
     capture: &mut Option<PaneMouseCapture>,
+    sidebar_collapsed: bool,
 ) -> Result<bool, ClientError> {
     let captured = match mouse.kind {
         MouseEventKind::Drag(button) | MouseEventKind::Up(button) => capture
@@ -819,21 +877,24 @@ fn forward_mouse_to_pane(
     let target = if matches!(mouse.kind, MouseEventKind::Drag(_) | MouseEventKind::Up(_)) {
         captured
     } else {
-        renderer::pane_rectangles(snapshot, renderer::pane_content_area(area))
-            .into_iter()
-            .find(|pane| {
-                let inner = Rect::new(
-                    pane.rect.x.saturating_add(1),
-                    pane.rect.y.saturating_add(1),
-                    pane.rect.width.saturating_sub(2),
-                    pane.rect.height.saturating_sub(2),
-                );
-                mouse.column >= inner.x
-                    && mouse.column < inner.right()
-                    && mouse.row >= inner.y
-                    && mouse.row < inner.bottom()
-            })
-            .map(|pane| (pane.pane_id, pane.rect))
+        renderer::pane_rectangles(
+            snapshot,
+            renderer::pane_content_area_with_sidebar(area, sidebar_collapsed),
+        )
+        .into_iter()
+        .find(|pane| {
+            let inner = Rect::new(
+                pane.rect.x.saturating_add(1),
+                pane.rect.y.saturating_add(1),
+                pane.rect.width.saturating_sub(2),
+                pane.rect.height.saturating_sub(2),
+            );
+            mouse.column >= inner.x
+                && mouse.column < inner.right()
+                && mouse.row >= inner.y
+                && mouse.row < inner.bottom()
+        })
+        .map(|pane| (pane.pane_id, pane.rect))
     };
     let Some((pane_id, rect)) = target else {
         clear_mouse_capture(capture, mouse.kind);
@@ -915,22 +976,25 @@ fn begin_text_selection(
     area: Rect,
     mouse: MouseEvent,
     mouse_state: &mut MouseState,
+    sidebar_collapsed: bool,
 ) -> Result<bool, ClientError> {
-    let Some(pane) = renderer::pane_rectangles(snapshot, renderer::pane_content_area(area))
-        .into_iter()
-        .find(|pane| {
-            let inner = Rect::new(
-                pane.rect.x.saturating_add(1),
-                pane.rect.y.saturating_add(1),
-                pane.rect.width.saturating_sub(2),
-                pane.rect.height.saturating_sub(2),
-            );
-            mouse.column >= inner.x
-                && mouse.column < inner.right()
-                && mouse.row >= inner.y
-                && mouse.row < inner.bottom()
-        })
-    else {
+    let Some(pane) = renderer::pane_rectangles(
+        snapshot,
+        renderer::pane_content_area_with_sidebar(area, sidebar_collapsed),
+    )
+    .into_iter()
+    .find(|pane| {
+        let inner = Rect::new(
+            pane.rect.x.saturating_add(1),
+            pane.rect.y.saturating_add(1),
+            pane.rect.width.saturating_sub(2),
+            pane.rect.height.saturating_sub(2),
+        );
+        mouse.column >= inner.x
+            && mouse.column < inner.right()
+            && mouse.row >= inner.y
+            && mouse.row < inner.bottom()
+    }) else {
         mouse_state.last_click = None;
         return Ok(false);
     };

@@ -87,6 +87,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 ## 3. Port mouse-first navigation and pane controls
 
 - [x] Click spaces, workspaces, tabs, and panes to switch/focus them.
+- [x] Toggle a compact four-column sidebar from the Herdr `prefix+b` binding
+  or the sidebar footer control; compact rows remain clickable.
 - [x] Drag split borders to resize, updating both the saved layout and PTY
   dimensions.
 - [x] Right-click workspaces, tabs, and panes for context-specific actions.

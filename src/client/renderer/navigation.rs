@@ -6,10 +6,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use super::layout::{main_areas, pane_rectangles, split_handles};
+use super::layout::{pane_rectangles, split_handles};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickTarget {
+    SidebarToggle,
     Space(String),
     Workspace {
         space_id: String,
@@ -21,6 +22,15 @@ pub enum ClickTarget {
 }
 
 pub fn hit_test(snapshot: &SessionSnapshot, area: Rect, mouse: MouseEvent) -> Option<ClickTarget> {
+    hit_test_with_sidebar(snapshot, area, mouse, false)
+}
+
+pub fn hit_test_with_sidebar(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    mouse: MouseEvent,
+    sidebar_collapsed: bool,
+) -> Option<ClickTarget> {
     if !matches!(
         mouse.kind,
         MouseEventKind::Down(MouseButton::Left | MouseButton::Right)
@@ -29,8 +39,13 @@ pub fn hit_test(snapshot: &SessionSnapshot, area: Rect, mouse: MouseEvent) -> Op
     }
     let x = mouse.column;
     let y = mouse.row;
-    let main = main_areas(area);
+    let main = super::layout::main_areas_with_sidebar(area, sidebar_collapsed);
     if contains(main.sidebar, x, y) {
+        if y == main.sidebar.bottom().saturating_sub(1)
+            && x == main.sidebar.right().saturating_sub(2)
+        {
+            return Some(ClickTarget::SidebarToggle);
+        }
         let body = Rect::new(
             main.sidebar.x.saturating_add(1),
             main.sidebar.y.saturating_add(1),
@@ -148,13 +163,26 @@ fn sidebar_rows(snapshot: &SessionSnapshot) -> Vec<SidebarRow<'_>> {
         .collect()
 }
 
+#[cfg(test)]
 pub(super) fn render_sidebar(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, area: Rect) {
+    render_sidebar_with_collapsed(frame, snapshot, area, false);
+}
+
+pub(super) fn render_sidebar_with_collapsed(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+) {
     let rows = sidebar_rows(snapshot);
     let lines = rows
         .iter()
         .map(|row| match row {
             SidebarRow::Space { space_id, name } => {
                 let active = *space_id == snapshot.active_space_id;
+                if collapsed {
+                    return Line::from(if active { " S" } else { " s" });
+                }
                 let marker = if active { "● " } else { "○ " };
                 Line::from(vec![
                     Span::styled(
@@ -178,6 +206,9 @@ pub(super) fn render_sidebar(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, 
                     .find(|space| space.space_id == *space_id);
                 let active = *space_id == snapshot.active_space_id
                     && space.is_some_and(|space| space.active_workspace_id == *workspace_id);
+                if collapsed {
+                    return Line::from(if active { " W" } else { " w" });
+                }
                 let mut spans = vec![
                     Span::raw("  "),
                     Span::styled(
@@ -216,6 +247,14 @@ pub(super) fn render_sidebar(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, 
         ),
         area,
     );
+    if !area.is_empty() {
+        let x = area.right().saturating_sub(2);
+        let y = area.bottom().saturating_sub(1);
+        if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
+            cell.set_symbol(if collapsed { ">" } else { "<" });
+            cell.set_fg(Color::Cyan);
+        }
+    }
 }
 
 pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, area: Rect) {
@@ -295,8 +334,12 @@ fn contains(area: Rect, x: u16, y: u16) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::layout::main_areas;
     use super::super::layout::{pane_rectangles, pane_sizes, split_areas, split_handles};
-    use super::{hit_test, main_areas, render_sidebar, render_tabs, ClickTarget};
+    use super::{
+        hit_test, hit_test_with_sidebar, render_sidebar, render_sidebar_with_collapsed,
+        render_tabs, ClickTarget,
+    };
     use crate::model::layout::{Direction as SplitDirection, LayoutNode};
     use crate::server::session::{SessionSnapshot, SpaceView, TabView, WorkspaceView};
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -451,6 +494,53 @@ mod tests {
             ),
             Some(ClickTarget::Pane("pane-2".into()))
         );
+    }
+
+    #[test]
+    fn compact_sidebar_matches_herdr_width_and_keeps_mouse_navigation() {
+        let snapshot = sample_snapshot();
+        let area = Rect::new(0, 0, 100, 30);
+        let main = super::super::layout::main_areas_with_sidebar(area, true);
+        assert_eq!(main.sidebar.width, 4);
+        assert_eq!(
+            hit_test_with_sidebar(
+                &snapshot,
+                area,
+                click(main.sidebar.right() - 2, main.sidebar.bottom() - 1),
+                true,
+            ),
+            Some(ClickTarget::SidebarToggle)
+        );
+        assert_eq!(
+            hit_test_with_sidebar(
+                &snapshot,
+                area,
+                click(main.sidebar.x + 1, main.sidebar.y + 3),
+                true,
+            ),
+            Some(ClickTarget::Workspace {
+                space_id: "space-1".into(),
+                workspace_id: "workspace-2".into(),
+            })
+        );
+
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                render_sidebar_with_collapsed(frame, &snapshot, main.sidebar, true);
+            })
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("S"));
+        assert!(content.contains("W"));
+        assert!(content.contains(">"));
     }
 
     #[test]

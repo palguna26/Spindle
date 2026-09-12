@@ -33,11 +33,19 @@ pub(crate) struct SplitHandle {
 }
 
 pub(super) fn main_areas(area: Rect) -> MainAreas {
+    main_areas_with_sidebar(area, false)
+}
+
+pub(super) fn main_areas_with_sidebar(area: Rect, sidebar_collapsed: bool) -> MainAreas {
     let body = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(area)[0];
-    let sidebar_width = area.width.min((area.width / 4).clamp(12, 28));
+    let sidebar_width = if sidebar_collapsed {
+        4.min(area.width.saturating_sub(1))
+    } else {
+        area.width.min((area.width / 4).clamp(12, 28))
+    };
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(sidebar_width), Constraint::Min(1)])
@@ -56,6 +64,10 @@ pub(super) fn main_areas(area: Rect) -> MainAreas {
 
 pub(crate) fn pane_content_area(area: Rect) -> Rect {
     main_areas(area).panes
+}
+
+pub(crate) fn pane_content_area_with_sidebar(area: Rect, sidebar_collapsed: bool) -> Rect {
+    main_areas_with_sidebar(area, sidebar_collapsed).panes
 }
 
 pub(crate) fn pane_rectangles(snapshot: &SessionSnapshot, area: Rect) -> Vec<PaneRect> {

@@ -35,6 +35,7 @@ pub enum Action {
     ResizeSmaller,
     ResizeLarger,
     ToggleZoom,
+    ToggleSidebar,
     ToggleRightClickPassthrough,
     Help,
     CommandPalette,
@@ -75,6 +76,7 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
             KeyCode::Char('<') => Action::ResizeSmaller,
             KeyCode::Char('>') => Action::ResizeLarger,
             KeyCode::Char('z') => Action::ToggleZoom,
+            KeyCode::Char('b') => Action::ToggleSidebar,
             KeyCode::Char('?') => Action::Help,
             KeyCode::Char(':') => Action::CommandPalette,
             _ => Action::None,
@@ -130,6 +132,10 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)),
             Action::ToggleZoom
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE)),
+            Action::ToggleSidebar
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('?'), KeyModifiers::SHIFT)),
