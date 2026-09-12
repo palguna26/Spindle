@@ -3,6 +3,7 @@ use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
 use super::renderer;
 use super::{ClientError, ControlClient};
+use crate::model::layout::Direction as SplitDirection;
 use crate::server::session::SessionSnapshot;
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
@@ -17,7 +18,35 @@ use ratatui::layout::Rect;
 use ratatui::Terminal;
 use serde_json::json;
 use std::io::{self, stdout};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+const SPLIT_DRAG_INTERVAL: Duration = Duration::from_millis(33);
+
+struct SplitDrag {
+    path: Vec<bool>,
+    direction: SplitDirection,
+    area: Rect,
+    grab_offset: i32,
+    last_sent_at: Option<Instant>,
+}
+
+impl SplitDrag {
+    fn ratio_at(&self, mouse: MouseEvent) -> f32 {
+        let (pointer, origin, extent) = match self.direction {
+            SplitDirection::Horizontal => (
+                i32::from(mouse.column),
+                i32::from(self.area.x),
+                self.area.width,
+            ),
+            SplitDirection::Vertical => (
+                i32::from(mouse.row),
+                i32::from(self.area.y),
+                self.area.height,
+            ),
+        };
+        ((pointer + self.grab_offset - origin) as f32 / f32::from(extent.max(1))).clamp(0.1, 0.9)
+    }
+}
 
 pub fn run(address: impl Into<String>) -> Result<(), ClientError> {
     let client = ControlClient::connect(address)?;
@@ -60,6 +89,7 @@ fn event_loop(
     let mut palette_open = false;
     let mut rename_prompt: Option<RenamePrompt> = None;
     let mut last_pane_sizes = None;
+    let mut split_drag = None;
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
     loop {
@@ -118,7 +148,7 @@ fn event_loop(
         let input = event::read().map_err(ClientError::Io)?;
         let key = match input {
             Event::Mouse(mouse) => {
-                handle_mouse(client, &snapshot, mouse, terminal_size)?;
+                handle_mouse(client, &snapshot, mouse, terminal_size, &mut split_drag)?;
                 continue;
             }
             Event::Key(key) => key,
@@ -299,15 +329,65 @@ fn handle_mouse(
     snapshot: &SessionSnapshot,
     mouse: MouseEvent,
     terminal_size: (u16, u16),
+    split_drag: &mut Option<SplitDrag>,
 ) -> Result<(), ClientError> {
-    if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
-        return Ok(());
-    }
     let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
+    match mouse.kind {
+        MouseEventKind::Down(MouseButton::Left) => {
+            let pane_area = renderer::pane_content_area(area);
+            if let Some(handle) = renderer::split_handles(snapshot, pane_area)
+                .into_iter()
+                .find(|handle| {
+                    let point = (mouse.column, mouse.row);
+                    point.0 >= handle.hit_rect.x
+                        && point.0 < handle.hit_rect.right()
+                        && point.1 >= handle.hit_rect.y
+                        && point.1 < handle.hit_rect.bottom()
+                })
+            {
+                let pointer = match handle.direction {
+                    SplitDirection::Horizontal => mouse.column,
+                    SplitDirection::Vertical => mouse.row,
+                };
+                *split_drag = Some(SplitDrag {
+                    path: handle.path,
+                    direction: handle.direction,
+                    area: handle.area,
+                    grab_offset: i32::from(handle.pos) - i32::from(pointer),
+                    last_sent_at: None,
+                });
+                return Ok(());
+            }
+            *split_drag = None;
+        }
+        MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left) => {
+            let releasing = mouse.kind == MouseEventKind::Up(MouseButton::Left);
+            if let Some(drag) = split_drag.as_mut() {
+                let now = Instant::now();
+                let due = drag
+                    .last_sent_at
+                    .is_none_or(|last| now.duration_since(last) >= SPLIT_DRAG_INTERVAL);
+                if releasing || due {
+                    client.request(
+                        "mouse-set-split-ratio",
+                        "set_split_ratio",
+                        json!({ "path": drag.path, "ratio": drag.ratio_at(mouse) }),
+                    )?;
+                    drag.last_sent_at = Some(now);
+                }
+                if releasing {
+                    *split_drag = None;
+                }
+            }
+            return Ok(());
+        }
+        _ => return Ok(()),
+    }
     let Some(target) = renderer::hit_test(snapshot, area, mouse) else {
         return Ok(());
     };
     match target {
+        renderer::ClickTarget::SplitBorder(_) => {}
         renderer::ClickTarget::Space(space_id) => {
             let response = client.request(
                 "mouse-switch-space",
@@ -816,10 +896,11 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
 mod tests {
     use super::{
         active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id, key_code_bytes,
-        pane_size, reconnect_requires_reattach, workspace_id_by_name,
+        pane_size, reconnect_requires_reattach, workspace_id_by_name, SplitDirection, SplitDrag,
     };
     use crate::server::session::Session;
-    use crossterm::event::KeyCode;
+    use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::layout::Rect;
 
     #[test]
     fn common_keys_encode_for_a_pty() {
@@ -827,6 +908,26 @@ mod tests {
         assert_eq!(key_code_bytes(KeyCode::Left), Some(b"\x1b[D".to_vec()));
         assert_eq!(pane_size((120, 40)), (90, 36));
         assert_eq!(pane_size((0, 0)), (1, 1));
+    }
+
+    #[test]
+    fn split_drag_maps_pointer_position_to_a_clamped_ratio() {
+        let drag = SplitDrag {
+            path: Vec::new(),
+            direction: SplitDirection::Horizontal,
+            area: Rect::new(10, 4, 80, 20),
+            grab_offset: 0,
+            last_sent_at: None,
+        };
+        let mouse = |column| MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Left),
+            column,
+            row: 10,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert!((drag.ratio_at(mouse(58)) - 0.6).abs() < f32::EPSILON);
+        assert!((drag.ratio_at(mouse(0)) - 0.1).abs() < f32::EPSILON);
+        assert!((drag.ratio_at(mouse(100)) - 0.9).abs() < f32::EPSILON);
     }
 
     #[test]

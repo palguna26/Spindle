@@ -4,7 +4,7 @@ mod navigation;
 use crate::model::status::PaneStatus;
 use crate::server::session::SessionSnapshot;
 use layout::{main_areas, pane_rectangles};
-pub(crate) use layout::{pane_content_area, pane_inner_size, pane_sizes, PaneSize};
+pub(crate) use layout::{pane_content_area, pane_inner_size, pane_sizes, split_handles, PaneSize};
 pub use navigation::{hit_test, ClickTarget};
 use navigation::{render_sidebar, render_tabs};
 use ratatui::layout::Rect;

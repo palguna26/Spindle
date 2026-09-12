@@ -23,6 +23,15 @@ pub(crate) struct PaneSize {
     pub(crate) rows: u16,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SplitHandle {
+    pub(crate) path: Vec<bool>,
+    pub(crate) direction: SplitDirection,
+    pub(crate) area: Rect,
+    pub(crate) pos: u16,
+    pub(crate) hit_rect: Rect,
+}
+
 pub(super) fn main_areas(area: Rect) -> MainAreas {
     let body = Layout::default()
         .direction(Direction::Vertical)
@@ -71,6 +80,14 @@ pub(crate) fn pane_sizes(snapshot: &SessionSnapshot, area: Rect) -> Vec<PaneSize
         .collect()
 }
 
+pub(crate) fn split_handles(snapshot: &SessionSnapshot, area: Rect) -> Vec<SplitHandle> {
+    let mut handles = Vec::new();
+    if let Some(layout) = active_layout(snapshot) {
+        collect_split_handles(layout, area, Vec::new(), &mut handles);
+    }
+    handles
+}
+
 pub(crate) fn pane_inner_size(area: Rect) -> (u16, u16) {
     let inner = Block::default().borders(Borders::ALL).inner(area);
     (inner.width.max(1), inner.height.max(1))
@@ -108,6 +125,58 @@ fn collect_pane_rectangles(node: &LayoutNode, area: Rect, panes: &mut Vec<PaneRe
             let [first_area, second_area] = split_areas(area, *direction, *ratio);
             collect_pane_rectangles(first, first_area, panes);
             collect_pane_rectangles(second, second_area, panes);
+        }
+    }
+}
+
+fn collect_split_handles(
+    node: &LayoutNode,
+    area: Rect,
+    path: Vec<bool>,
+    handles: &mut Vec<SplitHandle>,
+) {
+    let LayoutNode::Split {
+        direction,
+        ratio,
+        first,
+        second,
+    } = node
+    else {
+        return;
+    };
+
+    let [first_area, second_area] = split_areas(area, *direction, *ratio);
+    let pos = match direction {
+        SplitDirection::Horizontal => first_area.right(),
+        SplitDirection::Vertical => first_area.bottom(),
+    };
+    handles.push(SplitHandle {
+        path: path.clone(),
+        direction: *direction,
+        area,
+        pos,
+        hit_rect: split_hit_rect(area, *direction, pos),
+    });
+
+    let mut first_path = path.clone();
+    first_path.push(false);
+    collect_split_handles(first, first_area, first_path, handles);
+    let mut second_path = path;
+    second_path.push(true);
+    collect_split_handles(second, second_area, second_path, handles);
+}
+
+fn split_hit_rect(area: Rect, direction: SplitDirection, pos: u16) -> Rect {
+    match direction {
+        SplitDirection::Horizontal => {
+            let x = pos.saturating_sub(1).max(area.x);
+            let right = pos.saturating_add(1).min(area.right());
+            Rect::new(x, area.y, right.saturating_sub(x), area.height)
+        }
+        SplitDirection::Vertical => {
+            let y = pos.saturating_sub(1).max(area.y);
+            let bottom = pos.saturating_add(1).min(area.bottom());
+            Rect::new(area.x, y, area.width, bottom.saturating_sub(y))
         }
     }
 }

@@ -67,11 +67,11 @@ commit `68d86ad` as partial startup work; do not count it as completion.
   workspaces, matching Herdr's focus in each tab layout.
 - [ ] Render the active pane tree in the remaining area with clear focus and
   lifecycle states.
-- [ ] Calculate pane rectangles once and share the results between rendering,
+- [x] Calculate pane rectangles once and share the results between rendering,
   hit testing, and PTY resize requests.
-- [ ] On terminal resize or layout change, send each PTY its actual pane size,
+- [x] On terminal resize or layout change, send each PTY its actual pane size,
   not the full terminal size.
-- [ ] Add small-terminal and many-pane layout tests using Ratatui TestBackend.
+- [x] Add small-terminal and many-pane geometry tests using Ratatui TestBackend.
 
 Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 `src/layout.rs`. Spindle: `src/client/renderer.rs`, `src/model/layout.rs`, and
@@ -80,7 +80,7 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 ## 3. Port mouse-first navigation and pane controls
 
 - [x] Click spaces, workspaces, tabs, and panes to switch/focus them.
-- [ ] Drag split borders to resize, updating both the saved layout and PTY
+- [x] Drag split borders to resize, updating both the saved layout and PTY
   dimensions.
 - [ ] Right-click workspaces, tabs, and panes for context-specific actions.
 - [ ] Support pane split, close, rename, zoom/focus actions from menus where

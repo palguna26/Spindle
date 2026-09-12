@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use super::layout::{main_areas, pane_rectangles};
+use super::layout::{main_areas, pane_rectangles, split_handles};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickTarget {
@@ -17,6 +17,7 @@ pub enum ClickTarget {
     },
     Tab(String),
     Pane(String),
+    SplitBorder(Vec<bool>),
 }
 
 pub fn hit_test(snapshot: &SessionSnapshot, area: Rect, mouse: MouseEvent) -> Option<ClickTarget> {
@@ -59,6 +60,12 @@ pub fn hit_test(snapshot: &SessionSnapshot, area: Rect, mouse: MouseEvent) -> Op
             .map(|tab| ClickTarget::Tab(tab.tab_id.clone()));
     }
     if contains(main.panes, x, y) {
+        if let Some(split) = split_handles(snapshot, main.panes)
+            .into_iter()
+            .find(|split| contains(split.hit_rect, x, y))
+        {
+            return Some(ClickTarget::SplitBorder(split.path));
+        }
         let pane = pane_rectangles(snapshot, main.panes)
             .into_iter()
             .find(|pane| contains(pane.rect, x, y))?;
@@ -387,5 +394,82 @@ mod tests {
         assert!(content.contains("Current project"));
         assert!(content.contains("Docs"));
         assert!(content.contains("Activity"));
+    }
+
+    #[test]
+    fn split_border_hit_targets_the_matching_tree_path() {
+        let snapshot = sample_snapshot();
+        let area = Rect::new(0, 0, 100, 30);
+        let main = main_areas(area);
+        let split = super::super::layout::split_handles(&snapshot, main.panes)
+            .into_iter()
+            .next()
+            .expect("sample layout has one split");
+        assert_eq!(split.path, Vec::<bool>::new());
+        assert_eq!(
+            hit_test(
+                &snapshot,
+                area,
+                click(
+                    split.hit_rect.x,
+                    split.hit_rect.y + split.hit_rect.height / 2
+                )
+            ),
+            Some(ClickTarget::SplitBorder(Vec::new()))
+        );
+    }
+
+    #[test]
+    fn nested_split_handles_keep_paths_for_their_own_boundaries() {
+        let mut snapshot = sample_snapshot();
+        snapshot.spaces[0].workspaces[1].tabs[1].layout = Some(
+            LayoutNode::pane("pane-1")
+                .split(SplitDirection::Horizontal, 0.5, "pane-2")
+                .split(SplitDirection::Vertical, 0.5, "pane-3"),
+        );
+        let area = Rect::new(0, 0, 100, 30);
+        let panes = main_areas(area).panes;
+        let handles = super::super::layout::split_handles(&snapshot, panes);
+        assert_eq!(
+            handles
+                .iter()
+                .map(|handle| handle.path.clone())
+                .collect::<Vec<_>>(),
+            vec![Vec::<bool>::new(), vec![false]]
+        );
+        assert_ne!(handles[0].area, handles[1].area);
+    }
+
+    #[test]
+    fn small_terminal_geometry_stays_inside_the_pane_area_with_many_splits() {
+        let mut snapshot = sample_snapshot();
+        let mut layout = LayoutNode::pane("pane-1");
+        for number in 2..=8 {
+            let direction = if number % 2 == 0 {
+                SplitDirection::Horizontal
+            } else {
+                SplitDirection::Vertical
+            };
+            layout = layout.split(direction, 0.5, format!("pane-{number}"));
+        }
+        snapshot.spaces[0].workspaces[1].tabs[1].layout = Some(layout);
+        let area = Rect::new(0, 0, 20, 6);
+        let pane_area = main_areas(area).panes;
+        let panes = super::super::layout::pane_rectangles(&snapshot, pane_area);
+        let handles = super::super::layout::split_handles(&snapshot, pane_area);
+        assert_eq!(panes.len(), 8);
+        assert_eq!(handles.len(), 7);
+        assert!(panes.iter().all(|pane| {
+            pane.rect.x >= pane_area.x
+                && pane.rect.y >= pane_area.y
+                && pane.rect.right() <= pane_area.right()
+                && pane.rect.bottom() <= pane_area.bottom()
+        }));
+        assert!(handles.iter().all(|handle| {
+            handle.hit_rect.x >= pane_area.x
+                && handle.hit_rect.y >= pane_area.y
+                && handle.hit_rect.right() <= pane_area.right()
+                && handle.hit_rect.bottom() <= pane_area.bottom()
+        }));
     }
 }
