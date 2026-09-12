@@ -48,9 +48,14 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
   restarts that pane in place and keeps its layout entry.
 - [x] Answer terminal cursor-position queries from PowerShell so its first
   prompt is not blocked waiting for the host.
-- [ ] Creating a tab, workspace, or space starts and focuses its first shell.
+- [x] Creating a tab, workspace, or space starts and focuses its first shell.
 - [ ] Closing the last pane/tab follows the same lifecycle rule as the
   reference instead of leaving an unexplained blank canvas.
+- [x] Closing the only pane in a tab removes that tab when sibling tabs exist
+  and focuses the remaining active tab, matching Herdr `Workspace::remove_pane`.
+- [ ] Match Herdr's last-tab/last-workspace close behavior; Spindle currently
+  preserves its required final workspace and ensures a replacement shell when
+  its last pane closes; explicit close-tab still refuses the final tab.
 - [x] Show shell-start errors in the UI and allow retry or detach.
 - [x] Wire attach, tab/workspace/space creation, and container switching to
   idempotent shell creation using the active workspace repository path.
@@ -61,7 +66,7 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
 - [x] Verify concurrent clients ensuring the initial pane create exactly one
   shell, matching Herdr's single live pane at workspace startup.
 - [x] Cover new tab/workspace/space shell creation and focus in integration
-  tests. The ensure-shell flow verifies the server snapshot after creation and
+  tests. The ensure-shell flow verifies the active pane after creation and
   retries/reports an error instead of leaving a connected empty canvas.
 - [x] Exercise the real client attach and detach/reattach flow end-to-end. On
   Windows, the installed release showed the PowerShell prompt, accepted a

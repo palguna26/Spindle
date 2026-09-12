@@ -1004,17 +1004,66 @@ impl Session {
     }
 
     pub fn close_pane(&mut self, pane_id: &str) -> Result<Value, String> {
-        let in_active_tab = self
-            .active_tab_mut()?
+        let active_space_id = self.snapshot.active_space_id.clone();
+        let space = self
+            .snapshot
+            .spaces
+            .iter()
+            .find(|space| space.space_id == active_space_id)
+            .ok_or_else(|| "active space does not exist".to_string())?;
+        let workspace_id = space.active_workspace_id.clone();
+        let workspace = space
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.workspace_id == workspace_id)
+            .ok_or_else(|| "active workspace does not exist".to_string())?;
+        let tab_index = workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.tab_id == workspace.active_tab_id)
+            .ok_or_else(|| "active tab does not exist".to_string())?;
+        let tab = &workspace.tabs[tab_index];
+        let pane_count = tab
             .layout
             .as_ref()
-            .is_some_and(|layout| layout.pane_ids().contains(&pane_id));
-        if !in_active_tab {
+            .map_or(0, |layout| layout.pane_ids().len());
+        if !tab
+            .layout
+            .as_ref()
+            .is_some_and(|layout| layout.pane_ids().contains(&pane_id))
+        {
             return Err(format!("pane '{pane_id}' does not exist in the active tab"));
         }
         self.pane_manager
             .remove(pane_id)
             .map_err(|error| format!("{error:?}"))?;
+
+        // Herdr removes a tab when its only pane closes and sibling tabs exist.
+        if pane_count == 1 && workspace.tabs.len() > 1 {
+            self.snapshot.panes.retain(|pane| pane.pane_id != pane_id);
+            let workspace = self
+                .snapshot
+                .spaces
+                .iter_mut()
+                .find(|space| space.space_id == active_space_id)
+                .and_then(|space| {
+                    space
+                        .workspaces
+                        .iter_mut()
+                        .find(|workspace| workspace.workspace_id == workspace_id)
+                })
+                .ok_or_else(|| "active workspace does not exist".to_string())?;
+            let closing_tab_id = workspace.tabs[tab_index].tab_id.clone();
+            workspace.tabs.remove(tab_index);
+            if workspace.active_tab_id == closing_tab_id {
+                workspace.active_tab_id = workspace.tabs[tab_index.min(workspace.tabs.len() - 1)]
+                    .tab_id
+                    .clone();
+            }
+            self.sync_focus_to_active_tab()?;
+            return Ok(serde_json::json!({ "pane_id": pane_id, "closed_tab": closing_tab_id }));
+        }
+
         let focused_pane_id = {
             let workspace = self.active_workspace_mut()?;
             let tab = workspace

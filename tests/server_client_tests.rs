@@ -827,6 +827,84 @@ fn tab_metadata_and_active_tab_survive_server_restart() {
 }
 
 #[test]
+fn closing_a_tab_last_pane_selects_a_sibling_tab() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let pane_request = serde_json::json!({
+        "command": "cmd.exe",
+        "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+        "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+        "cols": 80,
+        "rows": 24
+    });
+    let first_pane = client
+        .request("first-pane", "ensure_active_pane", pane_request.clone())
+        .unwrap()
+        .payload
+        .unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let tab_id = client
+        .request(
+            "new-tab",
+            "create_tab",
+            serde_json::json!({ "name": "Logs" }),
+        )
+        .unwrap()
+        .payload
+        .unwrap()["tab_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let last_pane = client
+        .request("tab-pane", "ensure_active_pane", pane_request)
+        .unwrap()
+        .payload
+        .unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let closed = client
+        .request(
+            "close-last-pane",
+            "close_pane",
+            serde_json::json!({ "pane_id": last_pane }),
+        )
+        .unwrap();
+    assert!(closed.ok);
+    let snapshot = client
+        .request("after-close", "get_snapshot", serde_json::json!({}))
+        .unwrap()
+        .payload
+        .unwrap();
+    let workspace = &snapshot["spaces"][0]["workspaces"][0];
+    assert_eq!(workspace["tabs"].as_array().unwrap().len(), 1);
+    assert_eq!(workspace["active_tab_id"], "tab-1");
+    assert_eq!(snapshot["focused_pane_id"], first_pane);
+    assert!(!workspace["tabs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|tab| tab["tab_id"] == tab_id));
+
+    client
+        .request(
+            "stop-first-pane",
+            "stop_pane",
+            serde_json::json!({ "pane_id": first_pane }),
+        )
+        .unwrap();
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn space_and_workspace_deletion_use_control_api_safely() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
