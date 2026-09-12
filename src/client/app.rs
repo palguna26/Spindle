@@ -4,12 +4,16 @@ use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
 use super::renderer;
 use super::{ClientError, ControlClient};
 use crate::server::session::SessionSnapshot;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
+    MouseEvent, MouseEventKind,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, size, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::backend::CrosstermBackend;
+use ratatui::layout::Rect;
 use ratatui::Terminal;
 use serde_json::json;
 use std::io::{self, stdout};
@@ -33,13 +37,17 @@ pub fn run(address: impl Into<String>) -> Result<(), ClientError> {
 fn setup_terminal() -> io::Result<Terminal<CrosstermBackend<io::Stdout>>> {
     enable_raw_mode()?;
     let mut output = stdout();
-    execute!(output, EnterAlternateScreen)?;
+    execute!(output, EnterAlternateScreen, EnableMouseCapture)?;
     Terminal::new(CrosstermBackend::new(output))
 }
 
 fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        DisableMouseCapture,
+        LeaveAlternateScreen
+    )?;
     terminal.show_cursor()
 }
 
@@ -105,8 +113,14 @@ fn event_loop(
         if !event::poll(Duration::from_millis(100)).map_err(ClientError::Io)? {
             continue;
         }
-        let Event::Key(key) = event::read().map_err(ClientError::Io)? else {
-            continue;
+        let input = event::read().map_err(ClientError::Io)?;
+        let key = match input {
+            Event::Mouse(mouse) => {
+                handle_mouse(client, &snapshot, mouse, terminal_size)?;
+                continue;
+            }
+            Event::Key(key) => key,
+            _ => continue,
         };
         if key.kind != KeyEventKind::Press {
             continue;
@@ -274,6 +288,68 @@ fn event_loop(
             | Action::SwitchWorkspaceByName => {}
         }
         prefix_active = false;
+    }
+    Ok(())
+}
+
+fn handle_mouse(
+    client: &ControlClient,
+    snapshot: &SessionSnapshot,
+    mouse: MouseEvent,
+    terminal_size: (u16, u16),
+) -> Result<(), ClientError> {
+    if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+        return Ok(());
+    }
+    let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
+    let Some(target) = renderer::hit_test(snapshot, area, mouse) else {
+        return Ok(());
+    };
+    match target {
+        renderer::ClickTarget::Space(space_id) => {
+            let response = client.request(
+                "mouse-switch-space",
+                "switch_space",
+                json!({ "id": space_id }),
+            )?;
+            if response.ok {
+                ensure_active_default_pane(client, terminal_size)?;
+            }
+        }
+        renderer::ClickTarget::Workspace {
+            space_id,
+            workspace_id,
+        } => {
+            let space = client.request(
+                "mouse-switch-workspace-space",
+                "switch_space",
+                json!({ "id": space_id }),
+            )?;
+            if space.ok {
+                let workspace = client.request(
+                    "mouse-switch-workspace",
+                    "switch_workspace",
+                    json!({ "id": workspace_id }),
+                )?;
+                if workspace.ok {
+                    ensure_active_default_pane(client, terminal_size)?;
+                }
+            }
+        }
+        renderer::ClickTarget::Tab(tab_id) => {
+            let response =
+                client.request("mouse-switch-tab", "switch_tab", json!({ "id": tab_id }))?;
+            if response.ok {
+                ensure_active_default_pane(client, terminal_size)?;
+            }
+        }
+        renderer::ClickTarget::Pane(pane_id) => {
+            client.request(
+                "mouse-focus-pane",
+                "focus_pane",
+                json!({ "pane_id": pane_id }),
+            )?;
+        }
     }
     Ok(())
 }

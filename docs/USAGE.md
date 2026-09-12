@@ -30,6 +30,11 @@ also start a pane in the workspace's repository directory.
 Running `spindle` without a server starts the server and attaches. The server
 runs independently of the attached terminal.
 
+The screen shows spaces and workspaces in a left sidebar and tabs above the
+panes. Click a space, workspace, or tab to switch; click a pane to focus it.
+Right-click menus, split dragging, and mouse input inside terminal apps are
+not supported yet.
+
 Useful commands:
 
 ```text

@@ -61,8 +61,8 @@ commit `68d86ad` as partial startup work; do not count it as completion.
 
 ## 2. Build the everyday workspace layout
 
-- [ ] Add a workspace/space sidebar with active selection and useful names.
-- [ ] Add visible tab controls and a focused-pane/status area.
+- [x] Add a workspace/space sidebar with active selection and useful names.
+- [x] Add visible tab controls and a focused-pane/status area.
 - [x] Save focused pane per tab and restore it when switching tabs or
   workspaces, matching Herdr's focus in each tab layout.
 - [ ] Render the active pane tree in the remaining area with clear focus and
@@ -79,7 +79,7 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 
 ## 3. Port mouse-first navigation and pane controls
 
-- [ ] Click spaces, workspaces, tabs, and panes to switch/focus them.
+- [x] Click spaces, workspaces, tabs, and panes to switch/focus them.
 - [ ] Drag split borders to resize, updating both the saved layout and PTY
   dimensions.
 - [ ] Right-click workspaces, tabs, and panes for context-specific actions.

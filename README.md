@@ -25,6 +25,10 @@ alive when the client detaches.
 New tabs and workspaces also start a PowerShell pane in the workspace's
 repository directory.
 
+The screen shows spaces and workspaces on the left, tabs above the panes, and
+supports clicking those items or a pane to switch focus. Right-click menus,
+drag resizing, and mouse input inside terminal apps are not supported yet.
+
 ```text
 spindle          attach (and start when needed)
 spindle start    start the server

@@ -1,6 +1,10 @@
+mod navigation;
+
 use crate::model::layout::{Direction as SplitDirection, LayoutNode};
 use crate::model::status::PaneStatus;
 use crate::server::session::SessionSnapshot;
+pub use navigation::{hit_test, ClickTarget};
+use navigation::{main_areas, render_sidebar, render_tabs};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -12,34 +16,39 @@ pub fn render(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
 }
 
 pub fn render_with_connection(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, connected: bool) {
-    let areas = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .split(frame.area());
+    let main = main_areas(frame.area());
+    render_sidebar(frame, snapshot, main.sidebar);
+    render_tabs(frame, snapshot, main.tabs);
     if let Some(layout) = active_layout(snapshot) {
-        render_layout(frame, layout, snapshot, areas[0]);
+        render_layout(frame, layout, snapshot, main.panes);
     } else {
         frame.render_widget(
             Paragraph::new(Line::from(active_title(snapshot)))
                 .block(Block::default().borders(Borders::ALL).title("Session")),
-            areas[0],
+            main.panes,
         );
     }
     let focused = snapshot.focused_pane_id.as_deref().unwrap_or("none");
     let chrome = Line::from(vec![
         Span::styled(" Spindle ", Style::default().fg(Color::Cyan)),
-        Span::raw(format!("focused: {focused}")),
-        Span::raw(format!("  panes: {}", snapshot.panes.len())),
         Span::styled(
             if connected {
-                "  connected"
+                "connected"
             } else {
-                "  connection lost — retrying"
+                "connection lost — retrying"
             },
             Style::default().fg(if connected { Color::Green } else { Color::Red }),
         ),
+        Span::raw("  "),
+        Span::raw(format!("focused: {focused}")),
+        Span::raw(format!("  panes: {}", snapshot.panes.len())),
+        Span::raw(format!("  {}", active_title(snapshot))),
     ]);
-    frame.render_widget(Paragraph::new(chrome), areas[1]);
+    frame.render_widget(Paragraph::new(chrome), footer_area(frame.area()));
+}
+
+fn footer_area(area: Rect) -> Rect {
+    Rect::new(area.x, area.bottom().saturating_sub(1), area.width, 1)
 }
 
 pub fn render_palette(frame: &mut Frame<'_>, selected: usize) {
@@ -151,23 +160,27 @@ fn render_layout(frame: &mut Frame<'_>, node: &LayoutNode, snapshot: &SessionSna
             first,
             second,
         } => {
-            let percentage = (*ratio * 100.0).round() as u16;
-            let constraints = [
-                Constraint::Percentage(percentage),
-                Constraint::Percentage(100 - percentage),
-            ];
-            let layout_direction = match direction {
-                SplitDirection::Horizontal => Direction::Horizontal,
-                SplitDirection::Vertical => Direction::Vertical,
-            };
-            let areas = Layout::default()
-                .direction(layout_direction)
-                .constraints(constraints)
-                .split(area);
-            render_layout(frame, first, snapshot, areas[0]);
-            render_layout(frame, second, snapshot, areas[1]);
+            let [first_area, second_area] = split_areas(area, *direction, *ratio);
+            render_layout(frame, first, snapshot, first_area);
+            render_layout(frame, second, snapshot, second_area);
         }
     }
+}
+
+pub(super) fn split_areas(area: Rect, direction: SplitDirection, ratio: f32) -> [Rect; 2] {
+    let percentage = (ratio * 100.0).round() as u16;
+    let layout_direction = match direction {
+        SplitDirection::Horizontal => Direction::Horizontal,
+        SplitDirection::Vertical => Direction::Vertical,
+    };
+    let areas = Layout::default()
+        .direction(layout_direction)
+        .constraints([
+            Constraint::Percentage(percentage),
+            Constraint::Percentage(100 - percentage),
+        ])
+        .split(area);
+    [areas[0], areas[1]]
 }
 
 fn pane_title(pane: &crate::server::session::PaneView) -> Line<'static> {
@@ -251,6 +264,8 @@ mod tests {
         let content: String = buffer.content().iter().map(|cell| cell.symbol()).collect();
         assert!(content.contains("Default"));
         assert!(content.contains("Current project"));
+        assert!(content.contains("Spaces"));
+        assert!(content.contains("Main"));
     }
 
     #[test]
