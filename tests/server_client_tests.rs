@@ -1233,7 +1233,7 @@ fn client_loss_allows_geometry_ownership_takeover() {
 }
 
 #[test]
-fn server_restart_marks_live_panes_interrupted() {
+fn server_restart_marks_panes_interrupted_and_ensure_restarts_in_place() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
     let client = ControlClient::connect(address.trim()).unwrap();
@@ -1277,6 +1277,39 @@ fn server_restart_marks_live_panes_interrupted() {
         .find(|pane| pane["pane_id"] == pane_id)
         .unwrap();
     assert!(recovered_pane["status"]["Interrupted"].is_object());
+    let ensured = recovered
+        .request(
+            "ensure-after-restart",
+            "ensure_active_pane",
+            serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+                "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap();
+    let ensured_pane = ensured.payload.unwrap();
+    assert_eq!(ensured_pane["pane_id"], pane_id);
+    assert_eq!(ensured_pane["restarted"], true);
+    let snapshot = recovered
+        .request(
+            "snapshot-after-ensure",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(snapshot["panes"].as_array().unwrap().len(), 1);
+    let recovered_pane = snapshot["panes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pane| pane["pane_id"] == pane_id)
+        .unwrap();
+    assert_eq!(recovered_pane["status"], "Running");
     recovered
         .request(
             "stop-again",

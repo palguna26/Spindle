@@ -437,6 +437,20 @@ impl Session {
         self.reconcile_active_tab_layout()?;
         self.sync_focus_to_active_tab()?;
         if let Some(pane_id) = self.active_tab_mut()?.focused_pane_id.clone() {
+            let interrupted = self
+                .snapshot
+                .panes
+                .iter()
+                .find(|pane| pane.pane_id == pane_id)
+                .is_some_and(|pane| matches!(pane.status, PaneStatus::Interrupted { .. }));
+            if interrupted {
+                self.restart_pane(&pane_id)?;
+                return Ok(serde_json::json!({
+                    "pane_id": pane_id,
+                    "created": false,
+                    "restarted": true
+                }));
+            }
             if self
                 .snapshot
                 .panes

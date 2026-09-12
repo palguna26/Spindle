@@ -43,8 +43,9 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
 
 ## 1. Make session startup and container creation match Herdr
 
-- [ ] Fresh attach starts one usable PowerShell pane; reattach does not
-  duplicate it.
+- [x] Fresh attach starts one usable PowerShell pane; reattach does not
+  duplicate it. If a server restart interrupted the saved pane, ensure-shell
+  restarts that pane in place and keeps its layout entry.
 - [ ] Creating a tab, workspace, or space starts and focuses its first shell.
 - [ ] Closing the last pane/tab follows the same lifecycle rule as the
   reference instead of leaving an unexplained blank canvas.
