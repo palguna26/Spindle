@@ -142,9 +142,11 @@ and quick-start "Use the mouse". Spindle: `src/client/app.rs`,
   Herdr-aligned OpenCode permission/interrupt and Codex directory-trust rules
   are detected; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Full manifest rules remain.
-- [ ] Expose agent kind and unknown/idle/working/blocked state in pane chrome and
-  the sidebar. Partial: pane chrome shows identity/state and workspace rows show
-  per-state counts; multi-agent rows and richer lifecycle transitions remain.
+- [x] Expose agent kind and unknown/idle/working/blocked state in pane chrome and
+  the sidebar. Pane chrome shows identity/state; the sidebar lists each detected
+  agent under its workspace with a state marker and tab, and selecting a row
+  opens that space/workspace/tab and focuses the pane. Agent-list sorting and
+  richer lifecycle transitions remain.
 - [ ] Keep state associated with the correct pane, tab, and workspace through
   switches, restarts, and recovery.
 - [ ] Make detection optional/fault-tolerant so normal shell use is unaffected.

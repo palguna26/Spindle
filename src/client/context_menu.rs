@@ -45,6 +45,7 @@ impl ContextMenu {
                 space_id,
                 id: workspace_id,
             },
+            ClickTarget::Agent { pane_id, .. } => ContextMenuTarget::Pane(pane_id),
             ClickTarget::Tab(id) => ContextMenuTarget::Tab(id),
             ClickTarget::Pane(id) => ContextMenuTarget::Pane(id),
             ClickTarget::SidebarToggle

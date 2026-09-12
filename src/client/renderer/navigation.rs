@@ -17,6 +17,12 @@ pub enum ClickTarget {
         space_id: String,
         workspace_id: String,
     },
+    Agent {
+        space_id: String,
+        workspace_id: String,
+        tab_id: String,
+        pane_id: String,
+    },
     Tab(String),
     Pane(String),
     SplitBorder(Vec<bool>),
@@ -82,6 +88,18 @@ pub fn hit_test_with_sidebar_scroll(
             } => ClickTarget::Workspace {
                 space_id: space_id.to_string(),
                 workspace_id: workspace_id.to_string(),
+            },
+            SidebarRow::Agent {
+                space_id,
+                workspace_id,
+                tab_id,
+                pane,
+                ..
+            } => ClickTarget::Agent {
+                space_id: space_id.to_string(),
+                workspace_id: workspace_id.to_string(),
+                tab_id: tab_id.to_string(),
+                pane_id: pane.pane_id.clone(),
             },
         });
     }
@@ -236,40 +254,13 @@ enum SidebarRow<'a> {
         workspace_id: &'a str,
         name: &'a str,
     },
-}
-
-fn workspace_agent_counts(snapshot: &SessionSnapshot, workspace_id: &str) -> [usize; 4] {
-    let Some(workspace) = snapshot
-        .spaces
-        .iter()
-        .flat_map(|space| &space.workspaces)
-        .find(|workspace| workspace.workspace_id == workspace_id)
-    else {
-        return [0; 4];
-    };
-    let pane_ids = workspace
-        .tabs
-        .iter()
-        .filter_map(|tab| tab.layout.as_ref())
-        .flat_map(|layout| layout.pane_ids())
-        .collect::<Vec<_>>();
-    let mut counts = [0; 4];
-    for pane in &snapshot.panes {
-        if !pane_ids.contains(&pane.pane_id.as_str()) || pane.agent.is_none() {
-            continue;
-        }
-        let index = match pane
-            .agent_state
-            .unwrap_or(crate::detect::AgentState::Unknown)
-        {
-            crate::detect::AgentState::Unknown => 0,
-            crate::detect::AgentState::Idle => 1,
-            crate::detect::AgentState::Working => 2,
-            crate::detect::AgentState::Blocked => 3,
-        };
-        counts[index] += 1;
-    }
-    counts
+    Agent {
+        space_id: &'a str,
+        workspace_id: &'a str,
+        tab_id: &'a str,
+        tab_name: &'a str,
+        pane: &'a crate::server::session::PaneView,
+    },
 }
 
 fn sidebar_rows(snapshot: &SessionSnapshot) -> Vec<SidebarRow<'_>> {
@@ -281,16 +272,33 @@ fn sidebar_rows(snapshot: &SessionSnapshot) -> Vec<SidebarRow<'_>> {
                 space_id: &space.space_id,
                 name: &space.name,
             })
-            .chain(
-                space
-                    .workspaces
-                    .iter()
-                    .map(|workspace| SidebarRow::Workspace {
-                        space_id: &space.space_id,
-                        workspace_id: &workspace.workspace_id,
-                        name: &workspace.name,
-                    }),
-            )
+            .chain(space.workspaces.iter().flat_map(move |workspace| {
+                std::iter::once(SidebarRow::Workspace {
+                    space_id: &space.space_id,
+                    workspace_id: &workspace.workspace_id,
+                    name: &workspace.name,
+                })
+                .chain(workspace.tabs.iter().flat_map(move |tab| {
+                    let pane_ids = tab
+                        .layout
+                        .as_ref()
+                        .map(|layout| layout.pane_ids())
+                        .unwrap_or_default();
+                    snapshot
+                        .panes
+                        .iter()
+                        .filter(move |pane| {
+                            pane.agent.is_some() && pane_ids.contains(&pane.pane_id.as_str())
+                        })
+                        .map(move |pane| SidebarRow::Agent {
+                            space_id: &space.space_id,
+                            workspace_id: &workspace.workspace_id,
+                            tab_id: &tab.tab_id,
+                            tab_name: &tab.name,
+                            pane,
+                        })
+                }))
+            }))
         })
         .collect()
 }
@@ -370,22 +378,47 @@ pub(super) fn render_sidebar_with_scroll(
                         }),
                     ),
                 ];
-                let counts = workspace_agent_counts(snapshot, workspace_id);
-                let labels = ["?", "I", "W", "!"];
-                let colors = [Color::DarkGray, Color::Green, Color::Yellow, Color::Red];
-                for (index, count) in counts.into_iter().enumerate() {
-                    if count > 0 {
-                        spans.push(Span::styled(
-                            format!(" {}{count}", labels[index]),
-                            Style::default().fg(colors[index]),
-                        ));
-                    }
-                }
                 spans.push(Span::styled(
                     (*name).to_owned(),
                     Style::default().fg(if active { Color::White } else { Color::Gray }),
                 ));
                 Line::from(spans)
+            }
+            SidebarRow::Agent { pane, tab_name, .. } => {
+                let state = pane
+                    .agent_state
+                    .unwrap_or(crate::detect::AgentState::Unknown);
+                let color = match state {
+                    crate::detect::AgentState::Unknown => Color::DarkGray,
+                    crate::detect::AgentState::Idle => Color::Green,
+                    crate::detect::AgentState::Working => Color::Yellow,
+                    crate::detect::AgentState::Blocked => Color::Red,
+                };
+                if collapsed {
+                    return Line::from("A ");
+                }
+                let kind = pane
+                    .agent
+                    .map(crate::detect::AgentKind::label)
+                    .unwrap_or("Agent");
+                let label = pane
+                    .label
+                    .as_deref()
+                    .filter(|label| !label.is_empty())
+                    .map(|label| format!("{kind} · {label}"))
+                    .unwrap_or_else(|| kind.to_owned());
+                Line::from(vec![
+                    Span::raw("    "),
+                    Span::styled(
+                        format!("{} ", state.sidebar_marker()),
+                        Style::default().fg(color),
+                    ),
+                    Span::styled(label, Style::default().fg(Color::Gray)),
+                    Span::styled(
+                        format!(" · {tab_name}"),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ])
             }
         })
         .collect::<Vec<_>>();
@@ -841,7 +874,7 @@ mod tests {
     }
 
     #[test]
-    fn sidebar_shows_agent_state_counts_for_each_workspace() {
+    fn sidebar_shows_agent_identity_and_state_for_each_pane() {
         let mut snapshot = sample_snapshot();
         snapshot.panes = vec![
             agent_pane("pane-1", "codex", "working"),
@@ -861,9 +894,28 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol())
             .collect::<String>();
-        assert!(content.contains("W1"));
-        assert!(content.contains("!1"));
-        assert!(!content.contains("I1"));
+        assert!(content.contains("Codex"));
+        assert!(content.contains("OpenCode"));
+        assert!(content.contains("W"));
+        assert!(content.contains("!"));
+        assert!(!content.contains("Idle"));
+    }
+
+    #[test]
+    fn clicking_sidebar_agent_selects_its_workspace_tab_and_pane() {
+        let mut snapshot = sample_snapshot();
+        snapshot.panes = vec![agent_pane("pane-1", "codex", "working")];
+        let area = Rect::new(0, 0, 100, 30);
+        let sidebar = main_areas(area).sidebar;
+        assert_eq!(
+            hit_test(&snapshot, area, click(sidebar.x + 3, sidebar.y + 4)),
+            Some(ClickTarget::Agent {
+                space_id: "space-1".into(),
+                workspace_id: "workspace-2".into(),
+                tab_id: "tab-3".into(),
+                pane_id: "pane-1".into(),
+            })
+        );
     }
 
     #[test]

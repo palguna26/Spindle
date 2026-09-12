@@ -831,14 +831,32 @@ fn handle_mouse(
         )? {
             return Ok(());
         } else {
-            *context_menu = renderer::hit_test_with_sidebar_scroll(
+            let target = renderer::hit_test_with_sidebar_scroll(
                 snapshot,
                 area,
                 mouse,
                 mouse_state.sidebar_collapsed,
                 mouse_state.sidebar_scroll,
-            )
-            .and_then(|target| {
+            );
+            let agent_pane = if let Some(renderer::ClickTarget::Agent {
+                space_id,
+                workspace_id,
+                tab_id,
+                pane_id,
+            }) = &target
+            {
+                activate_sidebar_agent(client, space_id, workspace_id, tab_id, pane_id)?;
+                Some(pane_id.clone())
+            } else {
+                None
+            };
+            *context_menu = target.and_then(|target| {
+                let target = match target {
+                    renderer::ClickTarget::Agent { pane_id, .. } => {
+                        renderer::ClickTarget::Pane(pane_id)
+                    }
+                    target => target,
+                };
                 let has_manual_label = match &target {
                     renderer::ClickTarget::Pane(pane_id) => snapshot
                         .panes
@@ -849,7 +867,9 @@ fn handle_mouse(
                 };
                 ContextMenu::from_target(target, mouse.column, mouse.row).map(|mut menu| {
                     menu.has_manual_label = has_manual_label;
-                    menu.source_pane_id = snapshot.focused_pane_id.clone();
+                    menu.source_pane_id = agent_pane
+                        .clone()
+                        .or_else(|| snapshot.focused_pane_id.clone());
                     menu
                 })
             });
@@ -1063,6 +1083,12 @@ fn handle_mouse(
             )?;
             ensure_active_default_pane(client, terminal_size)?;
         }
+        renderer::ClickTarget::Agent {
+            space_id,
+            workspace_id,
+            tab_id,
+            pane_id,
+        } => activate_sidebar_agent(client, &space_id, &workspace_id, &tab_id, &pane_id)?,
         renderer::ClickTarget::Tab(tab_id) => {
             request_action(
                 client,
@@ -1082,6 +1108,44 @@ fn handle_mouse(
                 "focus pane",
             )?;
         }
+    }
+    Ok(())
+}
+
+fn activate_sidebar_agent(
+    client: &ControlClient,
+    space_id: &str,
+    workspace_id: &str,
+    tab_id: &str,
+    pane_id: &str,
+) -> Result<(), ClientError> {
+    for (request_id, operation, payload, action) in [
+        (
+            "mouse-agent-switch-space",
+            "switch_space",
+            json!({ "id": space_id }),
+            "switch to agent space",
+        ),
+        (
+            "mouse-agent-switch-workspace",
+            "switch_workspace",
+            json!({ "id": workspace_id }),
+            "switch to agent workspace",
+        ),
+        (
+            "mouse-agent-switch-tab",
+            "switch_tab",
+            json!({ "id": tab_id }),
+            "switch to agent tab",
+        ),
+        (
+            "mouse-agent-focus-pane",
+            "focus_pane",
+            json!({ "pane_id": pane_id }),
+            "focus agent pane",
+        ),
+    ] {
+        request_action(client, request_id, operation, payload, action)?;
     }
     Ok(())
 }
