@@ -48,11 +48,13 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
 - [ ] Creating a tab, workspace, or space starts and focuses its first shell.
 - [ ] Closing the last pane/tab follows the same lifecycle rule as the
   reference instead of leaving an unexplained blank canvas.
-- [ ] Show shell-start errors in the UI and keep the session recoverable.
+- [x] Show shell-start errors in the UI and allow retry or detach.
 - [x] Wire attach, tab/workspace/space creation, and container switching to
   idempotent shell creation using the active workspace repository path.
+- [x] Verify a failed shell executable leaves an empty session that accepts a
+  later valid shell request.
 - [ ] Cover fresh start, new containers, concurrent attach, detach/reattach,
-  failed executable, and restart in integration tests.
+  and restart in integration tests.
 
 Reference: Herdr `Workspace::new`, `create_tab_with_runtime`, and quick-start
 "Create a workspace" / "Detach and come back". Spindle: `Session::default`,

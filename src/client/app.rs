@@ -24,6 +24,21 @@ use std::time::{Duration, Instant};
 
 const SPLIT_DRAG_INTERVAL: Duration = Duration::from_millis(33);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StartupErrorAction {
+    Retry,
+    Detach,
+    Ignore,
+}
+
+fn startup_error_action(key: KeyCode) -> StartupErrorAction {
+    match key {
+        KeyCode::Char('r') | KeyCode::Enter => StartupErrorAction::Retry,
+        KeyCode::Esc | KeyCode::Char('q') => StartupErrorAction::Detach,
+        _ => StartupErrorAction::Ignore,
+    }
+}
+
 struct SplitDrag {
     path: Vec<bool>,
     direction: SplitDirection,
@@ -88,9 +103,11 @@ pub fn run(address: impl Into<String>) -> Result<(), ClientError> {
         terminal_size.1,
         vec!["mouse".into(), "alternate_screen".into()],
     )?;
-    ensure_active_default_pane(&client, terminal_size)?;
     let mut terminal = setup_terminal().map_err(ClientError::Io)?;
-    let result = event_loop(&mut terminal, &client);
+    let startup_error = ensure_active_default_pane(&client, terminal_size)
+        .err()
+        .map(startup_error_message);
+    let result = event_loop(&mut terminal, &client, startup_error);
     restore_terminal(&mut terminal).map_err(ClientError::Io)?;
     result
 }
@@ -121,6 +138,7 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io
 fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     client: &ControlClient,
+    mut startup_error: Option<String>,
 ) -> Result<(), ClientError> {
     let mut prefix_active = false;
     let mut palette_selected = 0;
@@ -141,6 +159,9 @@ fn event_loop(
             }
             Err(_) => false,
         };
+        if snapshot.focused_pane_id.is_some() {
+            startup_error = None;
+        }
         if connected && !was_connected {
             connected = client
                 .attach_with_terminal(
@@ -189,6 +210,9 @@ fn event_loop(
                 if let Some(menu) = &context_menu {
                     renderer::render_context_menu(frame, menu);
                 }
+                if let Some(error) = &startup_error {
+                    renderer::render_startup_error(frame, error);
+                }
             })
             .map_err(ClientError::Io)?;
         if !event::poll(Duration::from_millis(100)).map_err(ClientError::Io)? {
@@ -198,6 +222,9 @@ fn event_loop(
         let key = match input {
             Event::Mouse(mouse) => {
                 if rename_prompt.is_some() {
+                    continue;
+                }
+                if startup_error.is_some() {
                     continue;
                 }
                 if help_open {
@@ -219,6 +246,21 @@ fn event_loop(
             _ => continue,
         };
         if key.kind != KeyEventKind::Press {
+            continue;
+        }
+        if startup_error.is_some() {
+            match startup_error_action(key.code) {
+                StartupErrorAction::Retry => {
+                    startup_error = ensure_active_default_pane(client, terminal_size)
+                        .err()
+                        .map(startup_error_message);
+                }
+                StartupErrorAction::Detach => {
+                    let _ = client.detach();
+                    break;
+                }
+                StartupErrorAction::Ignore => {}
+            }
             continue;
         }
         mouse_state.selection = None;
@@ -1355,6 +1397,15 @@ fn ensure_active_default_pane(
     Ok(())
 }
 
+fn startup_error_message(error: ClientError) -> String {
+    match error {
+        ClientError::Io(error) => error.to_string(),
+        ClientError::Frame(error) => format!("{error:?}"),
+        ClientError::Json(error) => error.to_string(),
+        ClientError::Server(message) => message,
+    }
+}
+
 fn key_code_bytes(code: KeyCode) -> Option<Vec<u8>> {
     match code {
         KeyCode::Char(character) => Some(character.to_string().into_bytes()),
@@ -1426,8 +1477,8 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
 mod tests {
     use super::{
         active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id, key_code_bytes,
-        pane_size, reconnect_requires_reattach, workspace_id_by_name, PaneClick, SplitDirection,
-        SplitDrag,
+        pane_size, reconnect_requires_reattach, startup_error_action, workspace_id_by_name,
+        PaneClick, SplitDirection, SplitDrag, StartupErrorAction,
     };
     use crate::server::session::Session;
     use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
@@ -1475,6 +1526,30 @@ mod tests {
         assert!(!first.is_double_click_for("pane-2", 4, 8, now));
         assert!(!first.is_double_click_for("pane-1", 6, 8, now));
         assert!(!first.is_double_click_for("pane-1", 4, 8, now + Duration::from_millis(351)));
+    }
+
+    #[test]
+    fn startup_error_supports_retry_and_clean_detach() {
+        assert_eq!(
+            startup_error_action(KeyCode::Enter),
+            StartupErrorAction::Retry
+        );
+        assert_eq!(
+            startup_error_action(KeyCode::Char('r')),
+            StartupErrorAction::Retry
+        );
+        assert_eq!(
+            startup_error_action(KeyCode::Esc),
+            StartupErrorAction::Detach
+        );
+        assert_eq!(
+            startup_error_action(KeyCode::Char('q')),
+            StartupErrorAction::Detach
+        );
+        assert_eq!(
+            startup_error_action(KeyCode::Char('x')),
+            StartupErrorAction::Ignore
+        );
     }
 
     #[test]

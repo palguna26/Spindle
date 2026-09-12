@@ -14,7 +14,7 @@ use navigation::{render_sidebar, render_tabs};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
 pub fn render(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
@@ -172,6 +172,24 @@ pub fn render_help(frame: &mut Frame<'_>) {
     );
 }
 
+pub fn render_startup_error(frame: &mut Frame<'_>, error: &str) {
+    let area = centered_rect(72, 42, frame.area());
+    let content = vec![
+        Line::from("Spindle is connected, but could not start the shell."),
+        Line::from(error),
+        Line::from("Press Enter or r to retry. Press Esc or q to detach."),
+    ];
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(content).wrap(Wrap { trim: true }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Shell start failed"),
+        ),
+        area,
+    );
+}
+
 pub fn render_prompt(frame: &mut Frame<'_>, title: &str, input: &str) {
     let area = centered_rect(60, 25, frame.area());
     frame.render_widget(
@@ -289,7 +307,7 @@ mod tests {
     use super::super::selection::TextSelection;
     use super::{
         active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, render,
-        render_help, render_selection, render_with_connection, status_color,
+        render_help, render_selection, render_startup_error, render_with_connection, status_color,
     };
     use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
@@ -366,6 +384,25 @@ mod tests {
         assert!(content.contains("Spindle help"));
         assert!(content.contains("right-click for actions"));
         assert!(content.contains("command palette"));
+    }
+
+    #[test]
+    fn startup_error_overlay_shows_recovery_actions() {
+        let backend = TestBackend::new(60, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_startup_error(frame, "powershell.exe was not found"))
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("Shell start failed"));
+        assert!(content.contains("powershell.exe was not found"));
+        assert!(content.contains("Press Enter or r to retry"));
     }
 
     #[test]

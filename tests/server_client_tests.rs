@@ -284,6 +284,25 @@ fn ensuring_active_pane_is_idempotent_and_restores_tab_focus() {
         "rows": 24
     });
 
+    let mut failed_start_request = pane_request.clone();
+    failed_start_request["command"] = serde_json::json!("spindle-command-that-does-not-exist.exe");
+    let failed_start = client.request(
+        "ensure-failed-shell",
+        "ensure_active_pane",
+        failed_start_request,
+    );
+    assert!(failed_start.is_err());
+    let empty_snapshot = client
+        .request(
+            "snapshot-after-failed-shell",
+            "get_snapshot",
+            serde_json::Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert!(empty_snapshot["panes"].as_array().unwrap().is_empty());
+
     let first = client
         .request("ensure-first", "ensure_active_pane", pane_request.clone())
         .unwrap();
