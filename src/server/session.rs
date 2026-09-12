@@ -408,9 +408,17 @@ impl Session {
     }
 
     pub fn ensure_active_pane(&mut self, request: CreatePaneRequest) -> Result<Value, String> {
+        self.reconcile_active_tab_layout()?;
         self.sync_focus_to_active_tab()?;
         if let Some(pane_id) = self.active_tab_mut()?.focused_pane_id.clone() {
-            return Ok(serde_json::json!({ "pane_id": pane_id, "created": false }));
+            if self
+                .snapshot
+                .panes
+                .iter()
+                .any(|pane| pane.pane_id == pane_id)
+            {
+                return Ok(serde_json::json!({ "pane_id": pane_id, "created": false }));
+            }
         }
 
         let mut result = self.create_pane(request)?;
@@ -418,6 +426,39 @@ impl Session {
             object.insert("created".into(), serde_json::json!(true));
         }
         Ok(result)
+    }
+
+    fn reconcile_active_tab_layout(&mut self) -> Result<(), String> {
+        let known_panes = self
+            .snapshot
+            .panes
+            .iter()
+            .map(|pane| pane.pane_id.clone())
+            .collect::<std::collections::HashSet<_>>();
+        let tab = self.active_tab_mut()?;
+        let Some(layout) = tab.layout.take() else {
+            tab.focused_pane_id = None;
+            return Ok(());
+        };
+        let missing = layout
+            .pane_ids()
+            .into_iter()
+            .filter(|pane_id| !known_panes.contains(*pane_id))
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let mut repaired = Some(layout);
+        for pane_id in missing {
+            repaired = repaired.and_then(|layout| layout.close_pane(&pane_id));
+        }
+        tab.layout = repaired;
+        if tab.focused_pane_id.as_deref().is_some_and(|focused| {
+            !tab.layout
+                .as_ref()
+                .is_some_and(|layout| layout.pane_ids().contains(&focused))
+        }) {
+            tab.focused_pane_id = None;
+        }
+        Ok(())
     }
 
     pub fn split_pane(
@@ -1320,6 +1361,35 @@ mod tests {
         assert!(session.focus_pane("missing").is_err());
         assert!(session.switch_workspace("missing").is_err());
         assert!(session.switch_tab("missing").is_err());
+    }
+
+    #[test]
+    fn ensure_active_pane_does_not_accept_a_stale_layout_reference() {
+        let mut session = Session::default();
+        let tab = &mut session.snapshot.spaces[0].workspaces[0].tabs[0];
+        tab.layout = Some(LayoutNode::pane("pane-missing"));
+        tab.focused_pane_id = Some("pane-missing".into());
+        session.snapshot.focused_pane_id = Some("pane-missing".into());
+
+        let result = session.ensure_active_pane(CreatePaneRequest {
+            command: "spindle-command-that-does-not-exist.exe".into(),
+            args: Vec::new(),
+            cwd: std::env::current_dir()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+            label: None,
+            env: Default::default(),
+            cols: 80,
+            rows: 24,
+        });
+
+        assert!(result.is_err(), "must try to create a replacement shell");
+        assert!(session.snapshot.panes.is_empty());
+        assert!(session.snapshot.focused_pane_id.is_none());
+        assert!(session.snapshot.spaces[0].workspaces[0].tabs[0]
+            .layout
+            .is_none());
     }
 
     #[test]

@@ -53,6 +53,8 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
   idempotent shell creation using the active workspace repository path.
 - [x] Verify a failed shell executable leaves an empty session that accepts a
   later valid shell request.
+- [x] Repair stale pane IDs in the active layout before ensure-shell, following
+  Herdr's invariant that layout panes and pane state must match.
 - [ ] Cover fresh start, new containers, concurrent attach, detach/reattach,
   and restart in integration tests.
 

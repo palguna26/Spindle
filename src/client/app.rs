@@ -159,7 +159,7 @@ fn event_loop(
             }
             Err(_) => false,
         };
-        if snapshot.focused_pane_id.is_some() {
+        if snapshot_has_focused_pane(&snapshot) {
             startup_error = None;
         }
         if connected && !was_connected {
@@ -1032,6 +1032,26 @@ fn reconnect_requires_reattach(was_connected: bool, connected: bool) -> bool {
     connected && !was_connected
 }
 
+fn snapshot_has_focused_pane(snapshot: &SessionSnapshot) -> bool {
+    let Some(focused) = snapshot.focused_pane_id.as_deref() else {
+        return false;
+    };
+    let Some(workspace) = active_workspace(snapshot) else {
+        return false;
+    };
+    let Some(tab) = workspace
+        .tabs
+        .iter()
+        .find(|tab| tab.tab_id == workspace.active_tab_id)
+    else {
+        return false;
+    };
+    tab.layout
+        .as_ref()
+        .is_some_and(|layout| layout.pane_ids().contains(&focused))
+        && snapshot.panes.iter().any(|pane| pane.pane_id == focused)
+}
+
 fn rename_target(action: Action) -> Option<RenameTarget> {
     match action {
         Action::RenameFocusedPane => Some(RenameTarget::Pane),
@@ -1507,8 +1527,8 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
 mod tests {
     use super::{
         active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id, key_code_bytes,
-        pane_size, reconnect_requires_reattach, startup_error_action, workspace_id_by_name,
-        PaneClick, SplitDirection, SplitDrag, StartupErrorAction,
+        pane_size, reconnect_requires_reattach, snapshot_has_focused_pane, startup_error_action,
+        workspace_id_by_name, PaneClick, SplitDirection, SplitDrag, StartupErrorAction,
     };
     use crate::server::session::Session;
     use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
@@ -1633,5 +1653,30 @@ mod tests {
         assert!(reconnect_requires_reattach(false, true));
         assert!(!reconnect_requires_reattach(true, true));
         assert!(!reconnect_requires_reattach(false, false));
+    }
+
+    #[test]
+    fn stale_focus_does_not_hide_a_shell_start_error() {
+        let mut snapshot = crate::server::session::Session::default()
+            .snapshot()
+            .clone();
+        snapshot.focused_pane_id = Some("pane-missing".into());
+        assert!(!snapshot_has_focused_pane(&snapshot));
+
+        snapshot.panes.push(
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-missing",
+                "command": "powershell.exe",
+                "args": [],
+                "cwd": "C:/",
+                "status": "Running",
+                "scrollback_bytes": 0
+            }))
+            .unwrap(),
+        );
+        assert!(!snapshot_has_focused_pane(&snapshot));
+        snapshot.spaces[0].workspaces[0].tabs[0].layout =
+            Some(crate::model::layout::LayoutNode::pane("pane-missing"));
+        assert!(snapshot_has_focused_pane(&snapshot));
     }
 }
