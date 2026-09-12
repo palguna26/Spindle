@@ -64,6 +64,7 @@ to mouse and keyboard controls. Press `:` for the command palette. Other keys:
 | `r` | Restart focused pane |
 | `"` | Horizontal split |
 | `%` | Vertical split |
+| `z` | Zoom / restore focused pane |
 | `<` / `>` | Resize pane |
 | `?` | Open mouse and keyboard help |
 | `:` | Open command palette |

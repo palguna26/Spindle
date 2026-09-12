@@ -87,6 +87,7 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Right-click workspaces, tabs, and panes for context-specific actions.
 - [x] Support pane split, close, rename, zoom/focus actions from menus where
   the matching Herdr action exists.
+- [x] Bind focused-pane zoom to `Ctrl-b z`, matching Herdr's default.
 - [x] Support drag-select/copy and terminal mouse passthrough without stealing
   input from applications that request it.
 - [ ] Keep keyboard actions for every pane, tab, and workspace action that is

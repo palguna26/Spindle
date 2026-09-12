@@ -153,7 +153,7 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "[ / ]: previous / next tab; { / }: previous / next space",
         "w: next workspace; o / p / arrows: focus panes",
         "\" / %: split; < / >: resize; x / r: stop / restart",
-        "? / : / d: help / command palette / detach",
+        "z: zoom pane; ? / : / d: help / palette / detach",
         "",
         "Create, rename, and delete actions are in the command palette.",
         "Press any key or click to close.",
@@ -383,7 +383,7 @@ mod tests {
             .collect();
         assert!(content.contains("Spindle help"));
         assert!(content.contains("right-click for actions"));
-        assert!(content.contains("command palette"));
+        assert!(content.contains("palette"));
     }
 
     #[test]

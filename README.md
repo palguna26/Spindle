@@ -48,6 +48,7 @@ open the command palette. Other common keys:
 | `:` | Command palette |
 | `d` | Detach |
 | `"` / `%` | Horizontal / vertical split |
+| `z` | Zoom / restore focused pane |
 | `o` / `p` | Next / previous pane |
 | Arrow keys | Directional pane focus |
 | `<` / `>` | Resize pane |

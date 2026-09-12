@@ -431,6 +431,15 @@ fn event_loop(
                     );
                 }
             }
+            Action::ToggleZoom => {
+                if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                    let _ = client.request(
+                        "toggle-zoom",
+                        "toggle_pane_zoom",
+                        json!({ "pane_id": pane_id }),
+                    );
+                }
+            }
             Action::Send(code) => {
                 if let Some(ref pane_id) = snapshot.focused_pane_id {
                     if let Some(bytes) = key_code_bytes(code) {
