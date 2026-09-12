@@ -12,6 +12,12 @@ struct PaneRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct PaneSwapRequest {
+    source_pane_id: String,
+    target_pane_id: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct IdRequest {
     id: String,
 }
@@ -527,6 +533,18 @@ pub(crate) fn response_for_with_interactive(
             };
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| session.focus_pane(&payload.pane_id))
+        }
+        "swap_panes" => {
+            let payload: PaneSwapRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.swap_panes(&payload.source_pane_id, &payload.target_pane_id)
+            })
         }
         "toggle_pane_zoom" => {
             let payload: PaneRequest = match serde_json::from_value(request.payload) {

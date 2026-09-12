@@ -856,6 +856,27 @@ impl Session {
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
+    pub fn swap_panes(
+        &mut self,
+        source_pane_id: &str,
+        target_pane_id: &str,
+    ) -> Result<Value, String> {
+        let tab = self.active_tab_mut()?;
+        let layout = tab
+            .layout
+            .as_mut()
+            .ok_or_else(|| "active tab has no panes".to_string())?;
+        if !layout.swap_panes(source_pane_id, target_pane_id) {
+            return Err("both panes must exist in the active tab and be different".into());
+        }
+        tab.focused_pane_id = Some(source_pane_id.to_owned());
+        self.snapshot.focused_pane_id = Some(source_pane_id.to_owned());
+        Ok(serde_json::json!({
+            "source_pane_id": source_pane_id,
+            "target_pane_id": target_pane_id
+        }))
+    }
+
     pub fn toggle_pane_zoom(&mut self, pane_id: &str) -> Result<Value, String> {
         let zoomed = {
             let tab = self.active_tab_mut()?;
@@ -1703,6 +1724,26 @@ mod tests {
         assert!(matches!(first.as_ref(), LayoutNode::Split { ratio, .. }
             if (*ratio - 0.7).abs() < f32::EPSILON));
         assert!(session.set_split_ratio(&[true], 0.6).is_err());
+    }
+
+    #[test]
+    fn swapping_panes_changes_layout_slots_and_focuses_the_source() {
+        let mut session = Session::default();
+        let tab = &mut session.snapshot.spaces[0].workspaces[0].tabs[0];
+        tab.layout = Some(LayoutNode::pane("one").split(
+            crate::model::layout::Direction::Horizontal,
+            0.5,
+            "two",
+        ));
+        tab.focused_pane_id = Some("one".into());
+
+        session.swap_panes("one", "two").unwrap();
+
+        let tab = &session.snapshot.spaces[0].workspaces[0].tabs[0];
+        assert_eq!(tab.layout.as_ref().unwrap().pane_ids(), vec!["two", "one"]);
+        assert_eq!(tab.focused_pane_id.as_deref(), Some("one"));
+        assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("one"));
+        assert!(session.swap_panes("one", "missing").is_err());
     }
 
     #[test]

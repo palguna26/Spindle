@@ -22,6 +22,7 @@ pub(crate) enum ContextMenuAction {
     Stop,
     Restart,
     ClearPaneName,
+    SwapWithFocusedPane,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +32,7 @@ pub(crate) struct ContextMenu {
     pub(crate) y: u16,
     pub(crate) selected: usize,
     pub(crate) has_manual_label: bool,
+    pub(crate) source_pane_id: Option<String>,
 }
 
 impl ContextMenu {
@@ -56,6 +58,7 @@ impl ContextMenu {
             y,
             selected: 0,
             has_manual_label: false,
+            source_pane_id: None,
         })
     }
 
@@ -74,7 +77,7 @@ impl ContextMenu {
                 ("Rename tab", A::Rename),
                 ("Close tab", A::Close),
             ],
-            ContextMenuTarget::Pane(_) => {
+            ContextMenuTarget::Pane(target) => {
                 let mut items = vec![
                     ("Focus pane", A::Focus),
                     ("Split right", A::SplitRight),
@@ -88,6 +91,13 @@ impl ContextMenu {
                 ];
                 if self.has_manual_label {
                     items.push(("Clear pane name", A::ClearPaneName));
+                }
+                if self
+                    .source_pane_id
+                    .as_deref()
+                    .is_some_and(|source| source != target)
+                {
+                    items.push(("Swap with focused pane", A::SwapWithFocusedPane));
                 }
                 items.extend([
                     ("Stop pane", A::Stop),
@@ -170,6 +180,12 @@ mod tests {
             .items()
             .contains(&("Clear pane name", ContextMenuAction::ClearPaneName)));
         assert_eq!(pane.items().last().unwrap().1, ContextMenuAction::Close);
+        let mut other_pane = pane.clone();
+        other_pane.source_pane_id = Some("pane-2".into());
+        assert!(other_pane.items().contains(&(
+            "Swap with focused pane",
+            ContextMenuAction::SwapWithFocusedPane
+        )));
 
         let workspace = ContextMenu::from_target(
             ClickTarget::Workspace {

@@ -710,6 +710,7 @@ fn handle_mouse(
                 };
                 ContextMenu::from_target(target, mouse.column, mouse.row).map(|mut menu| {
                     menu.has_manual_label = has_manual_label;
+                    menu.source_pane_id = snapshot.focused_pane_id.clone();
                     menu
                 })
             });
@@ -1210,6 +1211,7 @@ fn activate_context_menu(
     action: ContextMenuAction,
     terminal_size: (u16, u16),
 ) -> Result<Option<RenameTarget>, ClientError> {
+    let source_pane_id = menu.source_pane_id.clone();
     match menu.target {
         ContextMenuTarget::Workspace { space_id, id } => {
             client.request(
@@ -1284,6 +1286,19 @@ fn activate_context_menu(
                         "rename_pane",
                         json!({ "pane_id": pane_id, "label": "" }),
                     )?;
+                    Ok(None)
+                }
+                ContextMenuAction::SwapWithFocusedPane => {
+                    if let Some(source_pane_id) = source_pane_id {
+                        client.request(
+                            "context-swap-panes",
+                            "swap_panes",
+                            json!({
+                                "source_pane_id": source_pane_id,
+                                "target_pane_id": pane_id
+                            }),
+                        )?;
+                    }
                     Ok(None)
                 }
                 ContextMenuAction::SplitRight | ContextMenuAction::SplitDown => {

@@ -95,6 +95,34 @@ impl LayoutNode {
         }
     }
 
+    pub fn swap_panes(&mut self, first_pane_id: &str, second_pane_id: &str) -> bool {
+        if first_pane_id == second_pane_id
+            || !self.contains(first_pane_id)
+            || !self.contains(second_pane_id)
+        {
+            return false;
+        }
+
+        self.swap_pane_ids(first_pane_id, second_pane_id);
+        true
+    }
+
+    fn swap_pane_ids(&mut self, first_pane_id: &str, second_pane_id: &str) {
+        match self {
+            Self::Pane { pane_id } if pane_id == first_pane_id => {
+                *pane_id = second_pane_id.to_owned();
+            }
+            Self::Pane { pane_id } if pane_id == second_pane_id => {
+                *pane_id = first_pane_id.to_owned();
+            }
+            Self::Pane { .. } => {}
+            Self::Split { first, second, .. } => {
+                first.swap_pane_ids(first_pane_id, second_pane_id);
+                second.swap_pane_ids(first_pane_id, second_pane_id);
+            }
+        }
+    }
+
     pub fn resize_pane(&mut self, pane_id: &str, delta: f32) -> bool {
         match self {
             Self::Pane { .. } => false,
@@ -322,6 +350,19 @@ mod tests {
             .split_pane("one", Direction::Vertical, "three")
             .unwrap();
         assert_eq!(layout.pane_ids(), vec!["one", "three", "two"]);
+    }
+
+    #[test]
+    fn swapping_panes_preserves_their_layout_slots() {
+        let mut layout = LayoutNode::pane("one")
+            .split(Direction::Horizontal, 0.5, "two")
+            .split_pane("one", Direction::Vertical, "three")
+            .unwrap();
+
+        assert!(layout.swap_panes("three", "two"));
+        assert_eq!(layout.pane_ids(), vec!["one", "two", "three"]);
+        assert!(!layout.swap_panes("two", "missing"));
+        assert!(!layout.swap_panes("one", "one"));
     }
 
     #[test]
