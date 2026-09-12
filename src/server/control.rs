@@ -81,6 +81,12 @@ struct LayoutResizeRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct SetSplitRatioRequest {
+    path: Vec<bool>,
+    ratio: f32,
+}
+
+#[derive(Debug, Deserialize)]
 struct FocusDirectionRequest {
     direction: String,
 }
@@ -564,6 +570,18 @@ pub(crate) fn response_for_with_interactive(
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
                 session.resize_pane(&payload.pane_id, payload.delta)
+            })
+        }
+        "set_split_ratio" => {
+            let payload: SetSplitRatioRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.set_split_ratio(&payload.path, payload.ratio)
             })
         }
         "close_pane" => {

@@ -829,6 +829,21 @@ impl Session {
         Ok(serde_json::json!({ "pane_id": pane_id, "delta": delta }))
     }
 
+    pub fn set_split_ratio(&mut self, path: &[bool], ratio: f32) -> Result<Value, String> {
+        let tab = self.active_tab_mut()?;
+        let layout = tab
+            .layout
+            .as_mut()
+            .ok_or_else(|| "active tab has no panes".to_string())?;
+        if !layout.set_split_ratio(path, ratio) {
+            return Err("split path does not identify a split".into());
+        }
+        Ok(serde_json::json!({
+            "path": path,
+            "ratio": crate::model::layout::clamp_ratio(ratio),
+        }))
+    }
+
     pub fn close_pane(&mut self, pane_id: &str) -> Result<Value, String> {
         let in_active_tab = self
             .active_tab_mut()?
@@ -1265,6 +1280,27 @@ mod tests {
         let tab_id = tab["tab_id"].as_str().unwrap().to_string();
         session.close_tab(&tab_id).unwrap();
         assert_eq!(session.snapshot().spaces[0].workspaces[0].tabs.len(), 1);
+    }
+
+    #[test]
+    fn setting_a_split_ratio_targets_a_nested_split() {
+        let mut session = Session::default();
+        session.snapshot.spaces[0].workspaces[0].tabs[0].layout = Some(
+            LayoutNode::pane("one")
+                .split(crate::model::layout::Direction::Horizontal, 0.5, "two")
+                .split(crate::model::layout::Direction::Vertical, 0.5, "three"),
+        );
+        session
+            .set_split_ratio(&[false], 0.7)
+            .expect("nested split path should be valid");
+        let Some(LayoutNode::Split { first, .. }) =
+            &session.snapshot.spaces[0].workspaces[0].tabs[0].layout
+        else {
+            panic!("expected root split");
+        };
+        assert!(matches!(first.as_ref(), LayoutNode::Split { ratio, .. }
+            if (*ratio - 0.7).abs() < f32::EPSILON));
+        assert!(session.set_split_ratio(&[true], 0.6).is_err());
     }
 
     #[test]

@@ -38,6 +38,87 @@ fn start_server(state_dir: &Path) -> (std::thread::JoinHandle<()>, String) {
 }
 
 #[test]
+fn split_ratio_control_updates_the_persisted_layout() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let pane = serde_json::json!({
+        "command": "cmd.exe",
+        "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24
+    });
+    assert!(
+        client
+            .request("ratio-first-pane", "ensure_active_pane", pane.clone())
+            .unwrap()
+            .ok
+    );
+    let mut split = pane;
+    split["direction"] = serde_json::json!("horizontal");
+    assert!(
+        client
+            .request("ratio-second-pane", "split_pane", split)
+            .unwrap()
+            .ok
+    );
+    let nested_split = serde_json::json!({
+        "command": "cmd.exe",
+        "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+        "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+        "cols": 80,
+        "rows": 24,
+        "direction": "vertical"
+    });
+    assert!(
+        client
+            .request("ratio-third-pane", "split_pane", nested_split)
+            .unwrap()
+            .ok
+    );
+    let updated = client
+        .request(
+            "set-nested-split-ratio",
+            "set_split_ratio",
+            serde_json::json!({ "path": [true], "ratio": 0.7 }),
+        )
+        .unwrap();
+    assert!(updated.ok);
+    let snapshot = client
+        .request(
+            "ratio-snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    let root = &snapshot["spaces"][0]["workspaces"][0]["tabs"][0]["layout"]["Split"];
+    let root_ratio = root["ratio"]
+        .as_f64()
+        .expect("root ratio should be numeric");
+    let nested_ratio = root["second"]["Split"]["ratio"]
+        .as_f64()
+        .expect("nested ratio should be numeric");
+    assert!((root_ratio - 0.5).abs() < 0.00001);
+    assert!((nested_ratio - 0.7).abs() < 0.00001);
+    client
+        .request(
+            "ratio-stop-server",
+            "stop_server",
+            Value::Object(Default::default()),
+        )
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn server_accepts_attach_snapshot_and_stop() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);

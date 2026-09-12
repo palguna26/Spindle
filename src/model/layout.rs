@@ -117,6 +117,28 @@ impl LayoutNode {
         }
     }
 
+    pub fn set_split_ratio(&mut self, path: &[bool], ratio: f32) -> bool {
+        if !ratio.is_finite() {
+            return false;
+        }
+        let mut node = self;
+        for second_child in path {
+            match node {
+                Self::Split { first, second, .. } => {
+                    node = if *second_child { second } else { first };
+                }
+                Self::Pane { .. } => return false,
+            }
+        }
+        match node {
+            Self::Split { ratio: current, .. } => {
+                *current = clamp_ratio(ratio);
+                true
+            }
+            Self::Pane { .. } => false,
+        }
+    }
+
     pub fn next_pane<'a>(&'a self, current_pane_id: Option<&str>) -> Option<&'a str> {
         let ids = self.pane_ids();
         if ids.is_empty() {
@@ -300,6 +322,33 @@ mod tests {
             .split_pane("one", Direction::Vertical, "three")
             .unwrap();
         assert_eq!(layout.pane_ids(), vec!["one", "three", "two"]);
+    }
+
+    #[test]
+    fn split_ratio_updates_the_split_at_a_nested_path() {
+        let mut layout = LayoutNode::pane("one")
+            .split(Direction::Horizontal, 0.5, "two")
+            .split(Direction::Vertical, 0.5, "three");
+
+        assert!(layout.set_split_ratio(&[false], 0.7));
+        assert!(matches!(
+            &layout,
+            LayoutNode::Split { first, ratio, .. }
+                if (*ratio - 0.5).abs() < f32::EPSILON
+                    && matches!(first.as_ref(), LayoutNode::Split { ratio, .. }
+                        if (*ratio - 0.7).abs() < f32::EPSILON)
+        ));
+        assert!(layout.set_split_ratio(&[], 2.0));
+        assert!(matches!(&layout, LayoutNode::Split { ratio, .. } if *ratio == 0.9));
+        assert_eq!(layout.pane_ids(), vec!["one", "two", "three"]);
+    }
+
+    #[test]
+    fn split_ratio_rejects_invalid_paths_and_non_finite_values() {
+        let mut layout = LayoutNode::pane("one").split(Direction::Horizontal, 0.5, "two");
+        assert!(!layout.set_split_ratio(&[false], 0.7));
+        assert!(!layout.set_split_ratio(&[], f32::NAN));
+        assert!(matches!(&layout, LayoutNode::Split { ratio, .. } if *ratio == 0.5));
     }
 
     #[test]
