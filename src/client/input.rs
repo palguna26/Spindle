@@ -17,6 +17,7 @@ pub enum Action {
     StopFocusedPane,
     RestartFocusedPane,
     RenameFocusedPane,
+    ClearPaneName,
     RenameActiveTab,
     RenameActiveWorkspace,
     CreateWorkspace,

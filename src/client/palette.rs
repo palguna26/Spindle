@@ -15,6 +15,7 @@ pub enum Command {
     StopFocusedPane,
     RestartFocusedPane,
     RenameFocusedPane,
+    ClearPaneName,
     RenameActiveTab,
     RenameActiveWorkspace,
     CreateWorkspace,
@@ -37,7 +38,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Self; 31] = [
+    pub const ALL: [Self; 32] = [
         Self::NewTab,
         Self::NewPane,
         Self::CloseTab,
@@ -50,6 +51,7 @@ impl Command {
         Self::StopFocusedPane,
         Self::RestartFocusedPane,
         Self::RenameFocusedPane,
+        Self::ClearPaneName,
         Self::RenameActiveTab,
         Self::RenameActiveWorkspace,
         Self::CreateWorkspace,
@@ -85,6 +87,7 @@ impl Command {
             Self::StopFocusedPane => "Stop focused pane",
             Self::RestartFocusedPane => "Restart focused pane",
             Self::RenameFocusedPane => "Rename focused pane",
+            Self::ClearPaneName => "Clear focused pane name",
             Self::RenameActiveTab => "Rename active tab",
             Self::RenameActiveWorkspace => "Rename active workspace",
             Self::CreateWorkspace => "Create workspace",
@@ -121,6 +124,7 @@ impl Command {
             Self::StopFocusedPane => Action::StopFocusedPane,
             Self::RestartFocusedPane => Action::RestartFocusedPane,
             Self::RenameFocusedPane => Action::RenameFocusedPane,
+            Self::ClearPaneName => Action::ClearPaneName,
             Self::RenameActiveTab => Action::RenameActiveTab,
             Self::RenameActiveWorkspace => Action::RenameActiveWorkspace,
             Self::CreateWorkspace => Action::CreateWorkspace,
@@ -175,6 +179,14 @@ mod tests {
         let command = Command::ToggleRightClickPassthrough;
         assert_eq!(command.label(), "Toggle right-click passthrough");
         assert_eq!(command.action(), super::Action::ToggleRightClickPassthrough);
+        assert!(Command::ALL.contains(&command));
+    }
+
+    #[test]
+    fn clear_pane_name_is_available_as_a_keyboard_command() {
+        let command = Command::ClearPaneName;
+        assert_eq!(command.label(), "Clear focused pane name");
+        assert_eq!(command.action(), super::Action::ClearPaneName);
         assert!(Command::ALL.contains(&command));
     }
 }

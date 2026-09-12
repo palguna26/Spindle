@@ -121,8 +121,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   now browse recent PTY history, which the same selection/copy path can read;
   history is bounded by the PTY byte ring and reconstructed at the current
   pane size.
-- [ ] Keep keyboard actions for every pane, tab, and workspace action that is
-  available through the mouse.
+- [x] Keep keyboard command-palette actions for pane, tab, and workspace
+  actions available through the mouse, including clearing a pane's manual name.
 - [x] Add in-app help that explains both keyboard shortcuts and mouse controls.
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior; manually verify in Windows Terminal and PowerShell.

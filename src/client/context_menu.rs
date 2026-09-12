@@ -21,6 +21,7 @@ pub(crate) enum ContextMenuAction {
     ToggleRightClickPassthrough,
     Stop,
     Restart,
+    ClearPaneName,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +30,7 @@ pub(crate) struct ContextMenu {
     pub(crate) x: u16,
     pub(crate) y: u16,
     pub(crate) selected: usize,
+    pub(crate) has_manual_label: bool,
 }
 
 impl ContextMenu {
@@ -53,38 +55,47 @@ impl ContextMenu {
             x,
             y,
             selected: 0,
+            has_manual_label: false,
         })
     }
 
-    pub(crate) fn items(&self) -> &'static [(&'static str, ContextMenuAction)] {
+    pub(crate) fn items(&self) -> Vec<(&'static str, ContextMenuAction)> {
         use ContextMenuAction as A;
         match &self.target {
-            ContextMenuTarget::Workspace { .. } => &[
+            ContextMenuTarget::Workspace { .. } => vec![
                 ("Open workspace", A::Activate),
                 ("New tab", A::NewTab),
                 ("Rename workspace", A::Rename),
                 ("Close workspace", A::Close),
             ],
-            ContextMenuTarget::Tab(_) => &[
+            ContextMenuTarget::Tab(_) => vec![
                 ("Open tab", A::Activate),
                 ("New tab", A::NewTab),
                 ("Rename tab", A::Rename),
                 ("Close tab", A::Close),
             ],
-            ContextMenuTarget::Pane(_) => &[
-                ("Focus pane", A::Focus),
-                ("Split right", A::SplitRight),
-                ("Split down", A::SplitDown),
-                ("Zoom", A::Zoom),
-                (
-                    "Toggle right-click passthrough",
-                    A::ToggleRightClickPassthrough,
-                ),
-                ("Rename pane", A::Rename),
-                ("Stop pane", A::Stop),
-                ("Restart pane", A::Restart),
-                ("Close pane", A::Close),
-            ],
+            ContextMenuTarget::Pane(_) => {
+                let mut items = vec![
+                    ("Focus pane", A::Focus),
+                    ("Split right", A::SplitRight),
+                    ("Split down", A::SplitDown),
+                    ("Zoom", A::Zoom),
+                    (
+                        "Toggle right-click passthrough",
+                        A::ToggleRightClickPassthrough,
+                    ),
+                    ("Rename pane", A::Rename),
+                ];
+                if self.has_manual_label {
+                    items.push(("Clear pane name", A::ClearPaneName));
+                }
+                items.extend([
+                    ("Stop pane", A::Stop),
+                    ("Restart pane", A::Restart),
+                    ("Close pane", A::Close),
+                ]);
+                items
+            }
         }
     }
 
@@ -149,6 +160,15 @@ mod tests {
             pane.items()[1],
             ("Split right", ContextMenuAction::SplitRight)
         );
+        assert!(pane
+            .items()
+            .iter()
+            .all(|(label, _)| *label != "Clear pane name"));
+        let mut named_pane = pane.clone();
+        named_pane.has_manual_label = true;
+        assert!(named_pane
+            .items()
+            .contains(&("Clear pane name", ContextMenuAction::ClearPaneName)));
         assert_eq!(pane.items().last().unwrap().1, ContextMenuAction::Close);
 
         let workspace = ContextMenu::from_target(

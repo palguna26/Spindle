@@ -582,6 +582,15 @@ fn event_loop(
                     )?;
                 }
             }
+            Action::ClearPaneName => {
+                if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                    client.request(
+                        "clear-pane-name",
+                        "rename_pane",
+                        json!({ "pane_id": pane_id, "label": "" }),
+                    )?;
+                }
+            }
             Action::Send(code) => {
                 if let Some(ref pane_id) = snapshot.focused_pane_id {
                     if let Some(bytes) = key_code_bytes(code) {
@@ -690,7 +699,20 @@ fn handle_mouse(
                 mouse_state.sidebar_collapsed,
                 mouse_state.sidebar_scroll,
             )
-            .and_then(|target| ContextMenu::from_target(target, mouse.column, mouse.row));
+            .and_then(|target| {
+                let has_manual_label = match &target {
+                    renderer::ClickTarget::Pane(pane_id) => snapshot
+                        .panes
+                        .iter()
+                        .find(|pane| pane.pane_id == *pane_id)
+                        .is_some_and(|pane| pane.label.is_some()),
+                    _ => false,
+                };
+                ContextMenu::from_target(target, mouse.column, mouse.row).map(|mut menu| {
+                    menu.has_manual_label = has_manual_label;
+                    menu
+                })
+            });
         }
         return Ok(());
     }
@@ -1256,6 +1278,14 @@ fn activate_context_menu(
             match action {
                 ContextMenuAction::Focus => Ok(None),
                 ContextMenuAction::Rename => Ok(Some(RenameTarget::Pane)),
+                ContextMenuAction::ClearPaneName => {
+                    client.request(
+                        "context-clear-pane-name",
+                        "rename_pane",
+                        json!({ "pane_id": pane_id, "label": "" }),
+                    )?;
+                    Ok(None)
+                }
                 ContextMenuAction::SplitRight | ContextMenuAction::SplitDown => {
                     let mut request = pane_request_for_snapshot(snapshot, terminal_size);
                     request["direction"] = json!(if action == ContextMenuAction::SplitRight {
@@ -1687,6 +1717,16 @@ fn execute_action(
                     "palette-toggle-right-click",
                     "toggle_right_click_passthrough",
                     json!({ "pane_id": pane_id }),
+                )?;
+            }
+            Ok(false)
+        }
+        Action::ClearPaneName => {
+            if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                client.request(
+                    "palette-clear-pane-name",
+                    "rename_pane",
+                    json!({ "pane_id": pane_id, "label": "" }),
                 )?;
             }
             Ok(false)
