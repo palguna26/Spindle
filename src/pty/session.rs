@@ -125,6 +125,10 @@ impl PtySession {
             .map(|status| status.exit_code()))
     }
 
+    pub fn process_id(&self) -> Option<u32> {
+        self.child.process_id()
+    }
+
     pub fn wait(&mut self) -> Result<u32, PtySessionError> {
         Ok(self
             .child

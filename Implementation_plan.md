@@ -105,7 +105,9 @@ and quick-start "Use the mouse". Spindle: `src/client/app.rs`,
 ## 4. Add agent-aware workspace status
 
 - [ ] Port process/terminal agent detection using Herdr's manifests and state
-  transitions as behavioral references, not copied implementation.
+  transitions as behavioral references, not copied implementation. Partial:
+  direct Codex/OpenCode executable descendants are detected on Windows and
+  shown in pane chrome; wrapped JS CLIs, agent states, and manifests remain.
 - [ ] Expose agent kind and working/blocked/done/idle state in pane chrome and
   the sidebar.
 - [ ] Keep state associated with the correct pane, tab, and workspace through

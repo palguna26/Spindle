@@ -1,8 +1,10 @@
 use super::PaneEvent;
+use crate::detect::{self, AgentKind};
 use crate::model::status::PaneStatus;
 use crate::pty::{PtyConfig, PtySession, PtySessionError};
 use crate::terminal::{TerminalEmulator, TerminalSnapshot};
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::time::{Duration, Instant};
 
 const DEFAULT_SCROLLBACK_BYTES: usize = 64 * 1024;
 
@@ -20,6 +22,7 @@ pub struct Pane {
     pub id: String,
     pub config: PaneConfig,
     pub status: PaneStatus,
+    pub agent: Option<AgentKind>,
     pub scrollback: VecDeque<u8>,
     pub terminal: TerminalEmulator,
     session: PtySession,
@@ -40,6 +43,7 @@ impl From<PtySessionError> for PaneManagerError {
 pub struct PaneManager {
     panes: HashMap<String, Pane>,
     scrollback_limit: usize,
+    last_agent_scan: Instant,
 }
 
 impl Default for PaneManager {
@@ -53,6 +57,7 @@ impl PaneManager {
         Self {
             panes: HashMap::new(),
             scrollback_limit,
+            last_agent_scan: Instant::now() - Duration::from_secs(2),
         }
     }
 
@@ -78,6 +83,7 @@ impl PaneManager {
                 id,
                 config,
                 status: PaneStatus::Running,
+                agent: None,
                 scrollback: VecDeque::with_capacity(self.scrollback_limit),
                 terminal: TerminalEmulator::new(rows, cols, self.scrollback_limit),
                 session,
@@ -134,7 +140,17 @@ impl PaneManager {
 
     pub fn poll(&mut self) -> Vec<PaneEvent> {
         let mut events = Vec::new();
+        let scan_agents = self.last_agent_scan.elapsed() >= Duration::from_secs(1);
+        if scan_agents {
+            self.last_agent_scan = Instant::now();
+        }
         for pane in self.panes.values_mut() {
+            if scan_agents && pane.status.is_running() {
+                pane.agent = pane
+                    .session
+                    .process_id()
+                    .and_then(detect::detect_in_process_tree);
+            }
             while let Ok(Some(bytes)) = pane.session.try_read_output() {
                 for byte in &bytes {
                     pane.scrollback.push_back(*byte);

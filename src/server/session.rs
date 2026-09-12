@@ -40,6 +40,8 @@ pub struct PaneView {
     #[serde(default)]
     pub label: Option<String>,
     pub status: PaneStatus,
+    #[serde(default)]
+    pub agent: Option<crate::detect::AgentKind>,
     pub scrollback_bytes: usize,
     #[serde(default)]
     pub scrollback: Vec<u8>,
@@ -481,6 +483,7 @@ impl Session {
             cols: request.cols,
             rows: request.rows,
             label: request.label,
+            agent: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -1180,6 +1183,7 @@ impl Session {
         for pane in &mut self.snapshot.panes {
             if let Some(current) = self.pane_manager.get(&pane.pane_id) {
                 pane.status = current.status.clone();
+                pane.agent = current.agent;
                 pane.cols = current.terminal.snapshot().cols;
                 pane.rows = current.terminal.snapshot().rows;
                 pane.scrollback_bytes = current.scrollback.len();
@@ -1329,6 +1333,7 @@ mod tests {
             cols: 80,
             rows: 24,
             label: None,
+            agent: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -1424,6 +1429,7 @@ mod tests {
             cols: 80,
             rows: 24,
             label: None,
+            agent: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -1512,6 +1518,7 @@ mod tests {
             cols: 80,
             rows: 24,
             label: None,
+            agent: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 3,
             scrollback: vec![1, 2, 3],
@@ -1622,6 +1629,7 @@ mod tests {
             cols: 80,
             rows: 24,
             label: None,
+            agent: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -1653,6 +1661,7 @@ mod tests {
             cols: 80,
             rows: 24,
             label: None,
+            agent: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),

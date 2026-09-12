@@ -277,10 +277,13 @@ fn pane_title_text(pane: &crate::server::session::PaneView) -> String {
         .unwrap_or(pane.command.as_str());
     let alternate = if pane.alternate_screen { " [alt]" } else { "" };
     format!(
-        "{} {} {} — {}{}",
+        "{} {} {}{} — {}{}",
         pane.status.indicator(),
         pane.pane_id,
         label,
+        pane.agent
+            .map(|agent| format!(" [{}]", agent.label()))
+            .unwrap_or_default(),
         status_detail(&pane.status),
         alternate
     )
@@ -437,6 +440,7 @@ mod tests {
                 cols: 80,
                 rows: 24,
                 label: None,
+                agent: None,
                 status: PaneStatus::Running,
                 scrollback_bytes: 0,
                 scrollback: Vec::new(),
@@ -487,6 +491,7 @@ mod tests {
             cols: 80,
             rows: 24,
             label: None,
+            agent: Some(crate::detect::AgentKind::Codex),
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -503,6 +508,7 @@ mod tests {
             right_click_passthrough: false,
         };
         assert!(pane_title_text(&pane).contains("Editor"));
+        assert!(pane_title_text(&pane).contains("[Codex]"));
         assert!(pane_title_text(&pane).contains("running"));
         assert!(pane_title_text(&pane).contains("[alt]"));
         assert_eq!(
@@ -521,6 +527,7 @@ mod tests {
             cols: 80,
             rows: 24,
             label: None,
+            agent: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             scrollback: Vec::new(),
