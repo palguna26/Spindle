@@ -10,7 +10,10 @@ pub(crate) use layout::{
     pane_sizes, split_handles, PaneSize,
 };
 use navigation::render_tabs;
-pub use navigation::{hit_test, hit_test_with_sidebar, ClickTarget};
+pub use navigation::{
+    hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll, sidebar_scroll_max,
+    sidebar_scroll_region, ClickTarget,
+};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -31,8 +34,24 @@ pub fn render_with_sidebar(
     connected: bool,
     sidebar_collapsed: bool,
 ) {
+    render_with_sidebar_scroll(frame, snapshot, connected, sidebar_collapsed, 0);
+}
+
+pub fn render_with_sidebar_scroll(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    connected: bool,
+    sidebar_collapsed: bool,
+    sidebar_scroll: usize,
+) {
     let main = layout::main_areas_with_sidebar(frame.area(), sidebar_collapsed);
-    navigation::render_sidebar_with_collapsed(frame, snapshot, main.sidebar, sidebar_collapsed);
+    navigation::render_sidebar_with_scroll(
+        frame,
+        snapshot,
+        main.sidebar,
+        sidebar_collapsed,
+        sidebar_scroll,
+    );
     render_tabs(frame, snapshot, main.tabs);
     let panes = pane_rectangles(snapshot, main.panes);
     if panes.is_empty() {

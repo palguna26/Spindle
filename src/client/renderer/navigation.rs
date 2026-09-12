@@ -11,6 +11,7 @@ use super::layout::{pane_rectangles, split_handles};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickTarget {
     SidebarToggle,
+    SidebarScroll(usize),
     Space(String),
     Workspace {
         space_id: String,
@@ -31,6 +32,16 @@ pub fn hit_test_with_sidebar(
     mouse: MouseEvent,
     sidebar_collapsed: bool,
 ) -> Option<ClickTarget> {
+    hit_test_with_sidebar_scroll(snapshot, area, mouse, sidebar_collapsed, 0)
+}
+
+pub fn hit_test_with_sidebar_scroll(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    mouse: MouseEvent,
+    sidebar_collapsed: bool,
+    sidebar_scroll: usize,
+) -> Option<ClickTarget> {
     if !matches!(
         mouse.kind,
         MouseEventKind::Down(MouseButton::Left | MouseButton::Right)
@@ -46,17 +57,20 @@ pub fn hit_test_with_sidebar(
         {
             return Some(ClickTarget::SidebarToggle);
         }
-        let body = Rect::new(
-            main.sidebar.x.saturating_add(1),
-            main.sidebar.y.saturating_add(1),
-            main.sidebar.width.saturating_sub(2),
-            main.sidebar.height.saturating_sub(2),
-        );
+        let body = sidebar_body(main.sidebar);
         if !contains(body, x, y) {
             return None;
         }
         let rows = sidebar_rows(snapshot);
-        let row = y.saturating_sub(body.y) as usize;
+        let max_scroll = rows.len().saturating_sub(usize::from(body.height));
+        if max_scroll > 0 && body.width > 1 && x == body.right().saturating_sub(1) {
+            let row = usize::from(y.saturating_sub(body.y));
+            let offset =
+                row.saturating_mul(max_scroll) / usize::from(body.height.saturating_sub(1).max(1));
+            return Some(ClickTarget::SidebarScroll(offset.min(max_scroll)));
+        }
+        let row =
+            usize::from(y.saturating_sub(body.y)).saturating_add(sidebar_scroll.min(max_scroll));
         return rows.get(row).map(|row| match row {
             SidebarRow::Space { space_id, .. } => ClickTarget::Space(space_id.to_string()),
             SidebarRow::Workspace {
@@ -92,6 +106,28 @@ pub fn hit_test_with_sidebar(
         return Some(ClickTarget::Pane(pane.pane_id));
     }
     None
+}
+
+pub fn sidebar_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -> usize {
+    let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
+    let body = sidebar_body(sidebar);
+    sidebar_rows(snapshot)
+        .len()
+        .saturating_sub(usize::from(body.height))
+}
+
+pub fn sidebar_scroll_region(area: Rect, collapsed: bool, x: u16, y: u16) -> bool {
+    let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
+    contains(sidebar_body(sidebar), x, y)
+}
+
+fn sidebar_body(area: Rect) -> Rect {
+    Rect::new(
+        area.x.saturating_add(1),
+        area.y.saturating_add(1),
+        area.width.saturating_sub(2),
+        area.height.saturating_sub(2),
+    )
 }
 
 enum SidebarRow<'a> {
@@ -168,20 +204,36 @@ pub(super) fn render_sidebar(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, 
     render_sidebar_with_collapsed(frame, snapshot, area, false);
 }
 
+#[cfg(test)]
 pub(super) fn render_sidebar_with_collapsed(
     frame: &mut Frame<'_>,
     snapshot: &SessionSnapshot,
     area: Rect,
     collapsed: bool,
 ) {
+    render_sidebar_with_scroll(frame, snapshot, area, collapsed, 0);
+}
+
+pub(super) fn render_sidebar_with_scroll(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    scroll: usize,
+) {
     let rows = sidebar_rows(snapshot);
+    let body = sidebar_body(area);
+    let max_scroll = rows.len().saturating_sub(usize::from(body.height));
+    let start = scroll.min(max_scroll);
     let lines = rows
         .iter()
+        .skip(start)
+        .take(usize::from(body.height))
         .map(|row| match row {
             SidebarRow::Space { space_id, name } => {
                 let active = *space_id == snapshot.active_space_id;
                 if collapsed {
-                    return Line::from(if active { " S" } else { " s" });
+                    return Line::from(if active { "S " } else { "s " });
                 }
                 let marker = if active { "● " } else { "○ " };
                 Line::from(vec![
@@ -207,7 +259,7 @@ pub(super) fn render_sidebar_with_collapsed(
                 let active = *space_id == snapshot.active_space_id
                     && space.is_some_and(|space| space.active_workspace_id == *workspace_id);
                 if collapsed {
-                    return Line::from(if active { " W" } else { " w" });
+                    return Line::from(if active { "W " } else { "w " });
                 }
                 let mut spans = vec![
                     Span::raw("  "),
@@ -253,6 +305,31 @@ pub(super) fn render_sidebar_with_collapsed(
         if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
             cell.set_symbol(if collapsed { ">" } else { "<" });
             cell.set_fg(Color::Cyan);
+        }
+    }
+    if max_scroll > 0 && body.width > 1 && body.height > 0 {
+        render_sidebar_scrollbar(frame, body, start, max_scroll, rows.len());
+    }
+}
+
+fn render_sidebar_scrollbar(
+    frame: &mut Frame<'_>,
+    body: Rect,
+    start: usize,
+    max_scroll: usize,
+    row_count: usize,
+) {
+    let height = usize::from(body.height);
+    let thumb_height = (height.saturating_mul(height) / row_count.max(1))
+        .max(1)
+        .min(height);
+    let thumb_top = start.saturating_mul(height.saturating_sub(thumb_height)) / max_scroll.max(1);
+    let x = body.right().saturating_sub(1);
+    for row in 0..height {
+        if let Some(cell) = frame.buffer_mut().cell_mut((x, body.y + row as u16)) {
+            let thumb = row >= thumb_top && row < thumb_top + thumb_height;
+            cell.set_symbol(if thumb { "#" } else { "|" });
+            cell.set_fg(if thumb { Color::Gray } else { Color::DarkGray });
         }
     }
 }
@@ -337,8 +414,8 @@ mod tests {
     use super::super::layout::main_areas;
     use super::super::layout::{pane_rectangles, pane_sizes, split_areas, split_handles};
     use super::{
-        hit_test, hit_test_with_sidebar, render_sidebar, render_sidebar_with_collapsed,
-        render_tabs, ClickTarget,
+        hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll, render_sidebar,
+        render_sidebar_with_collapsed, render_sidebar_with_scroll, render_tabs, ClickTarget,
     };
     use crate::model::layout::{Direction as SplitDirection, LayoutNode};
     use crate::server::session::{SessionSnapshot, SpaceView, TabView, WorkspaceView};
@@ -541,6 +618,56 @@ mod tests {
         assert!(content.contains("S"));
         assert!(content.contains("W"));
         assert!(content.contains(">"));
+    }
+
+    #[test]
+    fn long_sidebar_lists_scroll_and_scrollbar_click_selects_a_viewport() {
+        let mut snapshot = sample_snapshot();
+        let template = snapshot.spaces[0].workspaces[0].clone();
+        for index in 0..8 {
+            let mut workspace = template.clone();
+            workspace.workspace_id = format!("workspace-extra-{index}");
+            workspace.name = format!("Extra {index}");
+            snapshot.spaces[0].workspaces.push(workspace);
+        }
+
+        let area = Rect::new(0, 0, 80, 8);
+        let main = super::super::layout::main_areas_with_sidebar(area, false);
+        let body = super::sidebar_body(main.sidebar);
+        let max_scroll = super::sidebar_scroll_max(&snapshot, area, false);
+        assert_eq!(max_scroll, 6);
+        assert_eq!(
+            hit_test_with_sidebar_scroll(
+                &snapshot,
+                area,
+                click(body.right() - 1, body.y + 2),
+                false,
+                0,
+            ),
+            Some(ClickTarget::SidebarScroll(3))
+        );
+        assert_eq!(
+            hit_test_with_sidebar_scroll(&snapshot, area, click(body.x, body.y), false, 3),
+            Some(ClickTarget::Workspace {
+                space_id: "space-1".into(),
+                workspace_id: "workspace-extra-0".into(),
+            })
+        );
+
+        let backend = TestBackend::new(80, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_sidebar_with_scroll(frame, &snapshot, main.sidebar, false, 6))
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("Extra 7"));
+        assert!(content.contains("#"));
     }
 
     #[test]

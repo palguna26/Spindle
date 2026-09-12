@@ -59,6 +59,7 @@ struct PaneMouseCapture {
 #[derive(Default)]
 struct MouseState {
     sidebar_collapsed: bool,
+    sidebar_scroll: usize,
     preferences_path: std::path::PathBuf,
     split_drag: Option<SplitDrag>,
     pane_capture: Option<PaneMouseCapture>,
@@ -217,6 +218,11 @@ fn event_loop(
         }
         was_connected = connected;
         let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
+        mouse_state.sidebar_scroll = mouse_state.sidebar_scroll.min(renderer::sidebar_scroll_max(
+            &snapshot,
+            area,
+            mouse_state.sidebar_collapsed,
+        ));
         let pane_sizes = renderer::pane_sizes(
             &snapshot,
             renderer::pane_content_area_with_sidebar(area, mouse_state.sidebar_collapsed),
@@ -227,11 +233,12 @@ fn event_loop(
         }
         terminal
             .draw(|frame| {
-                renderer::render_with_sidebar(
+                renderer::render_with_sidebar_scroll(
                     frame,
                     &snapshot,
                     connected,
                     mouse_state.sidebar_collapsed,
+                    mouse_state.sidebar_scroll,
                 );
                 if let Some(selection) = &mouse_state.selection {
                     renderer::render_selection_with_sidebar(
@@ -596,6 +603,21 @@ fn handle_mouse(
         mouse.kind,
         MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
     ) {
+        if renderer::sidebar_scroll_region(
+            area,
+            mouse_state.sidebar_collapsed,
+            mouse.column,
+            mouse.row,
+        ) {
+            let max_scroll =
+                renderer::sidebar_scroll_max(snapshot, area, mouse_state.sidebar_collapsed);
+            mouse_state.sidebar_scroll = if mouse.kind == MouseEventKind::ScrollUp {
+                mouse_state.sidebar_scroll.saturating_sub(1)
+            } else {
+                mouse_state.sidebar_scroll.saturating_add(1).min(max_scroll)
+            };
+            return Ok(());
+        }
         if forward_mouse_to_pane(
             client,
             snapshot,
@@ -638,11 +660,12 @@ fn handle_mouse(
         )? {
             return Ok(());
         } else {
-            *context_menu = renderer::hit_test_with_sidebar(
+            *context_menu = renderer::hit_test_with_sidebar_scroll(
                 snapshot,
                 area,
                 mouse,
                 mouse_state.sidebar_collapsed,
+                mouse_state.sidebar_scroll,
             )
             .and_then(|target| ContextMenu::from_target(target, mouse.column, mouse.row));
         }
@@ -769,9 +792,13 @@ fn handle_mouse(
     if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
         return Ok(());
     }
-    let Some(target) =
-        renderer::hit_test_with_sidebar(snapshot, area, mouse, mouse_state.sidebar_collapsed)
-    else {
+    let Some(target) = renderer::hit_test_with_sidebar_scroll(
+        snapshot,
+        area,
+        mouse,
+        mouse_state.sidebar_collapsed,
+        mouse_state.sidebar_scroll,
+    ) else {
         return Ok(());
     };
     match target {
@@ -785,6 +812,9 @@ fn handle_mouse(
                     sidebar_collapsed: mouse_state.sidebar_collapsed,
                 },
             );
+        }
+        renderer::ClickTarget::SidebarScroll(offset) => {
+            mouse_state.sidebar_scroll = offset;
         }
         renderer::ClickTarget::SplitBorder(_) => {}
         renderer::ClickTarget::Space(space_id) => {
