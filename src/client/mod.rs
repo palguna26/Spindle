@@ -1,4 +1,5 @@
 pub mod app;
+mod context_menu;
 mod control;
 pub mod input;
 pub mod palette;

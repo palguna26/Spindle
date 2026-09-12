@@ -1,3 +1,4 @@
+use super::context_menu::{ContextMenu, ContextMenuAction, ContextMenuTarget};
 use super::input::{action, is_prefix, Action};
 use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
@@ -88,6 +89,7 @@ fn event_loop(
     let mut palette_selected = 0;
     let mut palette_open = false;
     let mut rename_prompt: Option<RenamePrompt> = None;
+    let mut context_menu: Option<ContextMenu> = None;
     let mut last_pane_sizes = None;
     let mut split_drag = None;
     let mut was_connected = true;
@@ -140,6 +142,9 @@ fn event_loop(
                     };
                     renderer::render_prompt(frame, title, &prompt.input);
                 }
+                if let Some(menu) = &context_menu {
+                    renderer::render_context_menu(frame, menu);
+                }
             })
             .map_err(ClientError::Io)?;
         if !event::poll(Duration::from_millis(100)).map_err(ClientError::Io)? {
@@ -148,7 +153,18 @@ fn event_loop(
         let input = event::read().map_err(ClientError::Io)?;
         let key = match input {
             Event::Mouse(mouse) => {
-                handle_mouse(client, &snapshot, mouse, terminal_size, &mut split_drag)?;
+                if rename_prompt.is_some() {
+                    continue;
+                }
+                handle_mouse(
+                    client,
+                    &snapshot,
+                    mouse,
+                    terminal_size,
+                    &mut split_drag,
+                    &mut context_menu,
+                    &mut rename_prompt,
+                )?;
                 continue;
             }
             Event::Key(key) => key,
@@ -166,6 +182,24 @@ fn event_loop(
                     rename_prompt = None;
                     submit_rename(client, &snapshot, target, name, terminal_size)?;
                 }
+            }
+            continue;
+        }
+        if let Some(menu) = context_menu.as_mut() {
+            match key.code {
+                KeyCode::Esc => context_menu = None,
+                KeyCode::Up => menu.move_selection(-1),
+                KeyCode::Down => menu.move_selection(1),
+                KeyCode::Enter => {
+                    let selected = menu.selected;
+                    if let Some(action) = menu.items().get(selected).map(|(_, action)| *action) {
+                        let menu = context_menu.take().expect("menu exists");
+                        rename_prompt =
+                            activate_context_menu(client, &snapshot, menu, action, terminal_size)?
+                                .map(RenamePrompt::new);
+                    }
+                }
+                _ => {}
             }
             continue;
         }
@@ -330,8 +364,34 @@ fn handle_mouse(
     mouse: MouseEvent,
     terminal_size: (u16, u16),
     split_drag: &mut Option<SplitDrag>,
+    context_menu: &mut Option<ContextMenu>,
+    rename_prompt: &mut Option<RenamePrompt>,
 ) -> Result<(), ClientError> {
     let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
+    if mouse.kind == MouseEventKind::Down(MouseButton::Right) {
+        *split_drag = None;
+        if context_menu.is_some() {
+            *context_menu = None;
+        } else {
+            *context_menu = renderer::hit_test(snapshot, area, mouse)
+                .and_then(|target| ContextMenu::from_target(target, mouse.column, mouse.row));
+        }
+        return Ok(());
+    }
+    if let Some(menu) = context_menu.as_ref() {
+        if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+            let action = menu.action_at(area, mouse.column, mouse.row);
+            if let Some(action) = action {
+                let menu = context_menu.take().expect("menu exists");
+                *rename_prompt =
+                    activate_context_menu(client, snapshot, menu, action, terminal_size)?
+                        .map(RenamePrompt::new);
+            } else {
+                *context_menu = None;
+            }
+        }
+        return Ok(());
+    }
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             let pane_area = renderer::pane_content_area(area);
@@ -434,6 +494,146 @@ fn handle_mouse(
         }
     }
     Ok(())
+}
+
+fn activate_context_menu(
+    client: &ControlClient,
+    snapshot: &SessionSnapshot,
+    menu: ContextMenu,
+    action: ContextMenuAction,
+    terminal_size: (u16, u16),
+) -> Result<Option<RenameTarget>, ClientError> {
+    match menu.target {
+        ContextMenuTarget::Workspace { space_id, id } => {
+            client.request(
+                "context-switch-space",
+                "switch_space",
+                json!({ "id": space_id }),
+            )?;
+            client.request(
+                "context-switch-workspace",
+                "switch_workspace",
+                json!({ "id": id }),
+            )?;
+            ensure_active_default_pane(client, terminal_size)?;
+            match action {
+                ContextMenuAction::Activate => Ok(None),
+                ContextMenuAction::NewTab => {
+                    create_context_tab(client, terminal_size)?;
+                    Ok(None)
+                }
+                ContextMenuAction::Rename => Ok(Some(RenameTarget::Workspace)),
+                ContextMenuAction::Close => Ok(Some(RenameTarget::DeleteWorkspace)),
+                _ => Ok(None),
+            }
+        }
+        ContextMenuTarget::Tab(tab_id) => {
+            let Some((space_id, workspace_id)) = tab_context_ids(snapshot, &tab_id) else {
+                return Ok(None);
+            };
+            client.request(
+                "context-tab-space",
+                "switch_space",
+                json!({ "id": space_id }),
+            )?;
+            client.request(
+                "context-tab-workspace",
+                "switch_workspace",
+                json!({ "id": workspace_id }),
+            )?;
+            client.request(
+                "context-activate-tab",
+                "switch_tab",
+                json!({ "id": tab_id }),
+            )?;
+            ensure_active_default_pane(client, terminal_size)?;
+            match action {
+                ContextMenuAction::Activate => Ok(None),
+                ContextMenuAction::NewTab => {
+                    create_context_tab(client, terminal_size)?;
+                    Ok(None)
+                }
+                ContextMenuAction::Rename => Ok(Some(RenameTarget::Tab)),
+                ContextMenuAction::Close => {
+                    client.request("context-close-tab", "close_tab", json!({ "id": tab_id }))?;
+                    ensure_active_default_pane(client, terminal_size)?;
+                    Ok(None)
+                }
+                _ => Ok(None),
+            }
+        }
+        ContextMenuTarget::Pane(pane_id) => {
+            client.request(
+                "context-focus-pane",
+                "focus_pane",
+                json!({ "pane_id": pane_id }),
+            )?;
+            match action {
+                ContextMenuAction::Focus => Ok(None),
+                ContextMenuAction::Rename => Ok(Some(RenameTarget::Pane)),
+                ContextMenuAction::SplitRight | ContextMenuAction::SplitDown => {
+                    let mut request = pane_request_for_snapshot(snapshot, terminal_size);
+                    request["direction"] = json!(if action == ContextMenuAction::SplitRight {
+                        "horizontal"
+                    } else {
+                        "vertical"
+                    });
+                    client.request("context-split-pane", "split_pane", request)?;
+                    Ok(None)
+                }
+                ContextMenuAction::Stop => {
+                    client.request(
+                        "context-stop-pane",
+                        "stop_pane",
+                        json!({ "pane_id": pane_id }),
+                    )?;
+                    Ok(None)
+                }
+                ContextMenuAction::Restart => {
+                    client.request(
+                        "context-restart-pane",
+                        "restart_pane",
+                        json!({ "pane_id": pane_id }),
+                    )?;
+                    Ok(None)
+                }
+                ContextMenuAction::Close => {
+                    client.request(
+                        "context-close-pane",
+                        "close_pane",
+                        json!({ "pane_id": pane_id }),
+                    )?;
+                    ensure_active_default_pane(client, terminal_size)?;
+                    Ok(None)
+                }
+                ContextMenuAction::Activate | ContextMenuAction::NewTab => Ok(None),
+            }
+        }
+    }
+}
+
+fn create_context_tab(
+    client: &ControlClient,
+    terminal_size: (u16, u16),
+) -> Result<(), ClientError> {
+    client.request(
+        "context-new-tab",
+        "create_tab",
+        json!({ "name": "Activity" }),
+    )?;
+    ensure_active_default_pane(client, terminal_size)
+}
+
+fn tab_context_ids(snapshot: &SessionSnapshot, tab_id: &str) -> Option<(String, String)> {
+    snapshot.spaces.iter().find_map(|space| {
+        space.workspaces.iter().find_map(|workspace| {
+            workspace
+                .tabs
+                .iter()
+                .any(|tab| tab.tab_id == tab_id)
+                .then(|| (space.space_id.clone(), workspace.workspace_id.clone()))
+        })
+    })
 }
 
 #[cfg(test)]

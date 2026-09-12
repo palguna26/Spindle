@@ -21,7 +21,10 @@ pub enum ClickTarget {
 }
 
 pub fn hit_test(snapshot: &SessionSnapshot, area: Rect, mouse: MouseEvent) -> Option<ClickTarget> {
-    if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+    if !matches!(
+        mouse.kind,
+        MouseEventKind::Down(MouseButton::Left | MouseButton::Right)
+    ) {
         return None;
     }
     let x = mouse.column;
@@ -60,11 +63,13 @@ pub fn hit_test(snapshot: &SessionSnapshot, area: Rect, mouse: MouseEvent) -> Op
             .map(|tab| ClickTarget::Tab(tab.tab_id.clone()));
     }
     if contains(main.panes, x, y) {
-        if let Some(split) = split_handles(snapshot, main.panes)
-            .into_iter()
-            .find(|split| contains(split.hit_rect, x, y))
-        {
-            return Some(ClickTarget::SplitBorder(split.path));
+        if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+            if let Some(split) = split_handles(snapshot, main.panes)
+                .into_iter()
+                .find(|split| contains(split.hit_rect, x, y))
+            {
+                return Some(ClickTarget::SplitBorder(split.path));
+            }
         }
         let pane = pane_rectangles(snapshot, main.panes)
             .into_iter()
@@ -312,6 +317,15 @@ mod tests {
         }
     }
 
+    fn right_click(x: u16, y: u16) -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Right),
+            column: x,
+            row: y,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
     #[test]
     fn clicks_target_spaces_workspaces_tabs_and_panes() {
         let snapshot = sample_snapshot();
@@ -416,6 +430,36 @@ mod tests {
                 )
             ),
             Some(ClickTarget::SplitBorder(Vec::new()))
+        );
+    }
+
+    #[test]
+    fn right_click_targets_workspace_tab_and_pane_context_menus() {
+        let snapshot = sample_snapshot();
+        let area = Rect::new(0, 0, 100, 30);
+        let main = main_areas(area);
+        assert_eq!(
+            hit_test(
+                &snapshot,
+                area,
+                right_click(main.sidebar.x + 1, main.sidebar.y + 3)
+            ),
+            Some(ClickTarget::Workspace {
+                space_id: "space-1".into(),
+                workspace_id: "workspace-2".into(),
+            })
+        );
+        assert_eq!(
+            hit_test(&snapshot, area, right_click(main.tabs.x + 2, main.tabs.y)),
+            Some(ClickTarget::Tab("tab-2".into()))
+        );
+        assert_eq!(
+            hit_test(
+                &snapshot,
+                area,
+                right_click(main.panes.x + 2, main.panes.y + 2)
+            ),
+            Some(ClickTarget::Pane("pane-1".into()))
         );
     }
 

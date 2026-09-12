@@ -1,6 +1,7 @@
 mod layout;
 mod navigation;
 
+use super::context_menu::ContextMenu;
 use crate::model::status::PaneStatus;
 use crate::server::session::SessionSnapshot;
 use layout::{main_areas, pane_rectangles};
@@ -10,7 +11,7 @@ use navigation::{render_sidebar, render_tabs};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
 pub fn render(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
@@ -106,6 +107,31 @@ pub fn render_prompt(frame: &mut Frame<'_>, title: &str, input: &str) {
                 .borders(Borders::ALL)
                 .title(format!("{title} (Enter to save, Esc to cancel)")),
         ),
+        area,
+    );
+}
+
+pub(crate) fn render_context_menu(frame: &mut Frame<'_>, menu: &ContextMenu) {
+    let area = menu.rect(frame.area());
+    if area.width < 2 || area.height < 2 {
+        return;
+    }
+    let rows = menu
+        .visible_range(frame.area())
+        .map(|index| {
+            let (label, _) = menu.items()[index];
+            let marker = if index == menu.selected { "> " } else { "  " };
+            let style = if index == menu.selected {
+                Style::default().fg(Color::Black).bg(Color::Cyan)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            Line::from(Span::styled(format!("{marker}{label}"), style))
+        })
+        .collect::<Vec<_>>();
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(rows).block(Block::default().borders(Borders::ALL)),
         area,
     );
 }
