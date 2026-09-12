@@ -7,6 +7,70 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 const DEFAULT_SCROLLBACK_BYTES: usize = 64 * 1024;
+const IDLE_CONFIRM_INTERVAL: Duration = Duration::from_millis(100);
+const IDLE_CONFIRM_CAP: Duration = Duration::from_millis(700);
+const IDLE_CONFIRMATIONS: u8 = 3;
+
+#[derive(Debug, Default)]
+struct PendingIdleConfirmation {
+    started_at: Option<Instant>,
+    last_check: Option<Instant>,
+    confirmations: u8,
+}
+
+impl PendingIdleConfirmation {
+    fn clear(&mut self) {
+        self.started_at = None;
+        self.last_check = None;
+        self.confirmations = 0;
+    }
+
+    fn should_hold(
+        &mut self,
+        previous: Option<AgentState>,
+        next: AgentState,
+        visible_idle: bool,
+        agent_changed: bool,
+        process_exited: bool,
+        now: Instant,
+    ) -> bool {
+        if previous != Some(AgentState::Working)
+            || next != AgentState::Idle
+            || visible_idle
+            || agent_changed
+            || process_exited
+        {
+            self.clear();
+            return false;
+        }
+
+        let Some(started_at) = self.started_at else {
+            self.started_at = Some(now);
+            self.last_check = Some(now);
+            return true;
+        };
+
+        if now.duration_since(started_at) >= IDLE_CONFIRM_CAP {
+            self.clear();
+            return false;
+        }
+        if self
+            .last_check
+            .is_some_and(|last_check| now.duration_since(last_check) < IDLE_CONFIRM_INTERVAL)
+        {
+            return true;
+        }
+
+        self.last_check = Some(now);
+        self.confirmations = self.confirmations.saturating_add(1);
+        if self.confirmations >= IDLE_CONFIRMATIONS {
+            self.clear();
+            false
+        } else {
+            true
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct PaneConfig {
@@ -27,6 +91,7 @@ pub struct Pane {
     pub scrollback: VecDeque<u8>,
     pub terminal: TerminalEmulator,
     session: PtySession,
+    pending_idle: PendingIdleConfirmation,
 }
 
 #[derive(Debug)]
@@ -89,6 +154,7 @@ impl PaneManager {
                 scrollback: VecDeque::with_capacity(self.scrollback_limit),
                 terminal: TerminalEmulator::new(rows, cols, self.scrollback_limit),
                 session,
+                pending_idle: PendingIdleConfirmation::default(),
             },
         );
         Ok(())
@@ -131,6 +197,7 @@ impl PaneManager {
             .get_mut(id)
             .ok_or_else(|| PaneManagerError::MissingPane(id.into()))?;
         pane.session.stop()?;
+        pane.pending_idle.clear();
         pane.status = PaneStatus::Halted {
             reason: "stopped by user".into(),
         };
@@ -150,14 +217,17 @@ impl PaneManager {
             self.last_agent_scan = Instant::now();
         }
         for pane in self.panes.values_mut() {
+            let mut agent_changed = false;
             if scan_agents && pane.status.is_running() {
                 let detected = pane
                     .session
                     .process_id()
                     .and_then(detect::detect_in_process_tree);
-                if detected != pane.agent {
+                agent_changed = detected != pane.agent;
+                if agent_changed {
                     pane.agent = detected;
                     pane.terminal.clear_agent_osc_evidence();
+                    pane.pending_idle.clear();
                 }
             }
             while let Ok(Some(bytes)) = pane.session.try_read_output() {
@@ -178,18 +248,38 @@ impl PaneManager {
 
             if pane.status.is_running() {
                 let terminal = pane.terminal.snapshot();
-                pane.agent_state = pane.agent.map(|agent| {
-                    detect::detect_state_with_osc(
+                if let Some(agent) = pane.agent {
+                    let next_state = detect::detect_state_with_osc(
                         agent,
                         &terminal.contents,
                         &terminal.osc_title,
                         &terminal.osc_progress,
-                    )
-                });
+                    );
+                    let visible_idle = detect::has_visible_idle_signal(
+                        agent,
+                        &terminal.contents,
+                        &terminal.osc_title,
+                        &terminal.osc_progress,
+                    );
+                    if !pane.pending_idle.should_hold(
+                        pane.agent_state,
+                        next_state,
+                        visible_idle,
+                        agent_changed,
+                        false,
+                        Instant::now(),
+                    ) {
+                        pane.agent_state = Some(next_state);
+                    }
+                } else {
+                    pane.pending_idle.clear();
+                    pane.agent_state = None;
+                }
             }
 
             if pane.status.is_running() {
                 if let Ok(Some(exit_code)) = pane.session.try_wait() {
+                    pane.pending_idle.clear();
                     if pane.agent.is_some() {
                         pane.agent_state = Some(AgentState::Idle);
                     }
@@ -220,8 +310,12 @@ impl PaneManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{PaneConfig, PaneManager};
+    use super::{
+        PaneConfig, PaneManager, PendingIdleConfirmation, IDLE_CONFIRM_CAP, IDLE_CONFIRM_INTERVAL,
+    };
+    use crate::detect::AgentState;
     use std::collections::BTreeMap;
+    use std::time::{Duration, Instant};
 
     fn config(command: &str) -> PaneConfig {
         PaneConfig {
@@ -250,5 +344,77 @@ mod tests {
             .spawn("pane-1", config("spindle-command-that-does-not-exist.exe"))
             .is_err());
         assert!(manager.get("pane-1").is_none());
+    }
+
+    #[test]
+    fn plain_idle_waits_for_three_confirmation_checks() {
+        let mut pending = PendingIdleConfirmation::default();
+        let started = Instant::now();
+        let hold = |pending: &mut PendingIdleConfirmation, now| {
+            pending.should_hold(
+                Some(AgentState::Working),
+                AgentState::Idle,
+                false,
+                false,
+                false,
+                now,
+            )
+        };
+
+        assert!(hold(&mut pending, started));
+        assert!(hold(&mut pending, started + Duration::from_millis(50)));
+        assert!(hold(&mut pending, started + IDLE_CONFIRM_INTERVAL));
+        assert!(hold(&mut pending, started + IDLE_CONFIRM_INTERVAL * 2));
+        assert!(!hold(&mut pending, started + IDLE_CONFIRM_INTERVAL * 3));
+    }
+
+    #[test]
+    fn visible_idle_agent_change_and_process_exit_bypass_confirmation() {
+        for (visible_idle, agent_changed, process_exited) in [
+            (true, false, false),
+            (false, true, false),
+            (false, false, true),
+        ] {
+            let mut pending = PendingIdleConfirmation::default();
+            let now = Instant::now();
+            assert!(pending.should_hold(
+                Some(AgentState::Working),
+                AgentState::Idle,
+                false,
+                false,
+                false,
+                now,
+            ));
+            assert!(!pending.should_hold(
+                Some(AgentState::Working),
+                AgentState::Idle,
+                visible_idle,
+                agent_changed,
+                process_exited,
+                now + IDLE_CONFIRM_INTERVAL,
+            ));
+        }
+    }
+
+    #[test]
+    fn pending_idle_releases_at_safety_cap() {
+        let mut pending = PendingIdleConfirmation::default();
+        let started = Instant::now();
+        assert!(pending.should_hold(
+            Some(AgentState::Working),
+            AgentState::Idle,
+            false,
+            false,
+            false,
+            started,
+        ));
+        assert!(!pending.should_hold(
+            Some(AgentState::Working),
+            AgentState::Idle,
+            false,
+            false,
+            false,
+            started + IDLE_CONFIRM_CAP,
+        ));
     }
 }

@@ -140,7 +140,8 @@ and quick-start "Use the mouse". Spindle: `src/client/app.rs`,
   direct and wrapped Claude/Codex/OpenCode processes, Claude OSC title/progress
   and selected prompt signals, selected manifest blocker prompts,
   Herdr-aligned OpenCode permission/interrupt and Codex directory-trust rules
-  are detected; full manifest rules and transition stabilization remain.
+  are detected; plain working-to-idle transitions now use Herdr's 100 ms
+  recheck, three confirmations, and 700 ms cap. Full manifest rules remain.
 - [ ] Expose agent kind and unknown/idle/working/blocked state in pane chrome and
   the sidebar. Partial: pane chrome shows identity/state and workspace rows show
   per-state counts; multi-agent rows and richer lifecycle transitions remain.

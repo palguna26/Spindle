@@ -114,21 +114,29 @@ pub(crate) fn detect_state_with_osc(
         return AgentState::Working;
     }
 
-    let visible_idle = match agent {
+    if has_visible_idle_signal(agent, &bottom_three, title, osc_progress) {
+        AgentState::Idle
+    } else {
+        AgentState::Unknown
+    }
+}
+
+pub(crate) fn has_visible_idle_signal(
+    agent: AgentKind,
+    screen: &str,
+    title: &str,
+    osc_progress: &str,
+) -> bool {
+    match agent {
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
                 || osc_progress.starts_with("4;0")
-                || bottom_three
+                || recent_nonempty_lines(screen, 3)
                     .lines()
                     .any(|line| line.trim_start().starts_with('\u{276f}'))
         }
         AgentKind::OpenCode => false,
-    };
-    if visible_idle {
-        AgentState::Idle
-    } else {
-        AgentState::Unknown
     }
 }
 
