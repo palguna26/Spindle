@@ -59,7 +59,7 @@ fn event_loop(
     let mut palette_selected = 0;
     let mut palette_open = false;
     let mut rename_prompt: Option<RenamePrompt> = None;
-    let mut last_size = None;
+    let mut last_pane_sizes = None;
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
     loop {
@@ -80,13 +80,15 @@ fn event_loop(
                 )
                 .is_ok();
             if connected {
-                last_size = None;
+                last_pane_sizes = None;
             }
         }
         was_connected = connected;
-        if connected && last_size != Some(terminal_size) {
-            resize_panes(client, &snapshot, terminal_size)?;
-            last_size = Some(terminal_size);
+        let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
+        let pane_sizes = renderer::pane_sizes(&snapshot, renderer::pane_content_area(area));
+        if connected && last_pane_sizes.as_ref() != Some(&pane_sizes) {
+            resize_panes(client, &pane_sizes)?;
+            last_pane_sizes = Some(pane_sizes);
         }
         terminal
             .draw(|frame| {
@@ -681,18 +683,16 @@ fn current_snapshot(client: &ControlClient) -> Result<SessionSnapshot, ClientErr
 
 fn resize_panes(
     client: &ControlClient,
-    snapshot: &SessionSnapshot,
-    terminal_size: (u16, u16),
+    pane_sizes: &[renderer::PaneSize],
 ) -> Result<(), ClientError> {
-    let (cols, rows) = pane_size(terminal_size);
-    for pane in &snapshot.panes {
+    for pane in pane_sizes {
         let _ = client.interactive_request(
             format!("resize-{}", pane.pane_id),
             "resize_pty",
             json!({
             "pane_id": pane.pane_id,
-            "cols": cols,
-            "rows": rows,
+            "cols": pane.cols,
+            "rows": pane.rows,
             "client_id": client.client_id(),
                 }),
         );
@@ -701,10 +701,8 @@ fn resize_panes(
 }
 
 fn pane_size(terminal_size: (u16, u16)) -> (u16, u16) {
-    (
-        terminal_size.0.max(1),
-        terminal_size.1.saturating_sub(1).max(1),
-    )
+    let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
+    renderer::pane_inner_size(renderer::pane_content_area(area))
 }
 
 fn pane_request(terminal_size: (u16, u16)) -> serde_json::Value {
@@ -827,7 +825,7 @@ mod tests {
     fn common_keys_encode_for_a_pty() {
         assert_eq!(key_code_bytes(KeyCode::Enter), Some(vec![b'\r']));
         assert_eq!(key_code_bytes(KeyCode::Left), Some(b"\x1b[D".to_vec()));
-        assert_eq!(pane_size((120, 40)), (120, 39));
+        assert_eq!(pane_size((120, 40)), (90, 36));
         assert_eq!(pane_size((0, 0)), (1, 1));
     }
 

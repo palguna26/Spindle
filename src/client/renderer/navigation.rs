@@ -1,11 +1,12 @@
-use crate::model::layout::LayoutNode;
 use crate::server::session::{SessionSnapshot, WorkspaceView};
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
+
+use super::layout::{main_areas, pane_rectangles};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickTarget {
@@ -16,35 +17,6 @@ pub enum ClickTarget {
     },
     Tab(String),
     Pane(String),
-}
-
-#[derive(Clone, Copy)]
-pub(super) struct MainAreas {
-    pub(super) sidebar: Rect,
-    pub(super) tabs: Rect,
-    pub(super) panes: Rect,
-}
-
-pub(super) fn main_areas(area: Rect) -> MainAreas {
-    let body = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .split(area)[0];
-    let sidebar_width = area.width.min((area.width / 4).clamp(12, 28));
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(sidebar_width), Constraint::Min(1)])
-        .split(body);
-    let right = columns[1];
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(1)])
-        .split(right);
-    MainAreas {
-        sidebar: columns[0],
-        tabs: rows[0],
-        panes: rows[1],
-    }
 }
 
 pub fn hit_test(snapshot: &SessionSnapshot, area: Rect, mouse: MouseEvent) -> Option<ClickTarget> {
@@ -87,8 +59,10 @@ pub fn hit_test(snapshot: &SessionSnapshot, area: Rect, mouse: MouseEvent) -> Op
             .map(|tab| ClickTarget::Tab(tab.tab_id.clone()));
     }
     if contains(main.panes, x, y) {
-        let pane_id = pane_at(active_layout(snapshot)?, main.panes, x, y)?;
-        return Some(ClickTarget::Pane(pane_id.to_owned()));
+        let pane = pane_rectangles(snapshot, main.panes)
+            .into_iter()
+            .find(|pane| contains(pane.rect, x, y))?;
+        return Some(ClickTarget::Pane(pane.pane_id));
     }
     None
 }
@@ -252,37 +226,13 @@ fn active_workspace(snapshot: &SessionSnapshot) -> Option<&WorkspaceView> {
         .find(|workspace| workspace.workspace_id == space.active_workspace_id)
 }
 
-fn active_layout(snapshot: &SessionSnapshot) -> Option<&LayoutNode> {
-    let workspace = active_workspace(snapshot)?;
-    workspace
-        .tabs
-        .iter()
-        .find(|tab| tab.tab_id == workspace.active_tab_id)?
-        .layout
-        .as_ref()
-}
-
-fn pane_at(node: &LayoutNode, area: Rect, x: u16, y: u16) -> Option<&str> {
-    match node {
-        LayoutNode::Pane { pane_id } => contains(area, x, y).then_some(pane_id),
-        LayoutNode::Split {
-            direction,
-            ratio,
-            first,
-            second,
-        } => {
-            let [first_area, second_area] = super::split_areas(area, *direction, *ratio);
-            pane_at(first, first_area, x, y).or_else(|| pane_at(second, second_area, x, y))
-        }
-    }
-}
-
 fn contains(area: Rect, x: u16, y: u16) -> bool {
     x >= area.x && x < area.right() && y >= area.y && y < area.bottom()
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::layout::{pane_sizes, split_areas};
     use super::{hit_test, main_areas, render_sidebar, render_tabs, ClickTarget};
     use crate::model::layout::{Direction as SplitDirection, LayoutNode};
     use crate::server::session::{SessionSnapshot, SpaceView, TabView, WorkspaceView};
@@ -387,8 +337,15 @@ mod tests {
             ),
             Some(ClickTarget::Tab("tab-3".into()))
         );
-        let [first, second] =
-            super::super::split_areas(main.panes, SplitDirection::Horizontal, 0.5);
+        let [first, second] = split_areas(main.panes, SplitDirection::Horizontal, 0.5);
+        let pane_sizes = pane_sizes(&snapshot, main.panes);
+        assert_eq!(pane_sizes.len(), 2);
+        assert_eq!(pane_sizes[0].pane_id, "pane-1");
+        assert_eq!(pane_sizes[0].cols, first.width.saturating_sub(2).max(1));
+        assert_eq!(pane_sizes[0].rows, first.height.saturating_sub(2).max(1));
+        assert_eq!(pane_sizes[1].pane_id, "pane-2");
+        assert_eq!(pane_sizes[1].cols, second.width.saturating_sub(2).max(1));
+        assert_eq!(pane_sizes[1].rows, second.height.saturating_sub(2).max(1));
         assert_eq!(
             hit_test(
                 &snapshot,

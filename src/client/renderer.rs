@@ -1,11 +1,13 @@
+mod layout;
 mod navigation;
 
-use crate::model::layout::{Direction as SplitDirection, LayoutNode};
 use crate::model::status::PaneStatus;
 use crate::server::session::SessionSnapshot;
+use layout::{main_areas, pane_rectangles};
+pub(crate) use layout::{pane_content_area, pane_inner_size, pane_sizes, PaneSize};
 pub use navigation::{hit_test, ClickTarget};
-use navigation::{main_areas, render_sidebar, render_tabs};
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use navigation::{render_sidebar, render_tabs};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
@@ -19,14 +21,39 @@ pub fn render_with_connection(frame: &mut Frame<'_>, snapshot: &SessionSnapshot,
     let main = main_areas(frame.area());
     render_sidebar(frame, snapshot, main.sidebar);
     render_tabs(frame, snapshot, main.tabs);
-    if let Some(layout) = active_layout(snapshot) {
-        render_layout(frame, layout, snapshot, main.panes);
-    } else {
+    let panes = pane_rectangles(snapshot, main.panes);
+    if panes.is_empty() {
         frame.render_widget(
             Paragraph::new(Line::from(active_title(snapshot)))
                 .block(Block::default().borders(Borders::ALL).title("Session")),
             main.panes,
         );
+    } else {
+        for pane_rect in panes {
+            let Some(pane) = snapshot
+                .panes
+                .iter()
+                .find(|pane| pane.pane_id == pane_rect.pane_id)
+            else {
+                continue;
+            };
+            let title = pane_title(pane);
+            let lines = pane.screen.lines().map(Line::from).collect::<Vec<_>>();
+            let border_color = if snapshot.focused_pane_id.as_deref() == Some(&pane_rect.pane_id) {
+                Color::White
+            } else {
+                status_color(&pane.status)
+            };
+            frame.render_widget(
+                Paragraph::new(lines).block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(title)
+                        .border_style(Style::default().fg(border_color)),
+                ),
+                pane_rect.rect,
+            );
+        }
     }
     let focused = snapshot.focused_pane_id.as_deref().unwrap_or("none");
     let chrome = Line::from(vec![
@@ -94,22 +121,6 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     }
 }
 
-fn active_layout(snapshot: &SessionSnapshot) -> Option<&LayoutNode> {
-    let space = snapshot
-        .spaces
-        .iter()
-        .find(|space| space.space_id == snapshot.active_space_id)?;
-    let workspace = space
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.workspace_id == space.active_workspace_id)?;
-    let tab = workspace
-        .tabs
-        .iter()
-        .find(|tab| tab.tab_id == workspace.active_tab_id)?;
-    tab.layout.as_ref()
-}
-
 fn active_title(snapshot: &SessionSnapshot) -> String {
     snapshot
         .spaces
@@ -129,58 +140,6 @@ fn active_title(snapshot: &SessionSnapshot) -> String {
                 })
         })
         .unwrap_or_else(|| "No active session".into())
-}
-
-fn render_layout(frame: &mut Frame<'_>, node: &LayoutNode, snapshot: &SessionSnapshot, area: Rect) {
-    match node {
-        LayoutNode::Pane { pane_id } => {
-            let Some(pane) = snapshot.panes.iter().find(|pane| &pane.pane_id == pane_id) else {
-                return;
-            };
-            let title = pane_title(pane);
-            let lines = pane.screen.lines().map(Line::from).collect::<Vec<_>>();
-            let border_color = if snapshot.focused_pane_id.as_deref() == Some(pane_id) {
-                Color::White
-            } else {
-                status_color(&pane.status)
-            };
-            frame.render_widget(
-                Paragraph::new(lines).block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(title)
-                        .border_style(Style::default().fg(border_color)),
-                ),
-                area,
-            );
-        }
-        LayoutNode::Split {
-            direction,
-            ratio,
-            first,
-            second,
-        } => {
-            let [first_area, second_area] = split_areas(area, *direction, *ratio);
-            render_layout(frame, first, snapshot, first_area);
-            render_layout(frame, second, snapshot, second_area);
-        }
-    }
-}
-
-pub(super) fn split_areas(area: Rect, direction: SplitDirection, ratio: f32) -> [Rect; 2] {
-    let percentage = (ratio * 100.0).round() as u16;
-    let layout_direction = match direction {
-        SplitDirection::Horizontal => Direction::Horizontal,
-        SplitDirection::Vertical => Direction::Vertical,
-    };
-    let areas = Layout::default()
-        .direction(layout_direction)
-        .constraints([
-            Constraint::Percentage(percentage),
-            Constraint::Percentage(100 - percentage),
-        ])
-        .split(area);
-    [areas[0], areas[1]]
 }
 
 fn pane_title(pane: &crate::server::session::PaneView) -> Line<'static> {
