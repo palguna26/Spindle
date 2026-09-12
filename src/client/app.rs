@@ -349,6 +349,16 @@ fn event_loop(
                     pane_request_for_snapshot(&snapshot, terminal_size),
                 );
             }
+            Action::ClosePane => {
+                if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                    client.request(
+                        "keyboard-close-pane",
+                        "close_pane",
+                        json!({ "pane_id": pane_id }),
+                    )?;
+                    ensure_active_default_pane(client, terminal_size)?;
+                }
+            }
             Action::CloseTab => {
                 if let Some(tab_id) = active_tab_id(&snapshot) {
                     let _ = client.request("close-tab", "close_tab", json!({ "id": tab_id }));
@@ -1217,6 +1227,17 @@ fn execute_action(
                 "create_pane",
                 pane_request_for_snapshot(snapshot, terminal_size),
             );
+            Ok(false)
+        }
+        Action::ClosePane => {
+            if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                client.request(
+                    "palette-close-pane",
+                    "close_pane",
+                    json!({ "pane_id": pane_id }),
+                )?;
+                ensure_active_default_pane(client, terminal_size)?;
+            }
             Ok(false)
         }
         Action::CloseTab => {

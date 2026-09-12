@@ -53,17 +53,21 @@ to mouse and keyboard controls. Press `:` for the command palette. Other keys:
 
 | Keys | Action |
 | --- | --- |
-| `d` | Detach |
-| `n` | New tab |
-| `c` | Close tab |
-| `]` / `[` | Next / previous tab |
+| `q` / `d` | Detach |
+| `c` | New tab |
+| `x` | Close focused pane |
+| `Shift+x` | Close active tab |
+| `n` / `p` | Next / previous tab |
+| `]` / `[` | Next / previous tab (alternate) |
 | `w` | Next workspace |
 | `}` / `{` | Next / previous space |
-| `o` | Focus next pane |
-| `x` | Stop focused pane |
+| `o` / `O` | Focus next / previous pane |
+| `s` | Stop focused pane |
 | `r` | Restart focused pane |
-| `"` | Horizontal split |
-| `%` | Vertical split |
+| `h` / `j` / `k` / `l` or arrows | Focus pane by direction |
+| `-` | Horizontal split |
+| `v` | Vertical split |
+| `"` / `%` | Horizontal / vertical split (alternate) |
 | `z` | Zoom / restore focused pane |
 | `<` / `>` | Resize pane |
 | `?` | Open mouse and keyboard help |

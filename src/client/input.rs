@@ -6,6 +6,7 @@ pub enum Action {
     Detach,
     NewTab,
     NewPane,
+    ClosePane,
     CloseTab,
     NextTab,
     PreviousTab,
@@ -43,23 +44,33 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
     if prefix_active {
         return match key.code {
             KeyCode::Char('d') => Action::Detach,
-            KeyCode::Char('n') => Action::NewTab,
-            KeyCode::Char('c') => Action::CloseTab,
+            KeyCode::Char('q') => Action::Detach,
+            KeyCode::Char('c') => Action::NewTab,
+            KeyCode::Char('n') => Action::NextTab,
+            KeyCode::Char('p') => Action::PreviousTab,
+            KeyCode::Char('x') => Action::ClosePane,
+            KeyCode::Char('X') => Action::CloseTab,
             KeyCode::Char(']') => Action::NextTab,
             KeyCode::Char('[') => Action::PreviousTab,
             KeyCode::Char('}') => Action::NextSpace,
             KeyCode::Char('{') => Action::PreviousSpace,
             KeyCode::Char('w') => Action::NextWorkspace,
-            KeyCode::Char('x') => Action::StopFocusedPane,
+            KeyCode::Char('s') => Action::StopFocusedPane,
             KeyCode::Char('r') => Action::RestartFocusedPane,
             KeyCode::Char('o') => Action::FocusNext,
-            KeyCode::Char('p') => Action::FocusPrevious,
+            KeyCode::Char('O') => Action::FocusPrevious,
+            KeyCode::Char('h') => Action::FocusLeft,
+            KeyCode::Char('j') => Action::FocusDown,
+            KeyCode::Char('k') => Action::FocusUp,
+            KeyCode::Char('l') => Action::FocusRight,
             KeyCode::Left => Action::FocusLeft,
             KeyCode::Right => Action::FocusRight,
             KeyCode::Up => Action::FocusUp,
             KeyCode::Down => Action::FocusDown,
             KeyCode::Char('"') => Action::SplitHorizontal,
             KeyCode::Char('%') => Action::SplitVertical,
+            KeyCode::Char('-') => Action::SplitHorizontal,
+            KeyCode::Char('v') => Action::SplitVertical,
             KeyCode::Char('<') => Action::ResizeSmaller,
             KeyCode::Char('>') => Action::ResizeLarger,
             KeyCode::Char('z') => Action::ToggleZoom,
@@ -96,8 +107,24 @@ mod tests {
             Action::Detach
         );
         assert_eq!(
-            action(true, KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE)),
+            action(true, KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
             Action::NewTab
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE)),
+            Action::ClosePane
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('X'), KeyModifiers::SHIFT)),
+            Action::CloseTab
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE)),
+            Action::NextTab
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE)),
+            Action::PreviousTab
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)),
@@ -116,17 +143,38 @@ mod tests {
             Action::FocusNext
         );
         assert_eq!(
-            action(true, KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE)),
-            Action::RestartFocusedPane
-        );
-        assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)),
             Action::NextTab
         );
         assert_eq!(
-            action(true, KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
-            Action::CloseTab
+            action(true, KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE)),
+            Action::StopFocusedPane
         );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE)),
+            Action::RestartFocusedPane
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE)),
+            Action::SplitVertical
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('-'), KeyModifiers::NONE)),
+            Action::SplitHorizontal
+        );
+        for (key, expected) in [
+            ('h', Action::FocusLeft),
+            ('j', Action::FocusDown),
+            ('k', Action::FocusUp),
+            ('l', Action::FocusRight),
+            ('O', Action::FocusPrevious),
+            ('q', Action::Detach),
+        ] {
+            assert_eq!(
+                action(true, KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE)),
+                expected
+            );
+        }
     }
 
     #[test]

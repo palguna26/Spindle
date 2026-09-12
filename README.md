@@ -43,17 +43,19 @@ open the command palette. Other common keys:
 
 | Keys | Action |
 | --- | --- |
-| `n` | New tab |
+| `c` | New tab |
+| `x` / `Shift+x` | Close pane / close tab |
+| `n` / `p` | Next / previous tab |
 | `?` | In-app help |
 | `:` | Command palette |
-| `d` | Detach |
-| `"` / `%` | Horizontal / vertical split |
+| `q` / `d` | Detach |
+| `v` / `-` | Vertical / horizontal split |
 | `z` | Zoom / restore focused pane |
-| `o` / `p` | Next / previous pane |
-| Arrow keys | Directional pane focus |
+| `h` / `j` / `k` / `l` or arrows | Directional pane focus |
+| `o` / `O` | Next / previous pane |
 | `<` / `>` | Resize pane |
-| `x` / `r` | Stop / restart pane |
-| `]` / `[` | Next / previous tab |
+| `s` / `r` | Stop / restart pane |
+| `]` / `[` | Next / previous tab (alternate) |
 | `}` / `{` | Next / previous space |
 | `w` | Next workspace |
 
