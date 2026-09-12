@@ -101,6 +101,8 @@ pub struct TabView {
     pub layout: Option<LayoutNode>,
     #[serde(default)]
     pub focused_pane_id: Option<String>,
+    #[serde(default)]
+    pub zoomed: bool,
 }
 
 impl TabView {
@@ -201,6 +203,7 @@ impl Default for Session {
                             name: "Main".into(),
                             layout: None,
                             focused_pane_id: None,
+                            zoomed: false,
                         }],
                         active_tab_id: "tab-1".into(),
                     }],
@@ -501,6 +504,7 @@ impl Session {
                 name: "Main".into(),
                 layout: None,
                 focused_pane_id: None,
+                zoomed: false,
             }],
             active_tab_id: tab_id,
         });
@@ -532,6 +536,7 @@ impl Session {
                     name: "Main".into(),
                     layout: None,
                     focused_pane_id: None,
+                    zoomed: false,
                 }],
                 active_tab_id: tab_id,
             }],
@@ -654,6 +659,7 @@ impl Session {
             name,
             layout: None,
             focused_pane_id: None,
+            zoomed: false,
         });
         workspace.active_tab_id = tab_id.clone();
         self.sync_focus_to_active_tab()?;
@@ -752,6 +758,24 @@ impl Session {
         tab.focused_pane_id = Some(pane_id.into());
         self.snapshot.focused_pane_id = Some(pane_id.into());
         Ok(serde_json::json!({ "pane_id": pane_id }))
+    }
+
+    pub fn toggle_pane_zoom(&mut self, pane_id: &str) -> Result<Value, String> {
+        let zoomed = {
+            let tab = self.active_tab_mut()?;
+            if !tab
+                .layout
+                .as_ref()
+                .is_some_and(|layout| layout.pane_ids().contains(&pane_id))
+            {
+                return Err(format!("pane '{pane_id}' does not exist in the active tab"));
+            }
+            tab.focused_pane_id = Some(pane_id.into());
+            tab.zoomed = !tab.zoomed;
+            tab.zoomed
+        };
+        self.snapshot.focused_pane_id = Some(pane_id.into());
+        Ok(serde_json::json!({ "pane_id": pane_id, "zoomed": zoomed }))
     }
 
     pub fn rename_pane(&mut self, pane_id: &str, label: String) -> Result<Value, String> {
@@ -1230,6 +1254,7 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(tab.focused_pane_id, None);
+        assert!(!tab.zoomed);
     }
 
     #[test]
@@ -1301,6 +1326,26 @@ mod tests {
         assert!(matches!(first.as_ref(), LayoutNode::Split { ratio, .. }
             if (*ratio - 0.7).abs() < f32::EPSILON));
         assert!(session.set_split_ratio(&[true], 0.6).is_err());
+    }
+
+    #[test]
+    fn pane_zoom_targets_focus_and_toggles_per_tab() {
+        let mut session = Session::default();
+        session.snapshot.spaces[0].workspaces[0].tabs[0].layout = Some(
+            LayoutNode::pane("one").split(crate::model::layout::Direction::Horizontal, 0.5, "two"),
+        );
+        assert_eq!(
+            session.toggle_pane_zoom("two").unwrap(),
+            serde_json::json!({ "pane_id": "two", "zoomed": true })
+        );
+        assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("two"));
+        assert!(session.snapshot.spaces[0].workspaces[0].tabs[0].zoomed);
+        assert_eq!(
+            session.toggle_pane_zoom("two").unwrap(),
+            serde_json::json!({ "pane_id": "two", "zoomed": false })
+        );
+        assert!(!session.snapshot.spaces[0].workspaces[0].tabs[0].zoomed);
+        assert!(session.toggle_pane_zoom("missing").is_err());
     }
 
     #[test]

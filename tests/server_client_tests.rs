@@ -119,6 +119,72 @@ fn split_ratio_control_updates_the_persisted_layout() {
 }
 
 #[test]
+fn pane_zoom_control_survives_server_restart() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let pane = client
+        .request(
+            "zoom-create-pane",
+            "ensure_active_pane",
+            serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+                "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap()
+        .payload
+        .unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let zoomed = client
+        .request(
+            "zoom-pane",
+            "toggle_pane_zoom",
+            serde_json::json!({ "pane_id": pane }),
+        )
+        .unwrap();
+    assert!(zoomed.ok);
+    client
+        .request(
+            "zoom-stop-server",
+            "stop_server",
+            Value::Object(Default::default()),
+        )
+        .unwrap();
+    thread.join().unwrap();
+
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let snapshot = client
+        .request(
+            "zoom-snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(
+        snapshot["spaces"][0]["workspaces"][0]["tabs"][0]["zoomed"],
+        true
+    );
+    client
+        .request(
+            "zoom-stop-server-restarted",
+            "stop_server",
+            Value::Object(Default::default()),
+        )
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn server_accepts_attach_snapshot_and_stop() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);

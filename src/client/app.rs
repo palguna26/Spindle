@@ -581,6 +581,14 @@ fn activate_context_menu(
                     client.request("context-split-pane", "split_pane", request)?;
                     Ok(None)
                 }
+                ContextMenuAction::Zoom => {
+                    client.request(
+                        "context-zoom-pane",
+                        "toggle_pane_zoom",
+                        json!({ "pane_id": pane_id }),
+                    )?;
+                    Ok(None)
+                }
                 ContextMenuAction::Stop => {
                     client.request(
                         "context-stop-pane",

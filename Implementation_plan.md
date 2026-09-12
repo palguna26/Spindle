@@ -83,7 +83,7 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Drag split borders to resize, updating both the saved layout and PTY
   dimensions.
 - [x] Right-click workspaces, tabs, and panes for context-specific actions.
-- [ ] Support pane split, close, rename, zoom/focus actions from menus where
+- [x] Support pane split, close, rename, zoom/focus actions from menus where
   the matching Herdr action exists.
 - [ ] Support drag-select/copy and terminal mouse passthrough without stealing
   input from applications that request it.

@@ -60,7 +60,17 @@ pub(crate) fn pane_content_area(area: Rect) -> Rect {
 
 pub(crate) fn pane_rectangles(snapshot: &SessionSnapshot, area: Rect) -> Vec<PaneRect> {
     let mut panes = Vec::new();
-    if let Some(layout) = active_layout(snapshot) {
+    let Some(tab) = active_tab(snapshot) else {
+        return panes;
+    };
+    if tab.zoomed {
+        if let Some(pane_id) = tab.focused_pane_id.as_ref() {
+            panes.push(PaneRect {
+                pane_id: pane_id.clone(),
+                rect: area,
+            });
+        }
+    } else if let Some(layout) = tab.layout.as_ref() {
         collect_pane_rectangles(layout, area, &mut panes);
     }
     panes
@@ -82,7 +92,10 @@ pub(crate) fn pane_sizes(snapshot: &SessionSnapshot, area: Rect) -> Vec<PaneSize
 
 pub(crate) fn split_handles(snapshot: &SessionSnapshot, area: Rect) -> Vec<SplitHandle> {
     let mut handles = Vec::new();
-    if let Some(layout) = active_layout(snapshot) {
+    if active_tab(snapshot).is_some_and(|tab| tab.zoomed) {
+        return handles;
+    }
+    if let Some(layout) = active_tab(snapshot).and_then(|tab| tab.layout.as_ref()) {
         collect_split_handles(layout, area, Vec::new(), &mut handles);
     }
     handles
@@ -93,7 +106,7 @@ pub(crate) fn pane_inner_size(area: Rect) -> (u16, u16) {
     (inner.width.max(1), inner.height.max(1))
 }
 
-fn active_layout(snapshot: &SessionSnapshot) -> Option<&LayoutNode> {
+fn active_tab(snapshot: &SessionSnapshot) -> Option<&crate::server::session::TabView> {
     let space = snapshot
         .spaces
         .iter()
@@ -105,9 +118,7 @@ fn active_layout(snapshot: &SessionSnapshot) -> Option<&LayoutNode> {
     workspace
         .tabs
         .iter()
-        .find(|tab| tab.tab_id == workspace.active_tab_id)?
-        .layout
-        .as_ref()
+        .find(|tab| tab.tab_id == workspace.active_tab_id)
 }
 
 fn collect_pane_rectangles(node: &LayoutNode, area: Rect, panes: &mut Vec<PaneRect>) {

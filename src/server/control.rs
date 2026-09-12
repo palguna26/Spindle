@@ -528,6 +528,18 @@ pub(crate) fn response_for_with_interactive(
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| session.focus_pane(&payload.pane_id))
         }
+        "toggle_pane_zoom" => {
+            let payload: PaneRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.toggle_pane_zoom(&payload.pane_id)
+            })
+        }
         "rename_pane" => {
             let payload: IdNameRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,

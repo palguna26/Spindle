@@ -17,6 +17,7 @@ pub(crate) enum ContextMenuAction {
     Focus,
     SplitRight,
     SplitDown,
+    Zoom,
     Stop,
     Restart,
 }
@@ -70,6 +71,7 @@ impl ContextMenu {
                 ("Focus pane", A::Focus),
                 ("Split right", A::SplitRight),
                 ("Split down", A::SplitDown),
+                ("Zoom", A::Zoom),
                 ("Rename pane", A::Rename),
                 ("Stop pane", A::Stop),
                 ("Restart pane", A::Restart),
@@ -185,7 +187,7 @@ mod tests {
         let rect = menu.rect(area);
         assert_eq!(
             menu.action_at(area, rect.x + 2, rect.y + 3),
-            Some(ContextMenuAction::Restart)
+            Some(ContextMenuAction::Stop)
         );
     }
 }

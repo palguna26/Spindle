@@ -185,8 +185,13 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
     for (tab, width) in workspace.tabs.iter().zip(widths) {
         let rect = Rect::new(x, area.y, width, area.height);
         let selected = tab.tab_id == workspace.active_tab_id;
+        let label = if tab.zoomed {
+            format!("{} Z", tab.name)
+        } else {
+            tab.name.clone()
+        };
         frame.render_widget(
-            Paragraph::new(tab.name.clone())
+            Paragraph::new(label)
                 .alignment(Alignment::Center)
                 .style(if selected {
                     Style::default()
@@ -244,7 +249,7 @@ fn contains(area: Rect, x: u16, y: u16) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::super::layout::{pane_sizes, split_areas};
+    use super::super::layout::{pane_rectangles, pane_sizes, split_areas, split_handles};
     use super::{hit_test, main_areas, render_sidebar, render_tabs, ClickTarget};
     use crate::model::layout::{Direction as SplitDirection, LayoutNode};
     use crate::server::session::{SessionSnapshot, SpaceView, TabView, WorkspaceView};
@@ -270,6 +275,7 @@ mod tests {
                             name: "Main".into(),
                             layout: None,
                             focused_pane_id: None,
+                            zoomed: false,
                         }],
                         active_tab_id: "tab-1".into(),
                     },
@@ -284,6 +290,7 @@ mod tests {
                                 name: "Main".into(),
                                 layout: None,
                                 focused_pane_id: None,
+                                zoomed: false,
                             },
                             TabView {
                                 tab_id: "tab-3".into(),
@@ -294,6 +301,7 @@ mod tests {
                                     "pane-2",
                                 )),
                                 focused_pane_id: Some("pane-2".into()),
+                                zoomed: false,
                             },
                         ],
                         active_tab_id: "tab-3".into(),
@@ -381,6 +389,26 @@ mod tests {
                 area,
                 click(second.x + second.width / 2, second.y + second.height / 2)
             ),
+            Some(ClickTarget::Pane("pane-2".into()))
+        );
+    }
+
+    #[test]
+    fn zoomed_focused_pane_uses_full_area_and_hides_other_split_handles() {
+        let mut snapshot = sample_snapshot();
+        let tab = &mut snapshot.spaces[0].workspaces[1].tabs[1];
+        tab.zoomed = true;
+        let area = Rect::new(0, 0, 100, 30);
+        let main = main_areas(area);
+
+        let panes = pane_rectangles(&snapshot, main.panes);
+        assert_eq!(panes.len(), 1);
+        assert_eq!(panes[0].pane_id, "pane-2");
+        assert_eq!(panes[0].rect, main.panes);
+        assert!(split_handles(&snapshot, main.panes).is_empty());
+        assert_eq!(pane_sizes(&snapshot, main.panes).len(), 1);
+        assert_eq!(
+            hit_test(&snapshot, area, click(main.panes.x + 1, main.panes.y + 1)),
             Some(ClickTarget::Pane("pane-2".into()))
         );
     }
