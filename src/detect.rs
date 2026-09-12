@@ -56,16 +56,16 @@ pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> Agent
     let combined = format!("{title_lower}\n{screen_lower}");
     let recent = recent_nonempty_lines(screen, 20).to_ascii_lowercase();
     let bottom_three = recent_nonempty_lines(screen, 3).to_ascii_lowercase();
-    let blocked = combined.contains("action required")
-        || combined.contains("permission required")
-        || combined.contains("do you trust the contents of this directory?")
-        || combined.contains("allow command?")
-        || combined.contains("press enter to confirm or esc to cancel")
-        || (combined.contains("esc dismiss")
-            && (combined.contains("enter confirm")
-                || combined.contains("enter submit")
-                || combined.contains("enter toggle")))
-        || (agent == AgentKind::Codex && codex_recent_blocker(&recent));
+    let blocked = match agent {
+        AgentKind::Codex => {
+            combined.contains("action required")
+                || combined.contains("do you trust the contents of this directory?")
+                || combined.contains("allow command?")
+                || combined.contains("press enter to confirm or esc to cancel")
+                || codex_recent_blocker(&recent)
+        }
+        AgentKind::OpenCode => opencode_permission_required(&recent),
+    };
     if blocked {
         return AgentState::Blocked;
     }
@@ -86,6 +86,11 @@ pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> Agent
             ]
             .iter()
             .any(|signal| combined.contains(signal))
+                || combined.lines().any(|line| {
+                    line.contains("opencode")
+                        && (line.contains("esc to interrupt")
+                            || line.contains("esc again to interrupt"))
+                })
                 || has_progress_bar(screen)
         }
     };
@@ -98,6 +103,18 @@ pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> Agent
     } else {
         AgentState::Unknown
     }
+}
+
+fn opencode_permission_required(recent: &str) -> bool {
+    if recent.contains("\u{25b3} permission required") {
+        return true;
+    }
+
+    recent.contains("esc dismiss")
+        && (recent.contains("enter confirm")
+            || recent.contains("enter submit")
+            || recent.contains("enter toggle"))
+        && (recent.contains("\u{2191}\u{2193} select") || recent.contains("\u{21c6} tab"))
 }
 
 fn recent_nonempty_lines(screen: &str, limit: usize) -> String {
@@ -608,6 +625,42 @@ mod tests {
         assert_eq!(
             detect_state(AgentKind::OpenCode, "Ready for prompt", ""),
             AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn opencode_permission_rule_needs_the_manifest_control_hints() {
+        assert_eq!(
+            detect_state(
+                AgentKind::OpenCode,
+                "Esc dismiss \u{00b7} Enter submit \u{00b7} \u{2191}\u{2193} select",
+                "",
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::OpenCode, "Permission required", ""),
+            AgentState::Unknown
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::OpenCode,
+                "Esc dismiss \u{00b7} Enter confirm",
+                "",
+            ),
+            AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn opencode_manifest_interrupt_line_marks_working() {
+        assert_eq!(
+            detect_state(
+                AgentKind::OpenCode,
+                "OpenCode \u{2014} ESC again to interrupt",
+                "",
+            ),
+            AgentState::Working
         );
     }
 }

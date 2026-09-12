@@ -115,8 +115,9 @@ and quick-start "Use the mouse". Spindle: `src/client/app.rs`,
 - [ ] Port process/terminal agent detection using Herdr's manifests and state
   transitions as behavioral references, not copied implementation. Partial:
   direct and known wrapped Codex/OpenCode processes, selected manifest blocker
-  prompts, and initial screen-state signals are detected; full manifest rules
-  and transition stabilization remain.
+  prompts, Herdr-aligned OpenCode permission and interrupt rules, and initial
+  screen-state signals are detected; full manifest rules and transition
+  stabilization remain.
 - [ ] Expose agent kind and unknown/idle/working/blocked state in pane chrome and
   the sidebar. Partial: pane chrome shows identity/state and workspace rows show
   per-state counts; multi-agent rows and richer lifecycle transitions remain.
