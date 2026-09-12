@@ -68,6 +68,8 @@ pub(crate) fn detect_state_with_osc(
     let combined = format!("{title_lower}\n{screen_lower}");
     let recent = recent_nonempty_lines(screen, 20).to_ascii_lowercase();
     let bottom_three = recent_nonempty_lines(screen, 3).to_ascii_lowercase();
+    let bottom_twelve = recent_nonempty_lines(screen, 12).to_ascii_lowercase();
+    let bottom_five = recent_nonempty_lines(screen, 5).to_ascii_lowercase();
     let blocked = match agent {
         AgentKind::Codex => {
             combined.contains("action required")
@@ -108,7 +110,7 @@ pub(crate) fn detect_state_with_osc(
                 })
                 || has_progress_bar(screen)
         }
-        AgentKind::Claude => claude_is_working(&bottom_three, title),
+        AgentKind::Claude => claude_is_working(&bottom_twelve, &bottom_five, title),
     };
     if working {
         return AgentState::Working;
@@ -152,18 +154,155 @@ fn claude_permission_required(recent: &str) -> bool {
                 || recent.contains("tab/arrow keys to navigate")))
 }
 
-fn claude_is_working(bottom: &str, title: &str) -> bool {
+fn claude_is_working(bottom: &str, bottom_five: &str, title: &str) -> bool {
     let title_spinner = title.chars().next().is_some_and(is_claude_spinner)
         && title.chars().nth(1).is_some_and(char::is_whitespace);
     title_spinner
-        || bottom.lines().any(|line| {
-            let line = line.trim_start();
-            ((line.starts_with('\u{23f8}') || line.starts_with('\u{23f5}'))
-                && line.contains("esc to interrupt"))
-                || (line.contains("esc to interrupt")
-                    && line.contains('\u{2026}')
-                    && line.chars().next().is_some_and(is_claude_activity_marker))
-        })
+        || bottom.lines().any(claude_live_turn_line)
+        || bottom.lines().any(claude_background_agents_line)
+        || claude_mcp_tasks_running(bottom)
+        || (bottom_five.lines().any(claude_btw_command_line)
+            && bottom_five
+                .lines()
+                .any(|line| line.trim_end().ends_with("esc to close")))
+}
+
+fn claude_btw_command_line(line: &str) -> bool {
+    let line = line.trim_start();
+    line.strip_prefix("/btw")
+        .is_some_and(|suffix| suffix.chars().next().is_none_or(char::is_whitespace))
+}
+
+fn claude_mcp_tasks_running(bottom: &str) -> bool {
+    let lines: Vec<_> = bottom.lines().collect();
+    let has_running_task_line = lines.iter().enumerate().any(|(index, line)| {
+        let activity = line.trim_start();
+        let Some(marker) = activity.chars().next() else {
+            return false;
+        };
+        let activity_text = activity[marker.len_utf8()..].trim_start();
+        if !is_claude_activity_marker(marker)
+            || activity_text.chars().next().is_none_or(char::is_whitespace)
+        {
+            return false;
+        }
+
+        claude_mcp_task_count_line(activity_text)
+            || (1..=4).any(|offset| {
+                let summary_index = index + offset;
+                summary_index < lines.len()
+                    && lines[index + 1..summary_index]
+                        .iter()
+                        .all(|line| matches!(line.chars().next(), Some(' ' | '\t')))
+                    && claude_mcp_task_count_line(lines[summary_index])
+            })
+    });
+    has_running_task_line
+        && ![
+            "do you want to proceed?",
+            "esc to cancel",
+            "waiting for permission",
+            "do you want to allow this connection?",
+            "tab to amend",
+            "ctrl+e to explain",
+        ]
+        .iter()
+        .any(|signal| bottom.contains(signal))
+}
+
+fn claude_mcp_task_count_line(line: &str) -> bool {
+    let Some((_, summary)) = line.split_once('\u{00b7}') else {
+        return false;
+    };
+    let mut parts = summary.split_whitespace();
+    let Some(count) = parts.next().and_then(|value| value.parse::<u32>().ok()) else {
+        return false;
+    };
+    count > 0
+        && matches!(parts.next(), Some("mcp"))
+        && matches!(parts.next(), Some("task" | "tasks"))
+        && matches!(parts.next(), Some("still"))
+        && matches!(parts.next(), Some("running"))
+        && parts.next().is_none()
+}
+
+fn claude_live_turn_line(line: &str) -> bool {
+    let line = line.trim_start();
+    if let Some(spinner) = line
+        .chars()
+        .next()
+        .filter(|spinner| matches!(spinner, '\u{23f8}' | '\u{23f5}'))
+    {
+        let after_spinner = &line[spinner.len_utf8()..];
+        return after_spinner
+            .split_once("esc to interrupt")
+            .is_some_and(|(_, suffix)| {
+                suffix
+                    .chars()
+                    .next()
+                    .is_none_or(|ch| ch.is_whitespace() || ch == '\u{00b7}')
+            });
+    }
+    let Some((before_ellipsis, after_ellipsis)) = line.split_once('\u{2026}') else {
+        return false;
+    };
+    let before_ellipsis = before_ellipsis.trim_start();
+    let Some(marker) = before_ellipsis.chars().next() else {
+        return false;
+    };
+    let activity = &before_ellipsis[marker.len_utf8()..];
+    if !is_claude_activity_marker(marker)
+        || !activity.chars().next().is_some_and(char::is_whitespace)
+        || activity.trim().is_empty()
+    {
+        return false;
+    }
+    claude_ellipsis_is_live(after_ellipsis)
+}
+
+fn claude_ellipsis_is_live(after_ellipsis: &str) -> bool {
+    let suffix = after_ellipsis.trim_start();
+    if suffix.is_empty() {
+        return true;
+    }
+    let Some(duration) = suffix.strip_prefix('(') else {
+        return false;
+    };
+    let digits = duration.chars().take_while(char::is_ascii_digit).count();
+    if digits == 0 {
+        return false;
+    }
+    let Some(unit) = duration.chars().nth(digits) else {
+        return false;
+    };
+    if !matches!(unit, 's' | 'm' | 'h') {
+        return false;
+    }
+    duration
+        .chars()
+        .nth(digits + 1)
+        .is_none_or(|next| next.is_whitespace() || matches!(next, '\u{00b7}' | ')'))
+}
+
+fn claude_background_agents_line(line: &str) -> bool {
+    let line = line.trim_start();
+    let Some(marker) = line.chars().next() else {
+        return false;
+    };
+    if !is_claude_activity_marker(marker) {
+        return false;
+    }
+    let Some(rest) = line[marker.len_utf8()..]
+        .trim_start()
+        .strip_prefix("waiting for ")
+    else {
+        return false;
+    };
+    let Some((count, rest)) = rest.split_once(" background agent") else {
+        return false;
+    };
+    count.parse::<u32>().is_ok_and(|count| count > 0)
+        && rest.strip_prefix('s').unwrap_or(rest).trim() == "to finish"
 }
 
 fn is_claude_spinner(character: char) -> bool {
@@ -603,6 +742,75 @@ mod tests {
         assert_eq!(
             detect_state(AgentKind::Claude, "Ready\n❯ ", ""),
             AgentState::Idle
+        );
+    }
+
+    #[test]
+    fn follows_herdr_claude_live_turn_and_background_activity_rules() {
+        assert_eq!(
+            detect_state(AgentKind::Claude, "* Searching the web…", ""),
+            AgentState::Working,
+            "an active marker and trailing ellipsis identify a live turn"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Claude, "✽ Searching the web… (2m · 4s)", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Claude,
+                "· Waiting for 2 background agents to finish",
+                ""
+            ),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Claude,
+                "✢ Searching MCP tools\n· 1 MCP tasks still running",
+                ""
+            ),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Claude,
+                "✢ Searching MCP tools · 1 MCP tasks still running",
+                ""
+            ),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Claude,
+                "✢ Searching MCP tools\n    Waiting for the tool response\n    · 2 MCP tasks still running",
+                ""
+            ),
+            AgentState::Working,
+            "Herdr allows up to three wrapped activity lines before the MCP summary"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Claude, "· 1 MCP tasks still running", ""),
+            AgentState::Unknown,
+            "an MCP summary without its marked activity row is not enough"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Claude, " /btw\nEsc to close", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Claude, "", "◐ Claude"),
+            AgentState::Working,
+            "Herdr recognizes Claude's half-circle busy spinner"
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Claude,
+                "✢ Running tool\n· 1 MCP tasks still running\nDo you want to proceed?\nEsc to cancel",
+                ""
+            ),
+            AgentState::Blocked,
+            "visible permission prompts take priority over background activity"
         );
     }
 

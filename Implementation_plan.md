@@ -138,7 +138,8 @@ and quick-start "Use the mouse". Spindle: `src/client/app.rs`,
 - [ ] Port process/terminal agent detection using Herdr's manifests and state
   transitions as behavioral references, not copied implementation. Partial:
   direct and wrapped Claude/Codex/OpenCode processes, Claude OSC title/progress
-  and selected prompt signals, selected manifest blocker prompts,
+  and selected prompt signals, Claude live-turn/background-agent/MCP and `/btw`
+  working cues, selected manifest blocker prompts,
   Herdr-aligned OpenCode permission/interrupt and Codex directory-trust rules
   are detected; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Full manifest rules remain.
