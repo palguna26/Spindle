@@ -1829,20 +1829,36 @@ fn ensure_active_default_pane(
     if active_workspace(&snapshot).is_none() {
         return Ok(());
     }
-    client.request(
+    let response = client.request(
         "ensure-default-pane",
         "ensure_active_pane",
         pane_request_for_snapshot(&snapshot, terminal_size),
     )?;
+    require_server_success(&response, "start the default shell")?;
     let updated = current_snapshot(client)?;
     if snapshot_has_focused_pane(&updated) {
         Ok(())
     } else {
         Err(ClientError::Server(
-            "the server accepted shell creation, but the active tab still has no usable pane"
-                .into(),
+            "shell creation completed, but the active tab still has no usable pane".into(),
         ))
     }
+}
+
+fn require_server_success<T>(
+    response: &crate::protocol::Response<T>,
+    operation: &str,
+) -> Result<(), ClientError> {
+    if response.ok {
+        return Ok(());
+    }
+
+    let detail = response
+        .error
+        .as_ref()
+        .map(|error| format!("{}: {}", error.code, error.message))
+        .unwrap_or_else(|| "the server rejected the request without details".into());
+    Err(ClientError::Server(format!("{operation} failed: {detail}")))
 }
 
 fn create_workspace_from_current_directory(
@@ -1948,10 +1964,11 @@ mod tests {
     use super::{
         active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
         adjust_scrollback_offset, apply_scrollback_views, key_code_bytes, page_key_bytes,
-        pane_size, reconnect_requires_reattach, snapshot_has_focused_pane, startup_error_action,
-        workspace_id_by_name, CachedScrollbackView, PaneClick, SplitDirection, SplitDrag,
-        StartupErrorAction,
+        pane_size, reconnect_requires_reattach, require_server_success, snapshot_has_focused_pane,
+        startup_error_action, workspace_id_by_name, CachedScrollbackView, PaneClick,
+        SplitDirection, SplitDrag, StartupErrorAction,
     };
+    use crate::protocol::{ProtocolError, Response, PROTOCOL_VERSION};
     use crate::server::session::Session;
     use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
     use ratatui::layout::Rect;
@@ -2061,6 +2078,29 @@ mod tests {
             startup_error_action(KeyCode::Char('x')),
             StartupErrorAction::Ignore
         );
+    }
+
+    #[test]
+    fn shell_start_failure_keeps_the_server_error_for_the_ui() {
+        let response = Response {
+            version: PROTOCOL_VERSION,
+            request_id: "ensure-default-pane".into(),
+            ok: false,
+            payload: None::<serde_json::Value>,
+            error: Some(ProtocolError {
+                code: "pane_start_failed".into(),
+                message: "powershell.exe was not found".into(),
+            }),
+        };
+
+        let error = require_server_success(&response, "start the default shell").unwrap_err();
+        match error {
+            super::ClientError::Server(message) => {
+                assert!(message.contains("pane_start_failed"));
+                assert!(message.contains("powershell.exe was not found"));
+            }
+            other => panic!("expected server error, got {other:?}"),
+        }
     }
 
     #[test]
