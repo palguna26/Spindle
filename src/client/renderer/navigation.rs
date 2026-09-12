@@ -388,12 +388,20 @@ pub(super) fn render_sidebar_with_scroll(
                 let state = pane
                     .agent_state
                     .unwrap_or(crate::detect::AgentState::Unknown);
-                let color = match state {
+                let focused = snapshot.focused_pane_id.as_deref() == Some(&pane.pane_id);
+                let mut state_style = Style::default().fg(match state {
                     crate::detect::AgentState::Unknown => Color::DarkGray,
                     crate::detect::AgentState::Idle => Color::Green,
                     crate::detect::AgentState::Working => Color::Yellow,
                     crate::detect::AgentState::Blocked => Color::Red,
-                };
+                });
+                let mut label_style = Style::default().fg(Color::Gray);
+                let mut tab_style = Style::default().fg(Color::DarkGray);
+                if focused {
+                    state_style = state_style.bg(Color::DarkGray);
+                    label_style = label_style.bg(Color::DarkGray).add_modifier(Modifier::BOLD);
+                    tab_style = tab_style.bg(Color::DarkGray);
+                }
                 if collapsed {
                     return Line::from("A ");
                 }
@@ -409,15 +417,9 @@ pub(super) fn render_sidebar_with_scroll(
                     .unwrap_or_else(|| kind.to_owned());
                 Line::from(vec![
                     Span::raw("    "),
-                    Span::styled(
-                        format!("{} ", state.sidebar_marker()),
-                        Style::default().fg(color),
-                    ),
-                    Span::styled(label, Style::default().fg(Color::Gray)),
-                    Span::styled(
-                        format!(" · {tab_name}"),
-                        Style::default().fg(Color::DarkGray),
-                    ),
+                    Span::styled(format!("{} ", state.sidebar_marker()), state_style),
+                    Span::styled(label, label_style),
+                    Span::styled(format!(" · {tab_name}"), tab_style),
                 ])
             }
         })
@@ -899,6 +901,30 @@ mod tests {
         assert!(content.contains("W"));
         assert!(content.contains("!"));
         assert!(!content.contains("Idle"));
+    }
+
+    #[test]
+    fn sidebar_highlights_the_focused_agent_row() {
+        let mut snapshot = sample_snapshot();
+        snapshot.panes = vec![
+            agent_pane("pane-1", "codex", "working"),
+            agent_pane("pane-2", "open_code", "blocked"),
+        ];
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let sidebar = main_areas(Rect::new(0, 0, 100, 30)).sidebar;
+        terminal
+            .draw(|frame| render_sidebar(frame, &snapshot, sidebar))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(
+            buffer.cell((sidebar.x + 8, sidebar.y + 5)).unwrap().bg,
+            ratatui::style::Color::DarkGray
+        );
+        assert_ne!(
+            buffer.cell((sidebar.x + 8, sidebar.y + 4)).unwrap().bg,
+            ratatui::style::Color::DarkGray
+        );
     }
 
     #[test]
