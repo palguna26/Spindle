@@ -33,10 +33,11 @@ pub enum Command {
     ResizeSmaller,
     ResizeLarger,
     Detach,
+    ToggleRightClickPassthrough,
 }
 
 impl Command {
-    pub const ALL: [Self; 30] = [
+    pub const ALL: [Self; 31] = [
         Self::NewTab,
         Self::NewPane,
         Self::CloseTab,
@@ -67,6 +68,7 @@ impl Command {
         Self::ResizeSmaller,
         Self::ResizeLarger,
         Self::Detach,
+        Self::ToggleRightClickPassthrough,
     ];
 
     pub fn label(self) -> &'static str {
@@ -101,6 +103,7 @@ impl Command {
             Self::ResizeSmaller => "Resize smaller",
             Self::ResizeLarger => "Resize larger",
             Self::Detach => "Detach",
+            Self::ToggleRightClickPassthrough => "Toggle right-click passthrough",
         }
     }
 
@@ -136,6 +139,7 @@ impl Command {
             Self::ResizeSmaller => Action::ResizeSmaller,
             Self::ResizeLarger => Action::ResizeLarger,
             Self::Detach => Action::Detach,
+            Self::ToggleRightClickPassthrough => Action::ToggleRightClickPassthrough,
         }
     }
 }
@@ -164,5 +168,13 @@ mod tests {
             move_selection(Command::ALL.len() - 1, KeyCode::Down),
             Some(0)
         );
+    }
+
+    #[test]
+    fn pane_mouse_toggle_is_available_as_a_keyboard_command() {
+        let command = Command::ToggleRightClickPassthrough;
+        assert_eq!(command.label(), "Toggle right-click passthrough");
+        assert_eq!(command.action(), super::Action::ToggleRightClickPassthrough);
+        assert!(Command::ALL.contains(&command));
     }
 }

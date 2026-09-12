@@ -450,6 +450,15 @@ fn event_loop(
                     );
                 }
             }
+            Action::ToggleRightClickPassthrough => {
+                if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                    client.request(
+                        "toggle-right-click",
+                        "toggle_right_click_passthrough",
+                        json!({ "pane_id": pane_id }),
+                    )?;
+                }
+            }
             Action::Send(code) => {
                 if let Some(ref pane_id) = snapshot.focused_pane_id {
                     if let Some(bytes) = key_code_bytes(code) {
@@ -1356,6 +1365,16 @@ fn execute_action(
                     "resize_pane",
                     json!({ "pane_id": pane_id, "delta": delta }),
                 );
+            }
+            Ok(false)
+        }
+        Action::ToggleRightClickPassthrough => {
+            if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                client.request(
+                    "palette-toggle-right-click",
+                    "toggle_right_click_passthrough",
+                    json!({ "pane_id": pane_id }),
+                )?;
             }
             Ok(false)
         }

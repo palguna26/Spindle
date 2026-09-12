@@ -121,9 +121,14 @@ fn footer_area(area: Rect) -> Rect {
 
 pub fn render_palette(frame: &mut Frame<'_>, selected: usize) {
     let area = centered_rect(60, 70, frame.area());
-    let rows = crate::client::palette::Command::ALL
+    let commands = crate::client::palette::Command::ALL;
+    let visible_rows = usize::from(area.height.saturating_sub(2));
+    let start = selected.saturating_add(1).saturating_sub(visible_rows);
+    let rows = commands
         .iter()
         .enumerate()
+        .skip(start)
+        .take(visible_rows)
         .map(|(index, command)| {
             let marker = if index == selected { "> " } else { "  " };
             Line::from(format!("{marker}{}", command.label()))
@@ -310,7 +315,8 @@ mod tests {
     use super::super::selection::TextSelection;
     use super::{
         active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, render,
-        render_help, render_selection, render_startup_error, render_with_connection, status_color,
+        render_help, render_palette, render_selection, render_startup_error,
+        render_with_connection, status_color,
     };
     use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
@@ -387,6 +393,23 @@ mod tests {
         assert!(content.contains("Spindle help"));
         assert!(content.contains("right-click for actions"));
         assert!(content.contains("palette"));
+    }
+
+    #[test]
+    fn command_palette_scrolls_the_selected_command_into_view() {
+        let backend = TestBackend::new(40, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_palette(frame, crate::client::palette::Command::ALL.len() - 1))
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("Toggle right-click passthrough"));
     }
 
     #[test]

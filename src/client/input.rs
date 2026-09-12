@@ -35,6 +35,7 @@ pub enum Action {
     ResizeSmaller,
     ResizeLarger,
     ToggleZoom,
+    ToggleRightClickPassthrough,
     Help,
     CommandPalette,
     Send(KeyCode),
