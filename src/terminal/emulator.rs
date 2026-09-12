@@ -8,6 +8,8 @@ pub struct TerminalSnapshot {
     pub contents: String,
     pub cursor: (u16, u16),
     #[serde(default)]
+    pub cursor_visible: bool,
+    #[serde(default)]
     pub title: String,
     #[serde(default)]
     pub alternate_screen: bool,
@@ -63,6 +65,7 @@ impl TerminalEmulator {
             cols: self.cols,
             contents: screen.contents(),
             cursor: screen.cursor_position(),
+            cursor_visible: !screen.hide_cursor(),
             title: screen.title().into(),
             alternate_screen: screen.alternate_screen(),
             mouse_reporting: mouse_mode != vt100::MouseProtocolMode::None,
@@ -104,6 +107,18 @@ mod tests {
         assert_eq!(snapshot.cursor, (1, 5));
         assert!(snapshot.contents.contains("one"));
         assert!(snapshot.contents.contains("two"));
+    }
+
+    #[test]
+    fn cursor_visibility_modes_are_tracked() {
+        let mut terminal = TerminalEmulator::new(2, 8, 4);
+        assert!(terminal.snapshot().cursor_visible);
+
+        terminal.process(b"\x1b[?25l");
+        assert!(!terminal.snapshot().cursor_visible);
+
+        terminal.process(b"\x1b[?25h");
+        assert!(terminal.snapshot().cursor_visible);
     }
 
     #[test]

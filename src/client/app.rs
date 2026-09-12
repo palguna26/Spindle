@@ -232,14 +232,27 @@ fn event_loop(
             resize_panes(client, &pane_sizes)?;
             last_pane_sizes = Some(pane_sizes);
         }
+        let focused_pane_scrolled = snapshot
+            .focused_pane_id
+            .as_ref()
+            .and_then(|pane_id| mouse_state.scroll_offsets.get(pane_id))
+            .is_some_and(|offset| *offset > 0);
+        let show_host_cursor = !focused_pane_scrolled
+            && mouse_state.selection.is_none()
+            && !palette_open
+            && !help_open
+            && rename_prompt.is_none()
+            && context_menu.is_none()
+            && startup_error.is_none();
         terminal
             .draw(|frame| {
-                renderer::render_with_sidebar_scroll(
+                renderer::render_with_sidebar_scroll_and_cursor(
                     frame,
                     &snapshot,
                     connected,
                     mouse_state.sidebar_collapsed,
                     mouse_state.sidebar_scroll,
+                    show_host_cursor,
                 );
                 if let Some(selection) = &mouse_state.selection {
                     renderer::render_selection_with_sidebar(

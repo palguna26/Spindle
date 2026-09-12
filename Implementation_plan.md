@@ -77,6 +77,9 @@ commit `68d86ad` as partial startup work; do not count it as completion.
   workspaces, matching Herdr's focus in each tab layout.
 - [ ] Render the active pane tree in the remaining area with clear focus and
   lifecycle states.
+- [x] Track terminal cursor visibility and place the host cursor in the focused
+  pane; hide it for overlays and while viewing scrollback, following Herdr's
+  `src/ui/panes.rs` behavior.
 - [x] Calculate pane rectangles once and share the results between rendering,
   hit testing, and PTY resize requests.
 - [x] On terminal resize or layout change, send each PTY its actual pane size,

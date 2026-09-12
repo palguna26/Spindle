@@ -45,6 +45,24 @@ pub fn render_with_sidebar_scroll(
     sidebar_collapsed: bool,
     sidebar_scroll: usize,
 ) {
+    render_with_sidebar_scroll_and_cursor(
+        frame,
+        snapshot,
+        connected,
+        sidebar_collapsed,
+        sidebar_scroll,
+        true,
+    );
+}
+
+pub fn render_with_sidebar_scroll_and_cursor(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    connected: bool,
+    sidebar_collapsed: bool,
+    sidebar_scroll: usize,
+    show_host_cursor: bool,
+) {
     let main = layout::main_areas_with_sidebar(frame.area(), sidebar_collapsed);
     navigation::render_sidebar_with_scroll(
         frame,
@@ -62,6 +80,7 @@ pub fn render_with_sidebar_scroll(
             main.panes,
         );
     } else {
+        let mut host_cursor = None;
         for pane_rect in panes {
             let Some(pane) = snapshot
                 .panes
@@ -86,6 +105,19 @@ pub fn render_with_sidebar_scroll(
                 ),
                 pane_rect.rect,
             );
+            if show_host_cursor
+                && pane.cursor_visible
+                && snapshot.focused_pane_id.as_deref() == Some(&pane_rect.pane_id)
+            {
+                let inner = Block::default().borders(Borders::ALL).inner(pane_rect.rect);
+                let (col, row) = pane.cursor;
+                if col < inner.width && row < inner.height {
+                    host_cursor = Some((inner.x + col, inner.y + row));
+                }
+            }
+        }
+        if let Some(position) = host_cursor {
+            frame.set_cursor_position(position);
         }
     }
     let focused = snapshot.focused_pane_id.as_deref().unwrap_or("none");
@@ -522,6 +554,7 @@ mod tests {
                 scrollback: Vec::new(),
                 screen: "hello".into(),
                 cursor: (0, 0),
+                cursor_visible: true,
                 title: String::new(),
                 alternate_screen: false,
                 mouse_reporting: false,
@@ -551,6 +584,12 @@ mod tests {
                 render_selection(frame, &snapshot, &selection);
             })
             .unwrap();
+        terminal
+            .backend_mut()
+            .assert_cursor_position(ratatui::layout::Position {
+                x: inner.x,
+                y: inner.y,
+            });
         let buffer = terminal.backend().buffer();
         assert_eq!(buffer.cell((inner.x, inner.y)).unwrap().bg, Color::Cyan);
         assert_eq!(
@@ -576,6 +615,7 @@ mod tests {
             scrollback: Vec::new(),
             screen: String::new(),
             cursor: (0, 0),
+            cursor_visible: true,
             title: "Editor".into(),
             alternate_screen: true,
             mouse_reporting: false,
@@ -615,6 +655,7 @@ mod tests {
             scrollback: Vec::new(),
             screen: String::new(),
             cursor: (0, 0),
+            cursor_visible: true,
             title: String::new(),
             alternate_screen: false,
             mouse_reporting: false,

@@ -52,6 +52,8 @@ pub struct PaneView {
     #[serde(default)]
     pub cursor: (u16, u16),
     #[serde(default)]
+    pub cursor_visible: bool,
+    #[serde(default)]
     pub title: String,
     #[serde(default)]
     pub alternate_screen: bool,
@@ -120,6 +122,7 @@ fn load_history(session_path: &Path, snapshot: &mut SessionSnapshot) -> Result<(
         pane.scrollback_bytes = saved.scrollback.len();
         pane.screen = saved.screen.clone();
         pane.cursor = saved.cursor;
+        pane.cursor_visible = false;
         pane.title = saved.title.clone();
         pane.alternate_screen = saved.alternate_screen;
     }
@@ -321,6 +324,7 @@ impl Session {
                 pane.scrollback.clear();
                 pane.screen.clear();
                 pane.cursor = (0, 0);
+                pane.cursor_visible = false;
                 pane.title.clear();
                 pane.alternate_screen = false;
                 pane.mouse_reporting = false;
@@ -553,6 +557,7 @@ impl Session {
             scrollback: Vec::new(),
             screen: String::new(),
             cursor: (0, 0),
+            cursor_visible: false,
             title: String::new(),
             alternate_screen: false,
             mouse_reporting: false,
@@ -1096,6 +1101,7 @@ impl Session {
         pane.agent_state = None;
         pane.screen.clear();
         pane.cursor = (0, 0);
+        pane.cursor_visible = false;
         let tab = self.active_tab_mut()?;
         if tab
             .layout
@@ -1260,6 +1266,7 @@ impl Session {
                 let terminal = current.terminal.snapshot();
                 pane.screen = terminal.contents;
                 pane.cursor = terminal.cursor;
+                pane.cursor_visible = terminal.cursor_visible;
                 pane.title = terminal.title;
                 pane.alternate_screen = terminal.alternate_screen;
                 pane.mouse_reporting = terminal.mouse_reporting;
@@ -1464,6 +1471,7 @@ mod tests {
             scrollback: Vec::new(),
             screen: String::new(),
             cursor: (0, 0),
+            cursor_visible: false,
             title: String::new(),
             alternate_screen: false,
             mouse_reporting: false,
@@ -1563,6 +1571,7 @@ mod tests {
             scrollback: Vec::new(),
             screen: String::new(),
             cursor: (0, 0),
+            cursor_visible: false,
             title: String::new(),
             alternate_screen: false,
             mouse_reporting: false,
@@ -1655,6 +1664,7 @@ mod tests {
             scrollback: vec![1, 2, 3],
             screen: "screen".into(),
             cursor: (2, 1),
+            cursor_visible: true,
             title: "title".into(),
             alternate_screen: true,
             mouse_reporting: false,
@@ -1771,6 +1781,7 @@ mod tests {
             scrollback: Vec::new(),
             screen: String::new(),
             cursor: (0, 0),
+            cursor_visible: false,
             title: String::new(),
             alternate_screen: false,
             mouse_reporting: false,
@@ -1806,6 +1817,7 @@ mod tests {
             scrollback: Vec::new(),
             screen: String::new(),
             cursor: (0, 0),
+            cursor_visible: false,
             title: String::new(),
             alternate_screen: false,
             mouse_reporting: false,
