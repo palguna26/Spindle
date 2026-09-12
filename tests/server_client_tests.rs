@@ -136,12 +136,129 @@ fn ensuring_active_pane_is_idempotent() {
     assert_eq!(first_payload["created"], true);
 
     let second = client
-        .request("ensure-second", "ensure_active_pane", pane_request)
+        .request("ensure-second", "ensure_active_pane", pane_request.clone())
         .unwrap();
     assert!(second.ok);
     let second_payload = second.payload.unwrap();
     assert_eq!(second_payload["created"], false);
     assert_eq!(first_payload["pane_id"], second_payload["pane_id"]);
+
+    let new_tab = client
+        .request(
+            "ensure-new-tab",
+            "create_tab",
+            serde_json::json!({ "name": "Activity" }),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    let tab_pane = client
+        .request(
+            "ensure-tab-pane",
+            "ensure_active_pane",
+            pane_request.clone(),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(tab_pane["created"], true);
+
+    client
+        .request(
+            "ensure-switch-to-main-tab",
+            "switch_tab",
+            serde_json::json!({ "id": "tab-1" }),
+        )
+        .unwrap();
+    let main_tab_pane = client
+        .request(
+            "ensure-main-tab-pane",
+            "ensure_active_pane",
+            pane_request.clone(),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(main_tab_pane["created"], false);
+    assert_eq!(main_tab_pane["pane_id"], first_payload["pane_id"]);
+    let focused_after_tab_switch = client
+        .request(
+            "ensure-main-tab-snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(
+        focused_after_tab_switch["focused_pane_id"],
+        first_payload["pane_id"]
+    );
+    client
+        .request(
+            "ensure-switch-back-to-activity",
+            "switch_tab",
+            serde_json::json!({ "id": new_tab["tab_id"] }),
+        )
+        .unwrap();
+    client
+        .request(
+            "ensure-refocus-activity",
+            "ensure_active_pane",
+            pane_request.clone(),
+        )
+        .unwrap();
+
+    client
+        .request(
+            "ensure-new-workspace",
+            "create_workspace",
+            serde_json::json!({
+                "name": "Feature",
+                "repository_path": std::env::current_dir().unwrap().to_string_lossy()
+            }),
+        )
+        .unwrap();
+    let workspace_pane = client
+        .request(
+            "ensure-workspace-pane",
+            "ensure_active_pane",
+            pane_request.clone(),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(workspace_pane["created"], true);
+
+    client
+        .request(
+            "ensure-new-space",
+            "create_space",
+            serde_json::json!({ "name": "Review" }),
+        )
+        .unwrap();
+    let space_pane = client
+        .request(
+            "ensure-space-pane",
+            "ensure_active_pane",
+            pane_request.clone(),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(space_pane["created"], true);
+
+    let repeated_space_pane = client
+        .request(
+            "ensure-space-pane-again",
+            "ensure_active_pane",
+            pane_request,
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(repeated_space_pane["created"], false);
+    assert_eq!(repeated_space_pane["pane_id"], space_pane["pane_id"]);
 
     let snapshot = client
         .request(
@@ -152,7 +269,8 @@ fn ensuring_active_pane_is_idempotent() {
         .unwrap()
         .payload
         .unwrap();
-    assert_eq!(snapshot["panes"].as_array().unwrap().len(), 1);
+    assert_eq!(snapshot["panes"].as_array().unwrap().len(), 4);
+    assert_eq!(snapshot["focused_pane_id"], space_pane["pane_id"]);
 
     client
         .request("stop", "stop_server", Value::Object(Default::default()))

@@ -22,6 +22,9 @@ Run `spindle` in a repository. It starts a per-project server, attaches the
 client, and opens a PowerShell pane in an empty active tab. The server remains
 alive when the client detaches.
 
+New tabs and workspaces also start a PowerShell pane in the workspace's
+repository directory.
+
 ```text
 spindle          attach (and start when needed)
 spindle start    start the server

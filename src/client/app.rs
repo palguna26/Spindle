@@ -23,11 +23,7 @@ pub fn run(address: impl Into<String>) -> Result<(), ClientError> {
         terminal_size.1,
         vec!["mouse".into(), "alternate_screen".into()],
     )?;
-    client.request(
-        "ensure-default-pane",
-        "ensure_active_pane",
-        pane_request(terminal_size),
-    )?;
+    ensure_active_default_pane(&client, terminal_size)?;
     let mut terminal = setup_terminal().map_err(ClientError::Io)?;
     let result = event_loop(&mut terminal, &client);
     restore_terminal(&mut terminal).map_err(ClientError::Io)?;
@@ -122,7 +118,7 @@ fn event_loop(
                 PromptResult::Submit(name) => {
                     let target = prompt.target;
                     rename_prompt = None;
-                    submit_rename(client, &snapshot, target, name)?;
+                    submit_rename(client, &snapshot, target, name, terminal_size)?;
                 }
             }
             continue;
@@ -163,9 +159,14 @@ fn event_loop(
             }
             Action::NewTab => {
                 client.request("new-tab", "create_tab", json!({ "name": "Activity" }))?;
+                ensure_active_default_pane(client, terminal_size)?;
             }
             Action::NewPane => {
-                let _ = client.request("new-pane", "create_pane", pane_request(terminal_size));
+                let _ = client.request(
+                    "new-pane",
+                    "create_pane",
+                    pane_request_for_snapshot(&snapshot, terminal_size),
+                );
             }
             Action::CloseTab => {
                 if let Some(tab_id) = active_tab_id(&snapshot) {
@@ -176,6 +177,7 @@ fn event_loop(
                 if let Some(tab_id) = adjacent_tab_id(&snapshot, matches!(pressed, Action::NextTab))
                 {
                     let _ = client.request("switch-tab", "switch_tab", json!({ "id": tab_id }));
+                    ensure_active_default_pane(client, terminal_size)?;
                 }
             }
             Action::NextSpace | Action::PreviousSpace => {
@@ -184,6 +186,7 @@ fn event_loop(
                 {
                     let _ =
                         client.request("switch-space", "switch_space", json!({ "id": space_id }));
+                    ensure_active_default_pane(client, terminal_size)?;
                 }
             }
             Action::NextWorkspace => {
@@ -193,6 +196,7 @@ fn event_loop(
                         "switch_workspace",
                         json!({ "id": workspace_id }),
                     );
+                    ensure_active_default_pane(client, terminal_size)?;
                 }
             }
             Action::StopFocusedPane => {
@@ -228,22 +232,9 @@ fn event_loop(
                 } else {
                     "vertical"
                 };
-                let cwd = std::env::current_dir()
-                    .map_err(ClientError::Io)?
-                    .to_string_lossy()
-                    .into_owned();
-                let _ = client.request(
-                    "split",
-                    "split_pane",
-                    json!({
-                        "direction": direction,
-                        "command": "powershell.exe",
-                        "args": ["-NoLogo", "-NoProfile"],
-                        "cwd": cwd,
-                        "cols": pane_size(terminal_size).0,
-                        "rows": pane_size(terminal_size).1
-                    }),
-                );
+                let mut request = pane_request_for_snapshot(&snapshot, terminal_size);
+                request["direction"] = json!(direction);
+                let _ = client.request("split", "split_pane", request);
             }
             Action::ResizeSmaller | Action::ResizeLarger => {
                 if let Some(ref pane_id) = snapshot.focused_pane_id {
@@ -312,6 +303,7 @@ fn submit_rename(
     snapshot: &SessionSnapshot,
     target: RenameTarget,
     name: String,
+    terminal_size: (u16, u16),
 ) -> Result<(), ClientError> {
     if matches!(
         target,
@@ -364,11 +356,13 @@ fn submit_rename(
                 "create_workspace",
                 json!({ "name": name, "repository_path": repository_path }),
             )?;
+            ensure_active_default_pane(client, terminal_size)?;
             return Ok(());
         }
         RenameTarget::Space => ("rename_space", Some(snapshot.active_space_id.clone())),
         RenameTarget::CreateSpace => {
             let _ = client.request("create-space", "create_space", json!({ "name": name }))?;
+            ensure_active_default_pane(client, terminal_size)?;
             return Ok(());
         }
         RenameTarget::DeleteWorkspace | RenameTarget::DeleteSpace => unreachable!(),
@@ -379,6 +373,7 @@ fn submit_rename(
                     "switch_workspace",
                     json!({ "id": id }),
                 )?;
+                ensure_active_default_pane(client, terminal_size)?;
             }
             return Ok(());
         }
@@ -474,13 +469,14 @@ fn execute_action(
                 "create_tab",
                 json!({ "name": "Activity" }),
             )?;
+            ensure_active_default_pane(client, terminal_size)?;
             Ok(false)
         }
         Action::NewPane => {
             let _ = client.request(
                 "palette-new-pane",
                 "create_pane",
-                pane_request(terminal_size),
+                pane_request_for_snapshot(snapshot, terminal_size),
             );
             Ok(false)
         }
@@ -493,6 +489,7 @@ fn execute_action(
         Action::NextTab | Action::PreviousTab => {
             if let Some(tab_id) = adjacent_tab_id(snapshot, matches!(pressed, Action::NextTab)) {
                 let _ = client.request("palette-switch-tab", "switch_tab", json!({ "id": tab_id }));
+                ensure_active_default_pane(client, terminal_size)?;
             }
             Ok(false)
         }
@@ -505,6 +502,7 @@ fn execute_action(
                     "switch_space",
                     json!({ "id": space_id }),
                 );
+                ensure_active_default_pane(client, terminal_size)?;
             }
             Ok(false)
         }
@@ -515,6 +513,7 @@ fn execute_action(
                     "switch_workspace",
                     json!({ "id": workspace_id }),
                 );
+                ensure_active_default_pane(client, terminal_size)?;
             }
             Ok(false)
         }
@@ -560,11 +559,9 @@ fn execute_action(
             } else {
                 "vertical"
             };
-            let cwd = std::env::current_dir()
-                .map_err(ClientError::Io)?
-                .to_string_lossy()
-                .into_owned();
-            let _ = client.request("palette-split", "split_pane", json!({ "direction": direction, "command": "powershell.exe", "args": ["-NoLogo", "-NoProfile"], "cwd": cwd, "cols": pane_size(terminal_size).0, "rows": pane_size(terminal_size).1 }));
+            let mut request = pane_request_for_snapshot(snapshot, terminal_size);
+            request["direction"] = json!(direction);
+            let _ = client.request("palette-split", "split_pane", request);
             Ok(false)
         }
         Action::ResizeSmaller | Action::ResizeLarger => {
@@ -646,6 +643,32 @@ fn pane_request(terminal_size: (u16, u16)) -> serde_json::Value {
         "cols": cols,
         "rows": rows
     })
+}
+
+fn pane_request_for_snapshot(
+    snapshot: &SessionSnapshot,
+    terminal_size: (u16, u16),
+) -> serde_json::Value {
+    let mut request = pane_request(terminal_size);
+    if let Some(repository_path) =
+        active_workspace(snapshot).and_then(|workspace| workspace.repository_path.as_deref())
+    {
+        request["cwd"] = json!(repository_path);
+    }
+    request
+}
+
+fn ensure_active_default_pane(
+    client: &ControlClient,
+    terminal_size: (u16, u16),
+) -> Result<(), ClientError> {
+    let snapshot = current_snapshot(client)?;
+    client.request(
+        "ensure-default-pane",
+        "ensure_active_pane",
+        pane_request_for_snapshot(&snapshot, terminal_size),
+    )?;
+    Ok(())
 }
 
 fn key_code_bytes(code: KeyCode) -> Option<Vec<u8>> {

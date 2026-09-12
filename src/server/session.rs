@@ -352,13 +352,27 @@ impl Session {
     }
 
     pub fn ensure_active_pane(&mut self, request: CreatePaneRequest) -> Result<Value, String> {
-        let existing_pane = self
+        let focused_pane = self.snapshot.focused_pane_id.clone();
+        let pane_ids = self
             .active_tab_mut()?
             .layout
             .as_ref()
-            .and_then(|layout| layout.pane_ids().into_iter().next())
-            .map(str::to_owned);
+            .map(|layout| {
+                layout
+                    .pane_ids()
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let existing_pane = pane_ids.first().cloned();
         if let Some(pane_id) = existing_pane {
+            if !focused_pane
+                .as_deref()
+                .is_some_and(|focused| pane_ids.iter().any(|id| id == focused))
+            {
+                self.snapshot.focused_pane_id = Some(pane_id.clone());
+            }
             return Ok(serde_json::json!({ "pane_id": pane_id, "created": false }));
         }
 

@@ -24,7 +24,8 @@ spindle attach
 ```
 
 Attaching to an empty active tab starts one PowerShell pane. Reattaching does
-not add another pane when that tab already has one.
+not add another pane when that tab already has one. New tabs and workspaces
+also start a pane in the workspace's repository directory.
 
 Running `spindle` without a server starts the server and attaches. The server
 runs independently of the attached terminal.

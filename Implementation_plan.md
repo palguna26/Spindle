@@ -49,6 +49,8 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
 - [ ] Closing the last pane/tab follows the same lifecycle rule as the
   reference instead of leaving an unexplained blank canvas.
 - [ ] Show shell-start errors in the UI and keep the session recoverable.
+- [x] Wire attach, tab/workspace/space creation, and container switching to
+  idempotent shell creation using the active workspace repository path.
 - [ ] Cover fresh start, new containers, concurrent attach, detach/reattach,
   failed executable, and restart in integration tests.
 
