@@ -2,6 +2,7 @@ mod layout;
 mod navigation;
 
 use super::context_menu::ContextMenu;
+use super::selection::TextSelection;
 use crate::model::status::PaneStatus;
 use crate::server::session::SessionSnapshot;
 use layout::main_areas;
@@ -75,6 +76,43 @@ pub fn render_with_connection(frame: &mut Frame<'_>, snapshot: &SessionSnapshot,
         Span::raw(format!("  {}", active_title(snapshot))),
     ]);
     frame.render_widget(Paragraph::new(chrome), footer_area(frame.area()));
+}
+
+pub(crate) fn render_selection(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    selection: &TextSelection,
+) {
+    if !selection.has_range() {
+        return;
+    }
+    let Some(pane) = pane_rectangles(snapshot, pane_content_area(frame.area()))
+        .into_iter()
+        .find(|pane| pane.pane_id == selection.pane_id)
+    else {
+        return;
+    };
+    let inner = Block::default().borders(Borders::ALL).inner(pane.rect);
+    let ((start_row, start_col), (end_row, end_col)) = selection.ordered();
+    for row in start_row..=end_row {
+        if row >= inner.height {
+            break;
+        }
+        let first_col = if row == start_row { start_col } else { 0 };
+        let last_col = if row == end_row {
+            end_col
+        } else {
+            inner.width.saturating_sub(1)
+        };
+        for col in first_col..=last_col {
+            if col >= inner.width {
+                break;
+            }
+            if let Some(cell) = frame.buffer_mut().cell_mut((inner.x + col, inner.y + row)) {
+                cell.set_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+            }
+        }
+    }
 }
 
 fn footer_area(area: Rect) -> Rect {
@@ -215,13 +253,20 @@ pub fn status_color(status: &PaneStatus) -> Color {
 
 #[cfg(test)]
 mod tests {
+    use super::super::selection::TextSelection;
     use super::{
-        active_title, pane_title, pane_title_text, render, render_with_connection, status_color,
+        active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, render,
+        render_selection, render_with_connection, status_color,
     };
+    use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
-    use crate::server::session::{PaneView, Session};
+    use crate::server::session::{
+        PaneView, Session, SessionSnapshot, SpaceView, TabView, WorkspaceView,
+    };
     use ratatui::backend::TestBackend;
+    use ratatui::layout::Rect;
     use ratatui::style::Color;
+    use ratatui::widgets::{Block, Borders};
     use ratatui::Terminal;
 
     #[test]
@@ -271,6 +316,78 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect();
         assert!(content.contains("connection lost"));
+    }
+
+    #[test]
+    fn text_selection_highlights_the_selected_pane_cells() {
+        let snapshot = SessionSnapshot {
+            version: 1,
+            spaces: vec![SpaceView {
+                space_id: "space-1".into(),
+                name: "Default".into(),
+                workspaces: vec![WorkspaceView {
+                    workspace_id: "workspace-1".into(),
+                    name: "Project".into(),
+                    repository_path: None,
+                    branch: None,
+                    tabs: vec![TabView {
+                        tab_id: "tab-1".into(),
+                        name: "Main".into(),
+                        layout: Some(LayoutNode::pane("pane-1")),
+                        focused_pane_id: Some("pane-1".into()),
+                        zoomed: false,
+                    }],
+                    active_tab_id: "tab-1".into(),
+                }],
+                active_workspace_id: "workspace-1".into(),
+            }],
+            active_space_id: "space-1".into(),
+            panes: vec![PaneView {
+                pane_id: "pane-1".into(),
+                command: "powershell.exe".into(),
+                args: Vec::new(),
+                cwd: "C:/".into(),
+                cols: 80,
+                rows: 24,
+                label: None,
+                status: PaneStatus::Running,
+                scrollback_bytes: 0,
+                scrollback: Vec::new(),
+                screen: "hello".into(),
+                cursor: (0, 0),
+                title: String::new(),
+                alternate_screen: false,
+                mouse_reporting: false,
+                mouse_release: false,
+                mouse_motion: false,
+                mouse_any_motion: false,
+                sgr_mouse: false,
+                utf8_mouse: false,
+                right_click_passthrough: false,
+            }],
+            focused_pane_id: Some("pane-1".into()),
+            event_sequence: 0,
+        };
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 80, 24);
+        let pane_rect = pane_rectangles(&snapshot, pane_content_area(area))[0].rect;
+        let inner = Block::default().borders(Borders::ALL).inner(pane_rect);
+        let mut selection = TextSelection::new("pane-1".into(), inner, inner.x, inner.y);
+        selection.drag(inner.x + 2, inner.y);
+
+        terminal
+            .draw(|frame| {
+                render_with_connection(frame, &snapshot, true);
+                render_selection(frame, &snapshot, &selection);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer.cell((inner.x, inner.y)).unwrap().bg, Color::Cyan);
+        assert_eq!(
+            buffer.cell((inner.x + 3, inner.y)).unwrap().bg,
+            Color::Reset
+        );
     }
 
     #[test]

@@ -3,6 +3,7 @@ use super::input::{action, is_prefix, Action};
 use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
 use super::renderer;
+use super::selection::TextSelection;
 use super::{ClientError, ControlClient};
 use crate::model::layout::Direction as SplitDirection;
 use crate::server::session::SessionSnapshot;
@@ -41,6 +42,7 @@ struct PaneMouseCapture {
 struct MouseState {
     split_drag: Option<SplitDrag>,
     pane_capture: Option<PaneMouseCapture>,
+    selection: Option<TextSelection>,
 }
 
 impl SplitDrag {
@@ -143,6 +145,9 @@ fn event_loop(
         terminal
             .draw(|frame| {
                 renderer::render_with_connection(frame, &snapshot, connected);
+                if let Some(selection) = &mouse_state.selection {
+                    renderer::render_selection(frame, &snapshot, selection);
+                }
                 if palette_open {
                     renderer::render_palette(frame, palette_selected);
                 }
@@ -191,6 +196,7 @@ fn event_loop(
         if key.kind != KeyEventKind::Press {
             continue;
         }
+        mouse_state.selection = None;
         if let Some(prompt) = &mut rename_prompt {
             match prompt.apply_key(key.code) {
                 PromptResult::Continue => {}
@@ -388,6 +394,7 @@ fn handle_mouse(
     let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
     if mouse.kind == MouseEventKind::Down(MouseButton::Right) {
         mouse_state.split_drag = None;
+        mouse_state.selection = None;
         if context_menu.is_some() {
             *context_menu = None;
         } else if forward_mouse_to_pane(
@@ -445,6 +452,10 @@ fn handle_mouse(
             return Ok(());
         }
         mouse_state.split_drag = None;
+        mouse_state.selection = None;
+        if begin_text_selection(client, snapshot, area, mouse, mouse_state)? {
+            return Ok(());
+        }
     }
     if matches!(
         mouse.kind,
@@ -467,6 +478,30 @@ fn handle_mouse(
             }
             if releasing {
                 mouse_state.split_drag = None;
+            }
+        }
+        return Ok(());
+    }
+    if matches!(
+        mouse.kind,
+        MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
+    ) && mouse_state.selection.is_some()
+    {
+        let mut selection = mouse_state.selection.take().expect("selection exists");
+        selection.drag(mouse.column, mouse.row);
+        if mouse.kind == MouseEventKind::Drag(MouseButton::Left) {
+            mouse_state.selection = Some(selection);
+        } else {
+            let text = selection.text(
+                snapshot
+                    .panes
+                    .iter()
+                    .find(|pane| pane.pane_id == selection.pane_id)
+                    .map(|pane| pane.screen.as_str())
+                    .unwrap_or_default(),
+            );
+            if selection.has_range() && !text.is_empty() {
+                let _ = super::clipboard::copy_text(&text);
             }
         }
         return Ok(());
@@ -634,6 +669,58 @@ fn forward_mouse_to_pane(
         }
         _ => {}
     }
+    Ok(true)
+}
+
+fn begin_text_selection(
+    client: &ControlClient,
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    mouse: MouseEvent,
+    mouse_state: &mut MouseState,
+) -> Result<bool, ClientError> {
+    let Some(pane) = renderer::pane_rectangles(snapshot, renderer::pane_content_area(area))
+        .into_iter()
+        .find(|pane| {
+            let inner = Rect::new(
+                pane.rect.x.saturating_add(1),
+                pane.rect.y.saturating_add(1),
+                pane.rect.width.saturating_sub(2),
+                pane.rect.height.saturating_sub(2),
+            );
+            mouse.column >= inner.x
+                && mouse.column < inner.right()
+                && mouse.row >= inner.y
+                && mouse.row < inner.bottom()
+        })
+    else {
+        return Ok(false);
+    };
+    if snapshot
+        .panes
+        .iter()
+        .find(|candidate| candidate.pane_id == pane.pane_id)
+        .is_none_or(|pane| pane.mouse_reporting)
+    {
+        return Ok(false);
+    }
+    let inner = Rect::new(
+        pane.rect.x.saturating_add(1),
+        pane.rect.y.saturating_add(1),
+        pane.rect.width.saturating_sub(2),
+        pane.rect.height.saturating_sub(2),
+    );
+    client.request(
+        "mouse-focus-selection-pane",
+        "focus_pane",
+        json!({ "pane_id": pane.pane_id.clone() }),
+    )?;
+    mouse_state.selection = Some(TextSelection::new(
+        pane.pane_id,
+        inner,
+        mouse.column,
+        mouse.row,
+    ));
     Ok(true)
 }
 
