@@ -55,11 +55,14 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
   later valid shell request.
 - [x] Repair stale pane IDs in the active layout before ensure-shell, following
   Herdr's invariant that layout panes and pane state must match.
-- [ ] Cover fresh start, new containers, concurrent attach, detach/reattach,
-  and restart in integration tests. The ensure-shell flow now verifies the
-  server snapshot after creation and retries/reports an error instead of
-  leaving a connected empty canvas; the attach/ensure/focused-pane path has an
-  integration regression test.
+- [x] Verify concurrent clients ensuring the initial pane create exactly one
+  shell, matching Herdr's single live pane at workspace startup.
+- [x] Cover new tab/workspace/space shell creation and focus in integration
+  tests. The ensure-shell flow verifies the server snapshot after creation and
+  retries/reports an error instead of leaving a connected empty canvas.
+- [ ] Exercise the real client attach and detach/reattach flow end-to-end; the
+  current integration tests cover the server API and shell recovery, not the
+  rendered Windows TUI.
 
 Reference: Herdr `Workspace::new`, `create_tab_with_runtime`, and quick-start
 "Create a workspace" / "Detach and come back". Spindle: `Session::default`,

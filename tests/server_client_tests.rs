@@ -509,6 +509,71 @@ fn ensuring_active_pane_is_idempotent_and_restores_tab_focus() {
 }
 
 #[test]
+fn concurrent_clients_ensure_only_one_initial_shell() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+    let pane_request = serde_json::json!({
+        "command": "cmd.exe",
+        "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+        "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+        "cols": 80,
+        "rows": 24
+    });
+    let workers = (0..2)
+        .map(|index| {
+            let client = ControlClient::connect(address.trim()).unwrap();
+            client
+                .attach_with_terminal(100, 30, vec!["alternate_screen".into()])
+                .unwrap();
+            let barrier = barrier.clone();
+            let pane_request = pane_request.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                client
+                    .request(
+                        format!("concurrent-ensure-{index}"),
+                        "ensure_active_pane",
+                        pane_request,
+                    )
+                    .unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+    barrier.wait();
+    let responses = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap())
+        .collect::<Vec<_>>();
+    assert!(responses.iter().all(|response| response.ok));
+    let payloads = responses
+        .iter()
+        .map(|response| response.payload.as_ref().unwrap())
+        .collect::<Vec<_>>();
+    assert_ne!(payloads[0]["created"], payloads[1]["created"]);
+    assert_eq!(payloads[0]["pane_id"], payloads[1]["pane_id"]);
+
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let snapshot = client
+        .request(
+            "concurrent-ensure-snapshot",
+            "get_snapshot",
+            serde_json::json!({}),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    assert_eq!(snapshot["panes"].as_array().unwrap().len(), 1);
+    assert_eq!(snapshot["focused_pane_id"], payloads[0]["pane_id"]);
+
+    client
+        .request("stop", "stop_server", serde_json::json!({}))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn terminal_screen_and_scrollback_survive_server_restart() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
