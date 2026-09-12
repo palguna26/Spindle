@@ -2180,7 +2180,7 @@ fn ensure_active_default_pane(
 ) -> Result<(), ClientError> {
     let snapshot = current_snapshot(client)?;
     if active_workspace(&snapshot).is_none() {
-        return Ok(());
+        return create_workspace_from_current_directory(client, terminal_size);
     }
     let response = client.request(
         "ensure-default-pane",
@@ -2342,11 +2342,13 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
-        adjust_scrollback_offset, apply_scrollback_views, key_code_bytes, page_key_bytes,
-        pane_size, reconnect_requires_reattach, record_action_error, require_server_success,
+        active_tab_id, active_workspace, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
+        adjust_scrollback_offset, apply_scrollback_views, current_snapshot,
+        ensure_active_default_pane, key_code_bytes, page_key_bytes, pane_size,
+        reconnect_requires_reattach, record_action_error, require_server_success,
         snapshot_has_focused_pane, startup_error_action, workspace_id_by_name,
-        CachedScrollbackView, PaneClick, SplitDirection, SplitDrag, StartupErrorAction,
+        CachedScrollbackView, ControlClient, PaneClick, SplitDirection, SplitDrag,
+        StartupErrorAction,
     };
     use crate::protocol::{ProtocolError, Response, PROTOCOL_VERSION};
     use crate::server::session::Session;
@@ -2481,6 +2483,70 @@ mod tests {
             }
             other => panic!("expected server error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn startup_restores_a_workspace_and_shell_after_the_last_workspace_was_closed() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let state_dir = std::env::temp_dir().join(format!(
+            "spindle-client-startup-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&state_dir).unwrap();
+        let server_state = state_dir.clone();
+        let server_thread = std::thread::spawn(move || {
+            crate::server::run(&server_state).expect("test server should exit cleanly")
+        });
+        let endpoint = state_dir.join("server.endpoint");
+        let mut address = None;
+        for _ in 0..80 {
+            if let Ok(found) = std::fs::read_to_string(&endpoint) {
+                if ControlClient::connect(found.trim()).is_ok() {
+                    address = Some(found.trim().to_owned());
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let result = (|| -> Result<(), String> {
+            let address = address.as_deref().ok_or("test server did not start")?;
+            let client = ControlClient::connect(address).map_err(|error| format!("{error:?}"))?;
+            client
+                .attach_with_terminal(100, 30, vec!["mouse".into()])
+                .map_err(|error| format!("{error:?}"))?;
+            let deleted = client
+                .request(
+                    "close-last-workspace",
+                    "delete_workspace",
+                    serde_json::json!({ "id": "workspace-1" }),
+                )
+                .map_err(|error| format!("{error:?}"))?;
+            if !deleted.ok {
+                return Err("the test's last workspace could not be closed".into());
+            }
+
+            ensure_active_default_pane(&client, (100, 30)).map_err(|error| format!("{error:?}"))?;
+            let snapshot = current_snapshot(&client).map_err(|error| format!("{error:?}"))?;
+            if active_workspace(&snapshot).is_none() || !snapshot_has_focused_pane(&snapshot) {
+                return Err(
+                    "startup left the attached session without a workspace and shell".into(),
+                );
+            }
+            Ok(())
+        })();
+        if let Some(address) = address {
+            if let Ok(client) = ControlClient::connect(address) {
+                let _ = client.request("stop-test-server", "stop_server", serde_json::json!({}));
+            }
+            let _ = server_thread.join();
+        } else {
+            drop(server_thread);
+        }
+        let _ = std::fs::remove_dir_all(&state_dir);
+        result.expect("attaching to an empty session should restore a usable workspace");
     }
 
     #[test]

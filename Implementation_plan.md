@@ -51,12 +51,14 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
 - [x] Creating a tab, workspace, or space starts and focuses its first shell.
 - [x] Closing the last pane/tab follows Herdr's workspace lifecycle: close the
   workspace when its final tab/pane closes, select a sibling when present, and
-  show a clear empty-state with a shortcut to create a workspace when none remain.
+  recreate the default workspace when a client remains attached or reattaches,
+  following Herdr's `ensure_default_workspace` behavior.
 - [x] Closing the only pane in a tab removes that tab when sibling tabs exist
   and focuses the remaining active tab, matching Herdr `Workspace::remove_pane`.
 - [x] Make active workspace optional so closing the final workspace does not
-  leave a stale ID; persist/reload the empty state and allow workspace creation
-  to restore a usable shell.
+  leave a stale ID; persist/reload the empty state and recreate a default
+  workspace with a usable shell when a client remains connected or reattaches,
+  following Herdr's automatic workspace recovery.
 - [x] Show shell-start errors in the UI and allow retry or detach.
 - [x] Wire attach, tab/workspace/space creation, and container switching to
   idempotent shell creation using the active workspace repository path.
@@ -66,6 +68,8 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
   Herdr's invariant that layout panes and pane state must match.
 - [x] Verify concurrent clients ensuring the initial pane create exactly one
   shell, matching Herdr's single live pane at workspace startup.
+- [x] Recreate a default workspace and shell when attaching to a persisted
+  session whose last workspace was closed, following Herdr's server loop.
 - [x] Cover new tab/workspace/space shell creation and focus in integration
   tests. The ensure-shell flow verifies the active pane after creation and
   retries/reports an error instead of leaving a connected empty canvas.
@@ -73,8 +77,9 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
   Windows, the installed release showed the PowerShell prompt, accepted a
   command, and reattached to the same live pane with its output intact.
 
-Reference: Herdr `Workspace::new`, `create_tab_with_runtime`, and quick-start
-"Create a workspace" / "Detach and come back". Spindle: `Session::default`,
+Reference: Herdr `Workspace::new`, `create_tab_with_runtime`,
+`App::ensure_default_workspace`, and quick-start "Create a workspace" /
+"Detach and come back". Spindle: `Session::default`,
 `Session::create_tab`, control operations, and `client/app.rs` startup. Review
 commit `68d86ad` as partial startup work; do not count it as completion.
 
