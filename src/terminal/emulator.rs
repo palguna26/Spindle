@@ -12,6 +12,10 @@ pub struct TerminalSnapshot {
     #[serde(default)]
     pub title: String,
     #[serde(default)]
+    pub osc_title: String,
+    #[serde(default)]
+    pub osc_progress: String,
+    #[serde(default)]
     pub alternate_screen: bool,
     #[serde(default)]
     pub mouse_reporting: bool,
@@ -36,6 +40,77 @@ pub struct TerminalEmulator {
     rows: u16,
     cols: u16,
     query_state: QueryState,
+    agent_osc: AgentOscTracker,
+}
+
+const MAX_AGENT_OSC_BYTES: usize = 1024;
+const MAX_AGENT_OSC_CHARS: usize = 256;
+
+#[derive(Default)]
+struct AgentOscTracker {
+    state: AgentOscState,
+    latest_title: String,
+    latest_progress: String,
+}
+
+#[derive(Default)]
+enum AgentOscState {
+    #[default]
+    Ground,
+    Escape,
+    Body(Vec<u8>),
+    EscapeInBody(Vec<u8>),
+}
+
+impl AgentOscTracker {
+    fn observe(&mut self, bytes: &[u8]) {
+        for byte in bytes.iter().copied() {
+            self.state = match std::mem::take(&mut self.state) {
+                AgentOscState::Ground if byte == 0x1b => AgentOscState::Escape,
+                AgentOscState::Ground => AgentOscState::Ground,
+                AgentOscState::Escape if byte == b']' => AgentOscState::Body(Vec::new()),
+                AgentOscState::Escape if byte == 0x1b => AgentOscState::Escape,
+                AgentOscState::Escape => AgentOscState::Ground,
+                AgentOscState::Body(body) if byte == 0x07 => {
+                    self.finish(&body);
+                    AgentOscState::Ground
+                }
+                AgentOscState::Body(body) if byte == 0x1b => AgentOscState::EscapeInBody(body),
+                AgentOscState::Body(mut body) if body.len() < MAX_AGENT_OSC_BYTES => {
+                    body.push(byte);
+                    AgentOscState::Body(body)
+                }
+                AgentOscState::Body(_) => AgentOscState::Ground,
+                AgentOscState::EscapeInBody(body) if byte == b'\\' => {
+                    self.finish(&body);
+                    AgentOscState::Ground
+                }
+                AgentOscState::EscapeInBody(mut body) if body.len() + 1 < MAX_AGENT_OSC_BYTES => {
+                    body.push(0x1b);
+                    body.push(byte);
+                    AgentOscState::Body(body)
+                }
+                AgentOscState::EscapeInBody(_) => AgentOscState::Ground,
+            };
+        }
+    }
+
+    fn finish(&mut self, body: &[u8]) {
+        let Some(separator) = body.iter().position(|byte| *byte == b';') else {
+            return;
+        };
+        let command = &body[..separator];
+        let value: String = String::from_utf8_lossy(&body[separator + 1..])
+            .chars()
+            .filter(|character| !character.is_control())
+            .take(MAX_AGENT_OSC_CHARS)
+            .collect();
+        match command {
+            b"0" | b"2" => self.latest_title = value,
+            b"9" => self.latest_progress = value,
+            _ => {}
+        }
+    }
 }
 
 #[derive(Default)]
@@ -57,10 +132,12 @@ impl TerminalEmulator {
             rows,
             cols,
             query_state: QueryState::Ground,
+            agent_osc: AgentOscTracker::default(),
         }
     }
 
     pub fn process(&mut self, bytes: &[u8]) -> Vec<Vec<u8>> {
+        self.agent_osc.observe(bytes);
         let query_ends = self.cursor_report_query_ends(bytes);
         let mut responses = Vec::with_capacity(query_ends.len());
         let mut start = 0;
@@ -118,6 +195,11 @@ impl TerminalEmulator {
         self.cols = cols;
     }
 
+    pub fn clear_agent_osc_evidence(&mut self) {
+        self.agent_osc.latest_title.clear();
+        self.agent_osc.latest_progress.clear();
+    }
+
     pub fn snapshot(&self) -> TerminalSnapshot {
         let screen = self.parser.screen();
         let mouse_mode = screen.mouse_protocol_mode();
@@ -129,6 +211,8 @@ impl TerminalEmulator {
             cursor: screen.cursor_position(),
             cursor_visible: !screen.hide_cursor(),
             title: screen.title().into(),
+            osc_title: self.agent_osc.latest_title.clone(),
+            osc_progress: self.agent_osc.latest_progress.clone(),
             alternate_screen: screen.alternate_screen(),
             mouse_reporting: mouse_mode != vt100::MouseProtocolMode::None,
             mouse_release: matches!(
@@ -224,6 +308,33 @@ mod tests {
 
         terminal.process(b"\x1b[?1049l");
         assert!(!terminal.snapshot().alternate_screen);
+    }
+
+    #[test]
+    fn osc_progress_is_retained_across_chunks_and_st_termination() {
+        let mut terminal = TerminalEmulator::new(2, 8, 4);
+        terminal.process(b"\x1b]0;Claude\x07");
+        assert_eq!(terminal.snapshot().osc_title, "Claude");
+
+        terminal.process(b"\x1b]9;4;1;");
+        assert_eq!(terminal.snapshot().osc_progress, "");
+
+        terminal.process(b"\x1b\\");
+        assert_eq!(terminal.snapshot().osc_progress, "4;1;");
+
+        terminal.process(b"\x1b]9;4;0;\x07");
+        assert_eq!(terminal.snapshot().osc_progress, "4;0;");
+        terminal.clear_agent_osc_evidence();
+        assert_eq!(terminal.snapshot().osc_title, "");
+        assert_eq!(terminal.snapshot().osc_progress, "");
+    }
+
+    #[test]
+    fn empty_osc_title_clears_retained_title() {
+        let mut terminal = TerminalEmulator::new(2, 8, 4);
+        terminal.process(b"\x1b]2;Claude\x07");
+        terminal.process(b"\x1b]0;\x07");
+        assert_eq!(terminal.snapshot().osc_title, "");
     }
 
     #[test]

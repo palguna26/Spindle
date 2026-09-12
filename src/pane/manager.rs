@@ -151,10 +151,14 @@ impl PaneManager {
         }
         for pane in self.panes.values_mut() {
             if scan_agents && pane.status.is_running() {
-                pane.agent = pane
+                let detected = pane
                     .session
                     .process_id()
                     .and_then(detect::detect_in_process_tree);
+                if detected != pane.agent {
+                    pane.agent = detected;
+                    pane.terminal.clear_agent_osc_evidence();
+                }
             }
             while let Ok(Some(bytes)) = pane.session.try_read_output() {
                 for byte in &bytes {
@@ -174,9 +178,14 @@ impl PaneManager {
 
             if pane.status.is_running() {
                 let terminal = pane.terminal.snapshot();
-                pane.agent_state = pane
-                    .agent
-                    .map(|agent| detect::detect_state(agent, &terminal.contents, &terminal.title));
+                pane.agent_state = pane.agent.map(|agent| {
+                    detect::detect_state_with_osc(
+                        agent,
+                        &terminal.contents,
+                        &terminal.osc_title,
+                        &terminal.osc_progress,
+                    )
+                });
             }
 
             if pane.status.is_running() {

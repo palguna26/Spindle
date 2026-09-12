@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentKind {
+    Claude,
     Codex,
     OpenCode,
 }
@@ -41,6 +42,7 @@ impl AgentState {
 impl AgentKind {
     pub fn label(self) -> &'static str {
         match self {
+            Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::OpenCode => "OpenCode",
         }
@@ -48,9 +50,19 @@ impl AgentKind {
 }
 
 /// Classify only visible, agent-specific signals. Missing signals stay unknown.
-/// The rules follow Herdr's Codex/OpenCode manifests and avoid guessing from
-/// shell activity alone.
+/// The rules follow high-confidence signals from Herdr's agent manifests and
+/// avoid guessing from shell activity alone.
+#[cfg(test)]
 pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> AgentState {
+    detect_state_with_osc(agent, screen, title, "")
+}
+
+pub(crate) fn detect_state_with_osc(
+    agent: AgentKind,
+    screen: &str,
+    title: &str,
+    osc_progress: &str,
+) -> AgentState {
     let screen_lower = screen.to_ascii_lowercase();
     let title_lower = title.to_ascii_lowercase();
     let combined = format!("{title_lower}\n{screen_lower}");
@@ -67,6 +79,7 @@ pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> Agent
                 || codex_recent_blocker(&recent)
         }
         AgentKind::OpenCode => opencode_permission_required(&recent),
+        AgentKind::Claude => claude_permission_required(&recent),
     };
     if blocked {
         return AgentState::Blocked;
@@ -95,16 +108,65 @@ pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> Agent
                 })
                 || has_progress_bar(screen)
         }
+        AgentKind::Claude => claude_is_working(&bottom_three, title),
     };
     if working {
         return AgentState::Working;
     }
 
-    if agent == AgentKind::Codex && !title.trim().is_empty() {
+    let visible_idle = match agent {
+        AgentKind::Codex => !title.trim().is_empty(),
+        AgentKind::Claude => {
+            title.starts_with("\u{2733} ")
+                || osc_progress.starts_with("4;0")
+                || bottom_three
+                    .lines()
+                    .any(|line| line.trim_start().starts_with('\u{276f}'))
+        }
+        AgentKind::OpenCode => false,
+    };
+    if visible_idle {
         AgentState::Idle
     } else {
         AgentState::Unknown
     }
+}
+
+fn claude_permission_required(recent: &str) -> bool {
+    recent.contains("waiting for permission")
+        || recent.contains("do you want to allow this connection?")
+        || recent.contains("review your answers")
+        || (recent.contains("esc to cancel")
+            && (recent.contains("do you want to proceed?")
+                || recent.contains("enter to confirm")
+                || recent.contains("enter to select")
+                || recent.contains("arrow keys to navigate")
+                || recent.contains("tab/arrow keys to navigate")))
+}
+
+fn claude_is_working(bottom: &str, title: &str) -> bool {
+    let title_spinner = title.chars().next().is_some_and(is_claude_spinner)
+        && title.chars().nth(1).is_some_and(char::is_whitespace);
+    title_spinner
+        || bottom.lines().any(|line| {
+            let line = line.trim_start();
+            ((line.starts_with('\u{23f8}') || line.starts_with('\u{23f5}'))
+                && line.contains("esc to interrupt"))
+                || (line.contains("esc to interrupt")
+                    && line.contains('\u{2026}')
+                    && line.chars().next().is_some_and(is_claude_activity_marker))
+        })
+}
+
+fn is_claude_spinner(character: char) -> bool {
+    ('\u{2800}'..='\u{28ff}').contains(&character) || ('\u{25d0}'..='\u{25d3}').contains(&character)
+}
+
+fn is_claude_activity_marker(character: char) -> bool {
+    matches!(
+        character,
+        '*' | '\u{00b7}' | '\u{2722}' | '\u{2736}' | '\u{273b}' | '\u{273d}'
+    )
 }
 
 fn opencode_permission_required(recent: &str) -> bool {
@@ -198,11 +260,12 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         .next()
         .unwrap_or(name)
         .to_ascii_lowercase();
-    let basename = [".exe", ".cmd", ".bat"]
+    let basename = [".exe", ".cmd", ".bat", ".ps1"]
         .iter()
         .find_map(|suffix| basename.strip_suffix(suffix))
         .unwrap_or(&basename);
     match basename {
+        "claude" | "claude-code" => Some(AgentKind::Claude),
         "codex" => Some(AgentKind::Codex),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
         _ => None,
@@ -291,7 +354,7 @@ pub(crate) fn detect_in_process_tree(root_pid: u32) -> Option<AgentKind> {
         if descendant_ids.contains(&process.pid)
             && matches!(
                 process.name.to_ascii_lowercase().as_str(),
-                "cmd.exe" | "node.exe"
+                "cmd.exe" | "node.exe" | "powershell.exe" | "pwsh.exe"
             )
         {
             process.command_line = read_command_line(process.pid);
@@ -449,6 +512,10 @@ fn identify_process_command(name: &str, command_line: Option<&str>) -> Option<Ag
                 None
             }
         }),
+        "powershell" | "pwsh" => argv
+            .iter()
+            .find(|arg| arg.to_ascii_lowercase().ends_with(".ps1"))
+            .and_then(|script| identify_process(script)),
         _ => None,
     }
 }
@@ -483,12 +550,14 @@ pub(crate) fn detect_in_process_tree(_root_pid: u32) -> Option<AgentKind> {
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_state, identify_descendant, identify_process, identify_process_command, AgentKind,
-        AgentState, ProcessEntry,
+        detect_state, detect_state_with_osc, identify_descendant, identify_process,
+        identify_process_command, AgentKind, AgentState, ProcessEntry,
     };
 
     #[test]
     fn recognizes_herdr_agent_process_names() {
+        assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
+        assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
         assert_eq!(identify_process("opencode2"), Some(AgentKind::OpenCode));
         assert_eq!(
@@ -497,6 +566,36 @@ mod tests {
         );
         assert_eq!(identify_process("powershell.exe"), None);
         assert_eq!(identify_process("node.exe"), None);
+    }
+
+    #[test]
+    fn follows_herdr_claude_state_signals_and_priority() {
+        assert_eq!(
+            detect_state_with_osc(
+                AgentKind::Claude,
+                "Do you want to proceed?\nEsc to cancel\nEnter to confirm",
+                "",
+                "4;0;"
+            ),
+            AgentState::Blocked,
+            "a visible blocker must beat stale idle progress"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Claude, "", "\u{280b} Claude"),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Claude, "", "Claude"),
+            AgentState::Unknown
+        );
+        assert_eq!(
+            detect_state_with_osc(AgentKind::Claude, "", "", "4;0;"),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(AgentKind::Claude, "Ready\n❯ ", ""),
+            AgentState::Idle
+        );
     }
 
     #[test]
@@ -556,6 +655,21 @@ mod tests {
         assert_eq!(
             identify_process_command("cmd.exe", Some(r#"cmd.exe /C "echo codex.cmd""#)),
             None
+        );
+    }
+
+    #[test]
+    fn identifies_claude_through_a_windows_command_shim() {
+        assert_eq!(
+            identify_process_command("cmd.exe", Some(r#"cmd.exe /C "claude.cmd""#)),
+            Some(AgentKind::Claude)
+        );
+        assert_eq!(
+            identify_process_command(
+                "powershell.exe",
+                Some(r#"powershell.exe -File "C:\tools\claude.ps1""#)
+            ),
+            Some(AgentKind::Claude)
         );
     }
 
