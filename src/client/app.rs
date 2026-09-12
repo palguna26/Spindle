@@ -43,6 +43,23 @@ struct MouseState {
     split_drag: Option<SplitDrag>,
     pane_capture: Option<PaneMouseCapture>,
     selection: Option<TextSelection>,
+    last_click: Option<PaneClick>,
+}
+
+struct PaneClick {
+    pane_id: String,
+    row: u16,
+    col: u16,
+    at: Instant,
+}
+
+impl PaneClick {
+    fn is_double_click_for(&self, pane_id: &str, row: u16, col: u16, now: Instant) -> bool {
+        self.pane_id == pane_id
+            && now.duration_since(self.at) <= Duration::from_millis(350)
+            && self.row.abs_diff(row) <= 1
+            && self.col.abs_diff(col) <= 1
+    }
 }
 
 impl SplitDrag {
@@ -197,6 +214,7 @@ fn event_loop(
             continue;
         }
         mouse_state.selection = None;
+        mouse_state.last_click = None;
         if let Some(prompt) = &mut rename_prompt {
             match prompt.apply_key(key.code) {
                 PromptResult::Continue => {}
@@ -395,6 +413,7 @@ fn handle_mouse(
     if mouse.kind == MouseEventKind::Down(MouseButton::Right) {
         mouse_state.split_drag = None;
         mouse_state.selection = None;
+        mouse_state.last_click = None;
         if context_menu.is_some() {
             *context_menu = None;
         } else if forward_mouse_to_pane(
@@ -442,6 +461,7 @@ fn handle_mouse(
                 SplitDirection::Vertical => mouse.row,
             };
             mouse_state.pane_capture = None;
+            mouse_state.last_click = None;
             mouse_state.split_drag = Some(SplitDrag {
                 path: handle.path,
                 direction: handle.direction,
@@ -488,10 +508,14 @@ fn handle_mouse(
     ) && mouse_state.selection.is_some()
     {
         let mut selection = mouse_state.selection.take().expect("selection exists");
-        selection.drag(mouse.column, mouse.row);
         if mouse.kind == MouseEventKind::Drag(MouseButton::Left) {
+            selection.word_selection = false;
+            selection.drag(mouse.column, mouse.row);
             mouse_state.selection = Some(selection);
         } else {
+            if !selection.word_selection {
+                selection.drag(mouse.column, mouse.row);
+            }
             let text = selection.text(
                 snapshot
                     .panes
@@ -694,14 +718,19 @@ fn begin_text_selection(
                 && mouse.row < inner.bottom()
         })
     else {
+        mouse_state.last_click = None;
         return Ok(false);
     };
-    if snapshot
+    let Some(pane_snapshot) = snapshot
         .panes
         .iter()
         .find(|candidate| candidate.pane_id == pane.pane_id)
-        .is_none_or(|pane| pane.mouse_reporting)
-    {
+    else {
+        mouse_state.last_click = None;
+        return Ok(false);
+    };
+    if pane_snapshot.mouse_reporting {
+        mouse_state.last_click = None;
         return Ok(false);
     }
     let inner = Rect::new(
@@ -715,12 +744,38 @@ fn begin_text_selection(
         "focus_pane",
         json!({ "pane_id": pane.pane_id.clone() }),
     )?;
-    mouse_state.selection = Some(TextSelection::new(
-        pane.pane_id,
-        inner,
-        mouse.column,
-        mouse.row,
-    ));
+    let row = mouse.row.saturating_sub(inner.y);
+    let col = mouse.column.saturating_sub(inner.x);
+    let now = Instant::now();
+    let double_click = mouse_state
+        .last_click
+        .as_ref()
+        .is_some_and(|last| last.is_double_click_for(&pane.pane_id, row, col, now));
+    if double_click {
+        let word = pane_snapshot
+            .screen
+            .lines()
+            .nth(usize::from(row))
+            .and_then(|line| super::selection::word_range(line, col));
+        mouse_state.selection = Some(match word {
+            Some((start, end)) => TextSelection::word(pane.pane_id.clone(), inner, row, start, end),
+            None => TextSelection::new(pane.pane_id.clone(), inner, mouse.column, mouse.row),
+        });
+        mouse_state.last_click = None;
+    } else {
+        mouse_state.selection = Some(TextSelection::new(
+            pane.pane_id.clone(),
+            inner,
+            mouse.column,
+            mouse.row,
+        ));
+        mouse_state.last_click = Some(PaneClick {
+            pane_id: pane.pane_id,
+            row,
+            col,
+            at: now,
+        });
+    }
     Ok(true)
 }
 
@@ -1353,11 +1408,13 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
 mod tests {
     use super::{
         active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id, key_code_bytes,
-        pane_size, reconnect_requires_reattach, workspace_id_by_name, SplitDirection, SplitDrag,
+        pane_size, reconnect_requires_reattach, workspace_id_by_name, PaneClick, SplitDirection,
+        SplitDrag,
     };
     use crate::server::session::Session;
     use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
     use ratatui::layout::Rect;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn common_keys_encode_for_a_pty() {
@@ -1385,6 +1442,21 @@ mod tests {
         assert!((drag.ratio_at(mouse(58)) - 0.6).abs() < f32::EPSILON);
         assert!((drag.ratio_at(mouse(0)) - 0.1).abs() < f32::EPSILON);
         assert!((drag.ratio_at(mouse(100)) - 0.9).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn pane_double_click_matches_herdr_time_and_cell_tolerance() {
+        let now = Instant::now();
+        let first = PaneClick {
+            pane_id: "pane-1".into(),
+            row: 4,
+            col: 8,
+            at: now,
+        };
+        assert!(first.is_double_click_for("pane-1", 5, 9, now + Duration::from_millis(350)));
+        assert!(!first.is_double_click_for("pane-2", 4, 8, now));
+        assert!(!first.is_double_click_for("pane-1", 6, 8, now));
+        assert!(!first.is_double_click_for("pane-1", 4, 8, now + Duration::from_millis(351)));
     }
 
     #[test]
