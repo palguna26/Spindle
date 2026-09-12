@@ -31,6 +31,18 @@ struct SplitDrag {
     last_sent_at: Option<Instant>,
 }
 
+struct PaneMouseCapture {
+    pane_id: String,
+    rect: Rect,
+    button: MouseButton,
+}
+
+#[derive(Default)]
+struct MouseState {
+    split_drag: Option<SplitDrag>,
+    pane_capture: Option<PaneMouseCapture>,
+}
+
 impl SplitDrag {
     fn ratio_at(&self, mouse: MouseEvent) -> f32 {
         let (pointer, origin, extent) = match self.direction {
@@ -67,7 +79,12 @@ pub fn run(address: impl Into<String>) -> Result<(), ClientError> {
 fn setup_terminal() -> io::Result<Terminal<CrosstermBackend<io::Stdout>>> {
     enable_raw_mode()?;
     let mut output = stdout();
-    execute!(output, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(
+        output,
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        crossterm::style::Print("\x1b[?1002h\x1b[?1003h")
+    )?;
     Terminal::new(CrosstermBackend::new(output))
 }
 
@@ -76,6 +93,7 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io
     execute!(
         terminal.backend_mut(),
         DisableMouseCapture,
+        crossterm::style::Print("\x1b[?1003l\x1b[?1002l"),
         LeaveAlternateScreen
     )?;
     terminal.show_cursor()
@@ -91,7 +109,7 @@ fn event_loop(
     let mut rename_prompt: Option<RenamePrompt> = None;
     let mut context_menu: Option<ContextMenu> = None;
     let mut last_pane_sizes = None;
-    let mut split_drag = None;
+    let mut mouse_state = MouseState::default();
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
     loop {
@@ -161,7 +179,7 @@ fn event_loop(
                     &snapshot,
                     mouse,
                     terminal_size,
-                    &mut split_drag,
+                    &mut mouse_state,
                     &mut context_menu,
                     &mut rename_prompt,
                 )?;
@@ -363,15 +381,23 @@ fn handle_mouse(
     snapshot: &SessionSnapshot,
     mouse: MouseEvent,
     terminal_size: (u16, u16),
-    split_drag: &mut Option<SplitDrag>,
+    mouse_state: &mut MouseState,
     context_menu: &mut Option<ContextMenu>,
     rename_prompt: &mut Option<RenamePrompt>,
 ) -> Result<(), ClientError> {
     let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
     if mouse.kind == MouseEventKind::Down(MouseButton::Right) {
-        *split_drag = None;
+        mouse_state.split_drag = None;
         if context_menu.is_some() {
             *context_menu = None;
+        } else if forward_mouse_to_pane(
+            client,
+            snapshot,
+            area,
+            mouse,
+            &mut mouse_state.pane_capture,
+        )? {
+            return Ok(());
         } else {
             *context_menu = renderer::hit_test(snapshot, area, mouse)
                 .and_then(|target| ContextMenu::from_target(target, mouse.column, mouse.row));
@@ -392,56 +418,64 @@ fn handle_mouse(
         }
         return Ok(());
     }
-    match mouse.kind {
-        MouseEventKind::Down(MouseButton::Left) => {
-            let pane_area = renderer::pane_content_area(area);
-            if let Some(handle) = renderer::split_handles(snapshot, pane_area)
-                .into_iter()
-                .find(|handle| {
-                    let point = (mouse.column, mouse.row);
-                    point.0 >= handle.hit_rect.x
-                        && point.0 < handle.hit_rect.right()
-                        && point.1 >= handle.hit_rect.y
-                        && point.1 < handle.hit_rect.bottom()
-                })
-            {
-                let pointer = match handle.direction {
-                    SplitDirection::Horizontal => mouse.column,
-                    SplitDirection::Vertical => mouse.row,
-                };
-                *split_drag = Some(SplitDrag {
-                    path: handle.path,
-                    direction: handle.direction,
-                    area: handle.area,
-                    grab_offset: i32::from(handle.pos) - i32::from(pointer),
-                    last_sent_at: None,
-                });
-                return Ok(());
-            }
-            *split_drag = None;
-        }
-        MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left) => {
-            let releasing = mouse.kind == MouseEventKind::Up(MouseButton::Left);
-            if let Some(drag) = split_drag.as_mut() {
-                let now = Instant::now();
-                let due = drag
-                    .last_sent_at
-                    .is_none_or(|last| now.duration_since(last) >= SPLIT_DRAG_INTERVAL);
-                if releasing || due {
-                    client.request(
-                        "mouse-set-split-ratio",
-                        "set_split_ratio",
-                        json!({ "path": drag.path, "ratio": drag.ratio_at(mouse) }),
-                    )?;
-                    drag.last_sent_at = Some(now);
-                }
-                if releasing {
-                    *split_drag = None;
-                }
-            }
+    if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+        let pane_area = renderer::pane_content_area(area);
+        if let Some(handle) = renderer::split_handles(snapshot, pane_area)
+            .into_iter()
+            .find(|handle| {
+                let point = (mouse.column, mouse.row);
+                point.0 >= handle.hit_rect.x
+                    && point.0 < handle.hit_rect.right()
+                    && point.1 >= handle.hit_rect.y
+                    && point.1 < handle.hit_rect.bottom()
+            })
+        {
+            let pointer = match handle.direction {
+                SplitDirection::Horizontal => mouse.column,
+                SplitDirection::Vertical => mouse.row,
+            };
+            mouse_state.pane_capture = None;
+            mouse_state.split_drag = Some(SplitDrag {
+                path: handle.path,
+                direction: handle.direction,
+                area: handle.area,
+                grab_offset: i32::from(handle.pos) - i32::from(pointer),
+                last_sent_at: None,
+            });
             return Ok(());
         }
-        _ => return Ok(()),
+        mouse_state.split_drag = None;
+    }
+    if matches!(
+        mouse.kind,
+        MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
+    ) && mouse_state.split_drag.is_some()
+    {
+        let releasing = mouse.kind == MouseEventKind::Up(MouseButton::Left);
+        if let Some(drag) = mouse_state.split_drag.as_mut() {
+            let now = Instant::now();
+            let due = drag
+                .last_sent_at
+                .is_none_or(|last| now.duration_since(last) >= SPLIT_DRAG_INTERVAL);
+            if releasing || due {
+                client.request(
+                    "mouse-set-split-ratio",
+                    "set_split_ratio",
+                    json!({ "path": drag.path, "ratio": drag.ratio_at(mouse) }),
+                )?;
+                drag.last_sent_at = Some(now);
+            }
+            if releasing {
+                mouse_state.split_drag = None;
+            }
+        }
+        return Ok(());
+    }
+    if forward_mouse_to_pane(client, snapshot, area, mouse, &mut mouse_state.pane_capture)? {
+        return Ok(());
+    }
+    if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+        return Ok(());
     }
     let Some(target) = renderer::hit_test(snapshot, area, mouse) else {
         return Ok(());
@@ -494,6 +528,126 @@ fn handle_mouse(
         }
     }
     Ok(())
+}
+
+fn forward_mouse_to_pane(
+    client: &ControlClient,
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    mouse: MouseEvent,
+    capture: &mut Option<PaneMouseCapture>,
+) -> Result<bool, ClientError> {
+    let captured = match mouse.kind {
+        MouseEventKind::Drag(button) | MouseEventKind::Up(button) => capture
+            .as_ref()
+            .filter(|capture| capture.button == button)
+            .map(|capture| (capture.pane_id.clone(), capture.rect)),
+        _ => None,
+    };
+    let target = if matches!(mouse.kind, MouseEventKind::Drag(_) | MouseEventKind::Up(_)) {
+        captured
+    } else {
+        renderer::pane_rectangles(snapshot, renderer::pane_content_area(area))
+            .into_iter()
+            .find(|pane| {
+                let inner = Rect::new(
+                    pane.rect.x.saturating_add(1),
+                    pane.rect.y.saturating_add(1),
+                    pane.rect.width.saturating_sub(2),
+                    pane.rect.height.saturating_sub(2),
+                );
+                mouse.column >= inner.x
+                    && mouse.column < inner.right()
+                    && mouse.row >= inner.y
+                    && mouse.row < inner.bottom()
+            })
+            .map(|pane| (pane.pane_id, pane.rect))
+    };
+    let Some((pane_id, rect)) = target else {
+        clear_mouse_capture(capture, mouse.kind);
+        return Ok(false);
+    };
+    let Some(pane) = snapshot.panes.iter().find(|pane| pane.pane_id == pane_id) else {
+        clear_mouse_capture(capture, mouse.kind);
+        return Ok(false);
+    };
+    let right_click = mouse.kind == MouseEventKind::Down(MouseButton::Right);
+    let reports_kind = match mouse.kind {
+        MouseEventKind::Down(_) => pane.mouse_reporting,
+        MouseEventKind::Up(_) => pane.mouse_release,
+        MouseEventKind::Drag(_) => pane.mouse_motion,
+        MouseEventKind::Moved => pane.mouse_any_motion,
+        MouseEventKind::ScrollUp
+        | MouseEventKind::ScrollDown
+        | MouseEventKind::ScrollLeft
+        | MouseEventKind::ScrollRight => pane.mouse_reporting,
+    };
+    if !reports_kind || (right_click && !pane.right_click_passthrough) {
+        clear_mouse_capture(capture, mouse.kind);
+        return Ok(false);
+    }
+
+    let x = mouse
+        .column
+        .saturating_sub(rect.x.saturating_add(1))
+        .saturating_add(1)
+        .clamp(1, pane.cols.max(1));
+    let y = mouse
+        .row
+        .saturating_sub(rect.y.saturating_add(1))
+        .saturating_add(1)
+        .clamp(1, pane.rows.max(1));
+    let Some(bytes) =
+        crate::terminal::encode_mouse_event(mouse, x, y, pane.sgr_mouse, pane.utf8_mouse)
+    else {
+        clear_mouse_capture(capture, mouse.kind);
+        return Ok(false);
+    };
+
+    if matches!(mouse.kind, MouseEventKind::Down(_)) {
+        client.request(
+            "mouse-focus-terminal-pane",
+            "focus_pane",
+            json!({ "pane_id": pane_id }),
+        )?;
+    }
+    client.interactive_request(
+        "mouse-terminal-input",
+        "send_input",
+        json!({ "pane_id": pane_id, "bytes": bytes }),
+    )?;
+
+    match mouse.kind {
+        MouseEventKind::Down(button) => {
+            *capture = Some(PaneMouseCapture {
+                pane_id,
+                rect,
+                button,
+            });
+        }
+        MouseEventKind::Up(button)
+            if capture
+                .as_ref()
+                .is_some_and(|capture| capture.button == button) =>
+        {
+            *capture = None;
+        }
+        _ => {}
+    }
+    Ok(true)
+}
+
+fn clear_mouse_capture(capture: &mut Option<PaneMouseCapture>, kind: MouseEventKind) {
+    match kind {
+        MouseEventKind::Up(button)
+            if capture
+                .as_ref()
+                .is_some_and(|capture| capture.button == button) =>
+        {
+            *capture = None;
+        }
+        _ => {}
+    }
 }
 
 fn activate_context_menu(
@@ -585,6 +739,14 @@ fn activate_context_menu(
                     client.request(
                         "context-zoom-pane",
                         "toggle_pane_zoom",
+                        json!({ "pane_id": pane_id }),
+                    )?;
+                    Ok(None)
+                }
+                ContextMenuAction::ToggleRightClickPassthrough => {
+                    client.request(
+                        "context-toggle-right-click",
+                        "toggle_right_click_passthrough",
                         json!({ "pane_id": pane_id }),
                     )?;
                     Ok(None)

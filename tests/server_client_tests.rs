@@ -119,7 +119,7 @@ fn split_ratio_control_updates_the_persisted_layout() {
 }
 
 #[test]
-fn pane_zoom_control_survives_server_restart() {
+fn pane_view_settings_survive_server_restart() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
     let client = ControlClient::connect(address.trim()).unwrap();
@@ -149,6 +149,14 @@ fn pane_zoom_control_survives_server_restart() {
         )
         .unwrap();
     assert!(zoomed.ok);
+    let passthrough = client
+        .request(
+            "toggle-pane-right-click",
+            "toggle_right_click_passthrough",
+            serde_json::json!({ "pane_id": pane }),
+        )
+        .unwrap();
+    assert!(passthrough.ok);
     client
         .request(
             "zoom-stop-server",
@@ -173,6 +181,7 @@ fn pane_zoom_control_survives_server_restart() {
         snapshot["spaces"][0]["workspaces"][0]["tabs"][0]["zoomed"],
         true
     );
+    assert_eq!(snapshot["panes"][0]["right_click_passthrough"], true);
     client
         .request(
             "zoom-stop-server-restarted",

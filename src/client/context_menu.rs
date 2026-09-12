@@ -18,6 +18,7 @@ pub(crate) enum ContextMenuAction {
     SplitRight,
     SplitDown,
     Zoom,
+    ToggleRightClickPassthrough,
     Stop,
     Restart,
 }
@@ -72,6 +73,10 @@ impl ContextMenu {
                 ("Split right", A::SplitRight),
                 ("Split down", A::SplitDown),
                 ("Zoom", A::Zoom),
+                (
+                    "Toggle right-click passthrough",
+                    A::ToggleRightClickPassthrough,
+                ),
                 ("Rename pane", A::Rename),
                 ("Stop pane", A::Stop),
                 ("Restart pane", A::Restart),
@@ -182,8 +187,8 @@ mod tests {
     fn small_menu_keeps_the_selected_item_visible_and_clickable() {
         let area = Rect::new(0, 0, 24, 5);
         let mut menu = ContextMenu::from_target(ClickTarget::Pane("pane-1".into()), 20, 4).unwrap();
-        menu.move_selection(5);
-        assert_eq!(menu.visible_range(area), 3..6);
+        menu.move_selection(6);
+        assert_eq!(menu.visible_range(area), 4..7);
         let rect = menu.rect(area);
         assert_eq!(
             menu.action_at(area, rect.x + 2, rect.y + 3),

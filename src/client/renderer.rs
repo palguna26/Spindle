@@ -4,8 +4,10 @@ mod navigation;
 use super::context_menu::ContextMenu;
 use crate::model::status::PaneStatus;
 use crate::server::session::SessionSnapshot;
-use layout::{main_areas, pane_rectangles};
-pub(crate) use layout::{pane_content_area, pane_inner_size, pane_sizes, split_handles, PaneSize};
+use layout::main_areas;
+pub(crate) use layout::{
+    pane_content_area, pane_inner_size, pane_rectangles, pane_sizes, split_handles, PaneSize,
+};
 pub use navigation::{hit_test, ClickTarget};
 use navigation::{render_sidebar, render_tabs};
 use ratatui::layout::Rect;
@@ -288,6 +290,13 @@ mod tests {
             cursor: (0, 0),
             title: "Editor".into(),
             alternate_screen: true,
+            mouse_reporting: false,
+            mouse_release: false,
+            mouse_motion: false,
+            mouse_any_motion: false,
+            sgr_mouse: false,
+            utf8_mouse: false,
+            right_click_passthrough: false,
         };
         assert!(pane_title_text(&pane).contains("Editor"));
         assert!(pane_title_text(&pane).contains("running"));
@@ -315,6 +324,13 @@ mod tests {
             cursor: (0, 0),
             title: String::new(),
             alternate_screen: false,
+            mouse_reporting: false,
+            mouse_release: false,
+            mouse_motion: false,
+            mouse_any_motion: false,
+            sgr_mouse: false,
+            utf8_mouse: false,
+            right_click_passthrough: false,
         };
         assert!(pane_title_text(&pane).contains("exit 0"));
         pane.status = PaneStatus::Halted {

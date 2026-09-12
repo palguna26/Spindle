@@ -51,6 +51,20 @@ pub struct PaneView {
     pub title: String,
     #[serde(default)]
     pub alternate_screen: bool,
+    #[serde(default)]
+    pub mouse_reporting: bool,
+    #[serde(default)]
+    pub mouse_release: bool,
+    #[serde(default)]
+    pub mouse_motion: bool,
+    #[serde(default)]
+    pub mouse_any_motion: bool,
+    #[serde(default)]
+    pub sgr_mouse: bool,
+    #[serde(default)]
+    pub utf8_mouse: bool,
+    #[serde(default)]
+    pub right_click_passthrough: bool,
 }
 
 fn default_cols() -> u16 {
@@ -231,6 +245,12 @@ impl Session {
             Ok(mut snapshot) => {
                 load_history(&path, &mut snapshot)?;
                 for pane in &mut snapshot.panes {
+                    pane.mouse_reporting = false;
+                    pane.mouse_release = false;
+                    pane.mouse_motion = false;
+                    pane.mouse_any_motion = false;
+                    pane.sgr_mouse = false;
+                    pane.utf8_mouse = false;
                     if pane.status.is_running() {
                         pane.status = PaneStatus::Interrupted {
                             reason: "process was live when the server stopped".into(),
@@ -281,6 +301,12 @@ impl Session {
                 pane.cursor = (0, 0);
                 pane.title.clear();
                 pane.alternate_screen = false;
+                pane.mouse_reporting = false;
+                pane.mouse_release = false;
+                pane.mouse_motion = false;
+                pane.mouse_any_motion = false;
+                pane.sgr_mouse = false;
+                pane.utf8_mouse = false;
             }
             save_versioned(path, &metadata)?;
             save_versioned(&history_path(path), &history)?;
@@ -462,6 +488,13 @@ impl Session {
             cursor: (0, 0),
             title: String::new(),
             alternate_screen: false,
+            mouse_reporting: false,
+            mouse_release: false,
+            mouse_motion: false,
+            mouse_any_motion: false,
+            sgr_mouse: false,
+            utf8_mouse: false,
+            right_click_passthrough: false,
         });
         self.record_pane_events(vec![PaneEvent::Status {
             pane_id: pane_id.clone(),
@@ -776,6 +809,20 @@ impl Session {
         };
         self.snapshot.focused_pane_id = Some(pane_id.into());
         Ok(serde_json::json!({ "pane_id": pane_id, "zoomed": zoomed }))
+    }
+
+    pub fn toggle_right_click_passthrough(&mut self, pane_id: &str) -> Result<Value, String> {
+        let pane = self
+            .snapshot
+            .panes
+            .iter_mut()
+            .find(|pane| pane.pane_id == pane_id)
+            .ok_or_else(|| format!("pane '{pane_id}' does not exist"))?;
+        pane.right_click_passthrough = !pane.right_click_passthrough;
+        Ok(serde_json::json!({
+            "pane_id": pane_id,
+            "right_click_passthrough": pane.right_click_passthrough
+        }))
     }
 
     pub fn rename_pane(&mut self, pane_id: &str, label: String) -> Result<Value, String> {
@@ -1142,6 +1189,12 @@ impl Session {
                 pane.cursor = terminal.cursor;
                 pane.title = terminal.title;
                 pane.alternate_screen = terminal.alternate_screen;
+                pane.mouse_reporting = terminal.mouse_reporting;
+                pane.mouse_release = terminal.mouse_release;
+                pane.mouse_motion = terminal.mouse_motion;
+                pane.mouse_any_motion = terminal.mouse_any_motion;
+                pane.sgr_mouse = terminal.sgr_mouse;
+                pane.utf8_mouse = terminal.utf8_mouse;
             }
         }
     }
@@ -1283,11 +1336,21 @@ mod tests {
             cursor: (0, 0),
             title: String::new(),
             alternate_screen: false,
+            mouse_reporting: false,
+            mouse_release: false,
+            mouse_motion: false,
+            mouse_any_motion: false,
+            sgr_mouse: false,
+            utf8_mouse: false,
+            right_click_passthrough: false,
         });
         session.rename_pane("pane-1", "Shell".into()).unwrap();
         assert_eq!(session.snapshot.panes[0].label.as_deref(), Some("Shell"));
         session.rename_pane("pane-1", " ".into()).unwrap();
         assert!(session.snapshot.panes[0].label.is_none());
+        let toggled = session.toggle_right_click_passthrough("pane-1").unwrap();
+        assert_eq!(toggled["right_click_passthrough"], true);
+        assert!(session.snapshot.panes[0].right_click_passthrough);
     }
 
     #[test]
@@ -1368,6 +1431,13 @@ mod tests {
             cursor: (0, 0),
             title: String::new(),
             alternate_screen: false,
+            mouse_reporting: false,
+            mouse_release: false,
+            mouse_motion: false,
+            mouse_any_motion: false,
+            sgr_mouse: false,
+            utf8_mouse: false,
+            right_click_passthrough: false,
         });
         session.snapshot.spaces[0].workspaces[0].tabs[1].layout = Some(LayoutNode::pane("pane-1"));
         assert!(session.close_pane("pane-1").is_err());
@@ -1449,6 +1519,13 @@ mod tests {
             cursor: (2, 1),
             title: "title".into(),
             alternate_screen: true,
+            mouse_reporting: false,
+            mouse_release: false,
+            mouse_motion: false,
+            mouse_any_motion: false,
+            sgr_mouse: false,
+            utf8_mouse: false,
+            right_click_passthrough: false,
         });
         session.save().unwrap();
         let metadata: serde_json::Value =
@@ -1552,6 +1629,13 @@ mod tests {
             cursor: (0, 0),
             title: String::new(),
             alternate_screen: false,
+            mouse_reporting: false,
+            mouse_release: false,
+            mouse_motion: false,
+            mouse_any_motion: false,
+            sgr_mouse: false,
+            utf8_mouse: false,
+            right_click_passthrough: false,
         });
         session.snapshot.spaces[0].workspaces[0].tabs[0].layout =
             Some(crate::model::layout::LayoutNode::pane("pane-1"));
@@ -1576,6 +1660,13 @@ mod tests {
             cursor: (0, 0),
             title: String::new(),
             alternate_screen: false,
+            mouse_reporting: false,
+            mouse_release: false,
+            mouse_motion: false,
+            mouse_any_motion: false,
+            sgr_mouse: false,
+            utf8_mouse: false,
+            right_click_passthrough: false,
         });
         assert!(session.restart_pane("pane-1").is_err());
     }
