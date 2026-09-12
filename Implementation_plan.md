@@ -128,6 +128,11 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   now browse recent PTY history, which the same selection/copy path can read;
   history is bounded by the PTY byte ring and reconstructed at the current
   pane size.
+- [ ] Add keyboard copy mode on the matching prefix+[ binding, with Herdr-style
+  cursor motion, search, character/line selection, and copy. Keep PTY output
+  live while browsing and preserve the viewport until copy mode exits.
+- [ ] Test copy-mode input, history boundaries, search results, selection text,
+  Unicode cell mapping, and output arriving while the user browses history.
 - [x] Keep keyboard command-palette actions for pane, tab, and workspace
   actions available through the mouse, including clearing a pane's manual name.
 - [x] Add in-app help that explains both keyboard shortcuts and mouse controls.
@@ -138,7 +143,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior; manually verify in Windows Terminal and PowerShell.
 
-Reference: Herdr `src/client/shell/mouse.rs`, `context_menu.rs`, `selection.rs`,
+Reference: Herdr `src/client/shell/mouse.rs`, `copy_mode.rs`, `context_menu.rs`,
+`selection.rs`, `src/api/schema/panes.rs` (`PaneCopyMotion`, `PaneCopySearch`),
 `src/app/actions.rs` (`url_at_column`, `url_at_pane_surface_cell`),
 `src/app/api/plugins/mod.rs` (`handle_pane_link_activate`), and quick-start
 "Use the mouse". Spindle: `src/client/app.rs`, `src/client/links.rs`,
