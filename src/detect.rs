@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub enum AgentKind {
     Claude,
     Codex,
+    Gemini,
     OpenCode,
 }
 
@@ -82,6 +83,7 @@ impl AgentKind {
         match self {
             Self::Claude => "Claude",
             Self::Codex => "Codex",
+            Self::Gemini => "Gemini",
             Self::OpenCode => "OpenCode",
         }
     }
@@ -120,6 +122,7 @@ pub(crate) fn detect_state_with_osc(
         }
         AgentKind::OpenCode => opencode_permission_required(&recent),
         AgentKind::Claude => claude_permission_required(&recent),
+        AgentKind::Gemini => gemini_permission_required(&recent),
     };
     if blocked {
         return AgentState::Blocked;
@@ -149,6 +152,7 @@ pub(crate) fn detect_state_with_osc(
                 || has_progress_bar(screen)
         }
         AgentKind::Claude => claude_is_working(&bottom_twelve, &bottom_five, title),
+        AgentKind::Gemini => recent.contains("esc to cancel"),
     };
     if working {
         return AgentState::Working;
@@ -177,6 +181,7 @@ pub(crate) fn has_visible_idle_signal(
                     .any(|line| line.trim_start().starts_with('\u{276f}'))
         }
         AgentKind::OpenCode => false,
+        AgentKind::Gemini => false,
     }
 }
 
@@ -190,6 +195,19 @@ fn claude_permission_required(recent: &str) -> bool {
                 || recent.contains("enter to select")
                 || recent.contains("arrow keys to navigate")
                 || recent.contains("tab/arrow keys to navigate")))
+}
+
+fn gemini_permission_required(recent: &str) -> bool {
+    recent.contains("│ apply this change")
+        || recent.contains("│ allow execution")
+        || (recent.contains("yes")
+            && (recent.contains("waiting for user confirmation")
+                || recent.contains("│ do you want to proceed")
+                || recent.contains("do you want to proceed?")))
+        || recent.lines().any(|line| {
+            let line = line.trim_start();
+            line.starts_with('❯') && (line.contains("yes") || line.contains("allow"))
+        })
 }
 
 fn claude_is_working(bottom: &str, bottom_five: &str, title: &str) -> bool {
@@ -452,6 +470,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
     match basename {
         "claude" | "claude-code" => Some(AgentKind::Claude),
         "codex" => Some(AgentKind::Codex),
+        "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
         _ => None,
     }
@@ -723,6 +742,10 @@ fn identify_process_command(name: &str, command_line: Option<&str>) -> Option<Ag
                 || normalized.ends_with("\\node_modules\\opencode-ai\\bin\\opencode.js")
             {
                 Some(AgentKind::OpenCode)
+            } else if normalized.ends_with("\\node_modules\\@google\\gemini-cli\\dist\\index.js")
+                || normalized.ends_with("\\node_modules\\@google\\gemini-cli\\bundle\\gemini.js")
+            {
+                Some(AgentKind::Gemini)
             } else {
                 None
             }
@@ -802,6 +825,7 @@ mod tests {
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
+        assert_eq!(identify_process("gemini.cmd"), Some(AgentKind::Gemini));
         assert_eq!(identify_process("opencode2"), Some(AgentKind::OpenCode));
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -956,6 +980,15 @@ mod tests {
             ),
             Some(AgentKind::OpenCode)
         );
+        assert_eq!(
+            identify_process_command(
+                "node.exe",
+                Some(
+                    r#"node.exe "C:\Users\user\AppData\Roaming\npm\node_modules\@google\gemini-cli\dist\index.js""#
+                )
+            ),
+            Some(AgentKind::Gemini)
+        );
     }
 
     #[test]
@@ -1002,6 +1035,31 @@ mod tests {
         assert_eq!(
             detect_state(AgentKind::Codex, "plain shell", ""),
             AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_gemini_manifest_state_signals() {
+        for screen in [
+            "│ Apply this change\n❯ Yes",
+            "│ Allow execution",
+            "Do you want to proceed?\nYes\nWaiting for user confirmation",
+            "❯ Allow once",
+        ] {
+            assert_eq!(
+                detect_state(AgentKind::Gemini, screen, ""),
+                AgentState::Blocked,
+                "Herdr marks explicit Gemini confirmation prompts as blocked: {screen:?}"
+            );
+        }
+        assert_eq!(
+            detect_state(AgentKind::Gemini, "Working…\nEsc to cancel", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Gemini, "ordinary shell output", ""),
+            AgentState::Unknown,
+            "Gemini state stays unknown without one of Herdr's visible cues"
         );
     }
 
