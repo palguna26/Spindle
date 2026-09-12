@@ -96,9 +96,10 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Align tab creation, pane/tab close, tab navigation, split, and pane-focus
   shortcuts with Herdr's default bindings.
 - [x] Support drag-select/copy and terminal mouse passthrough without stealing
-  input from applications that request it. Wheel scrolling now pages through
-  recent PTY history, which the same selection/copy path can read; history is
-  bounded by the PTY byte ring and reconstructed at the current pane size.
+  input from applications that request it. Wheel and mode-aware PageUp/PageDown
+  now browse recent PTY history, which the same selection/copy path can read;
+  history is bounded by the PTY byte ring and reconstructed at the current
+  pane size.
 - [ ] Keep keyboard actions for every pane, tab, and workspace action that is
   available through the mouse.
 - [x] Add in-app help that explains both keyboard shortcuts and mouse controls.

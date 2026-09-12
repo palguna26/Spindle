@@ -344,6 +344,31 @@ fn event_loop(
             prefix_active = true;
             continue;
         }
+        if !prefix_active
+            && key.modifiers.is_empty()
+            && matches!(key.code, KeyCode::PageUp | KeyCode::PageDown)
+        {
+            if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                if let Some(pane) = snapshot.panes.iter().find(|pane| pane.pane_id == pane_id) {
+                    if pane.plain_page_keys_use_host_scrollback() {
+                        let lines = usize::from(pane.rows.saturating_sub(1).max(1));
+                        let offset = mouse_state
+                            .scroll_offsets
+                            .entry(pane_id.to_owned())
+                            .or_default();
+                        *offset =
+                            adjust_scrollback_offset(*offset, key.code == KeyCode::PageUp, lines);
+                    } else if let Some(bytes) = page_key_bytes(key.code) {
+                        let _ = client.interactive_request(
+                            "page-key-input",
+                            "send_input",
+                            json!({ "pane_id": pane_id, "bytes": bytes }),
+                        );
+                    }
+                    continue;
+                }
+            }
+        }
         let pressed = action(prefix_active, key);
         if pressed == Action::CommandPalette {
             palette_open = true;
@@ -534,15 +559,11 @@ fn handle_mouse(
             if let Some(pane) = snapshot.panes.iter().find(|pane| pane.pane_id == pane_id) {
                 if !pane.alternate_screen {
                     let offset = mouse_state.scroll_offsets.entry(pane_id).or_default();
-                    match mouse.kind {
-                        MouseEventKind::ScrollUp => {
-                            *offset = offset.saturating_add(WHEEL_SCROLL_LINES);
-                        }
-                        MouseEventKind::ScrollDown => {
-                            *offset = offset.saturating_sub(WHEEL_SCROLL_LINES);
-                        }
-                        _ => {}
-                    }
+                    *offset = adjust_scrollback_offset(
+                        *offset,
+                        mouse.kind == MouseEventKind::ScrollUp,
+                        WHEEL_SCROLL_LINES,
+                    );
                 }
             }
             return Ok(());
@@ -771,6 +792,14 @@ fn apply_scrollback_views(
     }
     scroll_offsets.retain(|_, offset| *offset > 0);
     cached_views.retain(|pane_id, _| scroll_offsets.contains_key(pane_id));
+}
+
+fn adjust_scrollback_offset(current: usize, toward_history: bool, lines: usize) -> usize {
+    if toward_history {
+        current.saturating_add(lines.max(1))
+    } else {
+        current.saturating_sub(lines.max(1))
+    }
 }
 
 fn forward_mouse_to_pane(
@@ -1594,6 +1623,14 @@ fn key_code_bytes(code: KeyCode) -> Option<Vec<u8>> {
     }
 }
 
+fn page_key_bytes(code: KeyCode) -> Option<Vec<u8>> {
+    match code {
+        KeyCode::PageUp => Some(b"\x1b[5~".to_vec()),
+        KeyCode::PageDown => Some(b"\x1b[6~".to_vec()),
+        _ => None,
+    }
+}
+
 fn adjacent_space_id(snapshot: &SessionSnapshot, forward: bool) -> Option<String> {
     if snapshot.spaces.len() < 2 {
         return None;
@@ -1650,9 +1687,10 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
 mod tests {
     use super::{
         active_tab_id, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
-        apply_scrollback_views, key_code_bytes, pane_size, reconnect_requires_reattach,
-        snapshot_has_focused_pane, startup_error_action, workspace_id_by_name,
-        CachedScrollbackView, PaneClick, SplitDirection, SplitDrag, StartupErrorAction,
+        adjust_scrollback_offset, apply_scrollback_views, key_code_bytes, page_key_bytes,
+        pane_size, reconnect_requires_reattach, snapshot_has_focused_pane, startup_error_action,
+        workspace_id_by_name, CachedScrollbackView, PaneClick, SplitDirection, SplitDrag,
+        StartupErrorAction,
     };
     use crate::server::session::Session;
     use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
@@ -1693,8 +1731,17 @@ mod tests {
     fn common_keys_encode_for_a_pty() {
         assert_eq!(key_code_bytes(KeyCode::Enter), Some(vec![b'\r']));
         assert_eq!(key_code_bytes(KeyCode::Left), Some(b"\x1b[D".to_vec()));
+        assert_eq!(page_key_bytes(KeyCode::PageUp), Some(b"\x1b[5~".to_vec()));
+        assert_eq!(page_key_bytes(KeyCode::PageDown), Some(b"\x1b[6~".to_vec()));
         assert_eq!(pane_size((120, 40)), (90, 36));
         assert_eq!(pane_size((0, 0)), (1, 1));
+    }
+
+    #[test]
+    fn page_scrolling_advances_a_viewport_and_clamps_at_live_output() {
+        assert_eq!(adjust_scrollback_offset(5, true, 23), 28);
+        assert_eq!(adjust_scrollback_offset(5, false, 23), 0);
+        assert_eq!(adjust_scrollback_offset(usize::MAX, true, 1), usize::MAX);
     }
 
     #[test]

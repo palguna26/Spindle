@@ -68,7 +68,21 @@ pub struct PaneView {
     #[serde(default)]
     pub utf8_mouse: bool,
     #[serde(default)]
+    pub application_cursor: bool,
+    #[serde(default)]
+    pub bracketed_paste: bool,
+    #[serde(default)]
     pub right_click_passthrough: bool,
+}
+
+impl PaneView {
+    /// Route plain PageUp/PageDown like Herdr: host scrollback is used only
+    /// when the terminal mode indicates that the foreground app does not own it.
+    pub fn plain_page_keys_use_host_scrollback(&self) -> bool {
+        !self.alternate_screen
+            && !self.mouse_reporting
+            && (!self.application_cursor || self.bracketed_paste)
+    }
 }
 
 fn default_cols() -> u16 {
@@ -257,6 +271,8 @@ impl Session {
                     pane.mouse_any_motion = false;
                     pane.sgr_mouse = false;
                     pane.utf8_mouse = false;
+                    pane.application_cursor = false;
+                    pane.bracketed_paste = false;
                     if pane.status.is_running() {
                         pane.status = PaneStatus::Interrupted {
                             reason: "process was live when the server stopped".into(),
@@ -313,6 +329,8 @@ impl Session {
                 pane.mouse_any_motion = false;
                 pane.sgr_mouse = false;
                 pane.utf8_mouse = false;
+                pane.application_cursor = false;
+                pane.bracketed_paste = false;
             }
             save_versioned(path, &metadata)?;
             save_versioned(&history_path(path), &history)?;
@@ -543,6 +561,8 @@ impl Session {
             mouse_any_motion: false,
             sgr_mouse: false,
             utf8_mouse: false,
+            application_cursor: false,
+            bracketed_paste: false,
             right_click_passthrough: false,
         });
         self.record_pane_events(vec![PaneEvent::Status {
@@ -1248,6 +1268,8 @@ impl Session {
                 pane.mouse_any_motion = terminal.mouse_any_motion;
                 pane.sgr_mouse = terminal.sgr_mouse;
                 pane.utf8_mouse = terminal.utf8_mouse;
+                pane.application_cursor = terminal.application_cursor;
+                pane.bracketed_paste = terminal.bracketed_paste;
             }
         }
     }
@@ -1266,6 +1288,30 @@ mod tests {
     use crate::model::status::PaneStatus;
     use crate::pane::PaneEvent;
     use std::time::Duration;
+
+    #[test]
+    fn plain_page_keys_follow_herdr_terminal_mode_rules() {
+        let mut pane: PaneView = serde_json::from_value(serde_json::json!({
+            "pane_id": "pane-1",
+            "command": "powershell.exe",
+            "args": [],
+            "cwd": "C:/",
+            "status": "Running",
+            "scrollback_bytes": 0
+        }))
+        .unwrap();
+        assert!(pane.plain_page_keys_use_host_scrollback());
+
+        pane.application_cursor = true;
+        assert!(!pane.plain_page_keys_use_host_scrollback());
+        pane.bracketed_paste = true;
+        assert!(pane.plain_page_keys_use_host_scrollback());
+        pane.mouse_reporting = true;
+        assert!(!pane.plain_page_keys_use_host_scrollback());
+        pane.mouse_reporting = false;
+        pane.alternate_screen = true;
+        assert!(!pane.plain_page_keys_use_host_scrollback());
+    }
 
     #[test]
     fn workspace_and_tab_operations_update_active_state() {
@@ -1426,6 +1472,8 @@ mod tests {
             mouse_any_motion: false,
             sgr_mouse: false,
             utf8_mouse: false,
+            application_cursor: false,
+            bracketed_paste: false,
             right_click_passthrough: false,
         });
         session.rename_pane("pane-1", "Shell".into()).unwrap();
@@ -1523,6 +1571,8 @@ mod tests {
             mouse_any_motion: false,
             sgr_mouse: false,
             utf8_mouse: false,
+            application_cursor: false,
+            bracketed_paste: false,
             right_click_passthrough: false,
         });
         session.snapshot.spaces[0].workspaces[0].tabs[1].layout = Some(LayoutNode::pane("pane-1"));
@@ -1613,6 +1663,8 @@ mod tests {
             mouse_any_motion: false,
             sgr_mouse: false,
             utf8_mouse: false,
+            application_cursor: false,
+            bracketed_paste: false,
             right_click_passthrough: false,
         });
         session.save().unwrap();
@@ -1727,6 +1779,8 @@ mod tests {
             mouse_any_motion: false,
             sgr_mouse: false,
             utf8_mouse: false,
+            application_cursor: false,
+            bracketed_paste: false,
             right_click_passthrough: false,
         });
         session.snapshot.spaces[0].workspaces[0].tabs[0].layout =
@@ -1760,6 +1814,8 @@ mod tests {
             mouse_any_motion: false,
             sgr_mouse: false,
             utf8_mouse: false,
+            application_cursor: false,
+            bracketed_paste: false,
             right_click_passthrough: false,
         });
         assert!(session.restart_pane("pane-1").is_err());

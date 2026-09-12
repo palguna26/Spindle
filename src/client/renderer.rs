@@ -150,7 +150,7 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "Mouse",
         "Click sidebar, tabs, or panes to switch or focus.",
         "Drag split borders to resize; right-click for actions.",
-        "Scroll pane history with the wheel; drag text to copy.",
+        "PageUp/PageDown or wheel scroll history; drag text to copy.",
         "Double-click selects a word.",
         "Terminal apps receive mouse events when requested.",
         "",
@@ -486,6 +486,8 @@ mod tests {
                 mouse_any_motion: false,
                 sgr_mouse: false,
                 utf8_mouse: false,
+                application_cursor: false,
+                bracketed_paste: false,
                 right_click_passthrough: false,
             }],
             focused_pane_id: Some("pane-1".into()),
@@ -538,6 +540,8 @@ mod tests {
             mouse_any_motion: false,
             sgr_mouse: false,
             utf8_mouse: false,
+            application_cursor: false,
+            bracketed_paste: false,
             right_click_passthrough: false,
         };
         assert!(pane_title_text(&pane).contains("Editor"));
@@ -575,6 +579,8 @@ mod tests {
             mouse_any_motion: false,
             sgr_mouse: false,
             utf8_mouse: false,
+            application_cursor: false,
+            bracketed_paste: false,
             right_click_passthrough: false,
         };
         assert!(pane_title_text(&pane).contains("exit 0"));

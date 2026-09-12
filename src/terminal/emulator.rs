@@ -23,6 +23,10 @@ pub struct TerminalSnapshot {
     pub sgr_mouse: bool,
     #[serde(default)]
     pub utf8_mouse: bool,
+    #[serde(default)]
+    pub application_cursor: bool,
+    #[serde(default)]
+    pub bracketed_paste: bool,
 }
 
 pub struct TerminalEmulator {
@@ -75,6 +79,8 @@ impl TerminalEmulator {
             mouse_any_motion: mouse_mode == vt100::MouseProtocolMode::AnyMotion,
             sgr_mouse: mouse_encoding == vt100::MouseProtocolEncoding::Sgr,
             utf8_mouse: mouse_encoding == vt100::MouseProtocolEncoding::Utf8,
+            application_cursor: screen.application_cursor(),
+            bracketed_paste: screen.bracketed_paste(),
         }
     }
 }
@@ -135,5 +141,19 @@ mod tests {
         assert!(!terminal.snapshot().mouse_reporting);
         terminal.process(b"\x1b[?1003h");
         assert!(terminal.snapshot().mouse_any_motion);
+    }
+
+    #[test]
+    fn page_key_scrollback_modes_are_tracked() {
+        let mut terminal = TerminalEmulator::new(2, 8, 4);
+        terminal.process(b"\x1b[?1h\x1b[?2004h");
+        let snapshot = terminal.snapshot();
+        assert!(snapshot.application_cursor);
+        assert!(snapshot.bracketed_paste);
+
+        terminal.process(b"\x1b[?1l\x1b[?2004l");
+        let snapshot = terminal.snapshot();
+        assert!(!snapshot.application_cursor);
+        assert!(!snapshot.bracketed_paste);
     }
 }
