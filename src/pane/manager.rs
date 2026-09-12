@@ -163,7 +163,9 @@ impl PaneManager {
                 while pane.scrollback.len() > self.scrollback_limit {
                     pane.scrollback.pop_front();
                 }
-                pane.terminal.process(&bytes);
+                for response in pane.terminal.process(&bytes) {
+                    let _ = pane.session.send_input(&response);
+                }
                 events.push(PaneEvent::Output {
                     pane_id: pane.id.clone(),
                     bytes,

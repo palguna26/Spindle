@@ -1489,6 +1489,78 @@ fn pty_output_reaches_event_subscribers() {
 }
 
 #[test]
+fn powershell_prompt_starts_without_a_host_injected_cursor_reply() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let pane_id = client
+        .request(
+            "powershell-pane",
+            "create_pane",
+            serde_json::json!({
+                "command": "powershell.exe",
+                "args": ["-NoLogo", "-NoProfile"],
+                "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap()
+        .payload
+        .unwrap()["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let mut prompt_visible = false;
+    let mut last_screen = String::new();
+    for _ in 0..200 {
+        let snapshot = client
+            .request(
+                "powershell-snapshot",
+                "get_snapshot",
+                Value::Object(Default::default()),
+            )
+            .unwrap()
+            .payload
+            .unwrap();
+        let pane = snapshot["panes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|pane| pane["pane_id"] == pane_id)
+            .unwrap();
+        last_screen = pane["screen"].as_str().unwrap_or_default().to_owned();
+        if last_screen.contains("PS ") {
+            prompt_visible = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(
+        prompt_visible,
+        "PowerShell prompt did not appear without a host-injected cursor reply; screen={last_screen:?}"
+    );
+
+    client
+        .request(
+            "stop-powershell",
+            "stop_pane",
+            serde_json::json!({ "pane_id": pane_id }),
+        )
+        .unwrap();
+    client
+        .request(
+            "stop-server",
+            "stop_server",
+            Value::Object(Default::default()),
+        )
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn interactive_pty_accepts_input_and_resize() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);

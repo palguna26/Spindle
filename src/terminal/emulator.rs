@@ -35,6 +35,19 @@ pub struct TerminalEmulator {
     parser: Parser,
     rows: u16,
     cols: u16,
+    query_state: QueryState,
+}
+
+#[derive(Default)]
+enum QueryState {
+    #[default]
+    Ground,
+    Escape,
+    Csi(Vec<u8>),
+    String {
+        osc: bool,
+        escaped: bool,
+    },
 }
 
 impl TerminalEmulator {
@@ -43,11 +56,60 @@ impl TerminalEmulator {
             parser: Parser::new(rows, cols, scrollback),
             rows,
             cols,
+            query_state: QueryState::Ground,
         }
     }
 
-    pub fn process(&mut self, bytes: &[u8]) {
-        self.parser.process(bytes);
+    pub fn process(&mut self, bytes: &[u8]) -> Vec<Vec<u8>> {
+        let query_ends = self.cursor_report_query_ends(bytes);
+        let mut responses = Vec::with_capacity(query_ends.len());
+        let mut start = 0;
+        for end in query_ends {
+            self.parser.process(&bytes[start..=end]);
+            let (row, col) = self.parser.screen().cursor_position();
+            responses.push(format!("\x1b[{};{}R", row + 1, col + 1).into_bytes());
+            start = end + 1;
+        }
+        self.parser.process(&bytes[start..]);
+        responses
+    }
+
+    fn cursor_report_query_ends(&mut self, bytes: &[u8]) -> Vec<usize> {
+        let mut query_ends = Vec::new();
+        for (index, byte) in bytes.iter().copied().enumerate() {
+            self.query_state = match std::mem::take(&mut self.query_state) {
+                QueryState::Ground if byte == 0x1b => QueryState::Escape,
+                QueryState::Ground => QueryState::Ground,
+                QueryState::Escape if byte == b'[' => QueryState::Csi(Vec::new()),
+                QueryState::Escape if matches!(byte, b']' | b'P' | b'_' | b'^' | b'X') => {
+                    QueryState::String {
+                        osc: byte == b']',
+                        escaped: false,
+                    }
+                }
+                QueryState::Escape if byte == 0x1b => QueryState::Escape,
+                QueryState::Escape => QueryState::Ground,
+                QueryState::Csi(_params) if byte == 0x1b => QueryState::Escape,
+                QueryState::Csi(params) if (0x40..=0x7e).contains(&byte) => {
+                    if byte == b'n' && params == b"6" {
+                        query_ends.push(index);
+                    }
+                    QueryState::Ground
+                }
+                QueryState::Csi(mut params) if params.len() < 16 => {
+                    params.push(byte);
+                    QueryState::Csi(params)
+                }
+                QueryState::Csi(_) => QueryState::Ground,
+                QueryState::String { escaped: true, .. } if byte == b'\\' => QueryState::Ground,
+                QueryState::String { osc: true, .. } if byte == 0x07 => QueryState::Ground,
+                QueryState::String { osc, .. } => QueryState::String {
+                    osc,
+                    escaped: byte == 0x1b,
+                },
+            };
+        }
+        query_ends
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) {
@@ -107,6 +169,29 @@ mod tests {
         assert_eq!(snapshot.cursor, (1, 5));
         assert!(snapshot.contents.contains("one"));
         assert!(snapshot.contents.contains("two"));
+    }
+
+    #[test]
+    fn cursor_position_queries_receive_the_current_one_based_position() {
+        let mut terminal = TerminalEmulator::new(4, 8, 4);
+        terminal.process(b"\x1b[2;4H");
+
+        assert_eq!(terminal.process(b"\x1b[6n"), vec![b"\x1b[2;4R"]);
+    }
+
+    #[test]
+    fn cursor_position_queries_can_span_output_chunks() {
+        let mut terminal = TerminalEmulator::new(4, 8, 4);
+        terminal.process(b"\x1b[3;5H\x1b[6");
+
+        assert_eq!(terminal.process(b"n"), vec![b"\x1b[3;5R"]);
+    }
+
+    #[test]
+    fn cursor_position_query_text_inside_an_osc_string_is_ignored() {
+        let mut terminal = TerminalEmulator::new(4, 8, 4);
+
+        assert!(terminal.process(b"\x1b]0;\x1b[6n\x07").is_empty());
     }
 
     #[test]
