@@ -431,10 +431,7 @@ fn pane_title_text(pane: &crate::server::session::PaneView) -> String {
         label,
         pane.agent
             .map(|agent| {
-                let state = pane
-                    .agent_state
-                    .map(|state| format!(" {}", state.label()))
-                    .unwrap_or_default();
+                let state = format!(" {}", pane.agent_display_state().label());
                 format!(" [{}{state}]", agent.label())
             })
             .unwrap_or_default(),
@@ -672,6 +669,7 @@ mod tests {
                 label: None,
                 agent: None,
                 agent_state: None,
+                agent_done: false,
                 status: PaneStatus::Running,
                 scrollback_bytes: 0,
                 scrollback: Vec::new(),
@@ -723,7 +721,7 @@ mod tests {
 
     #[test]
     fn pane_title_shows_terminal_title_and_alt_mode() {
-        let pane = PaneView {
+        let mut pane = PaneView {
             pane_id: "pane-1".into(),
             command: "powershell.exe".into(),
             args: Vec::new(),
@@ -733,6 +731,7 @@ mod tests {
             label: None,
             agent: Some(crate::detect::AgentKind::Codex),
             agent_state: Some(crate::detect::AgentState::Working),
+            agent_done: false,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -759,6 +758,12 @@ mod tests {
             pane_title(&pane).spans[0].style.fg,
             Some(Color::Rgb(255, 165, 0))
         );
+        pane.agent_state = Some(crate::detect::AgentState::Idle);
+        pane.agent_done = true;
+        assert!(pane_title_text(&pane).contains("[Codex done]"));
+        let wire = serde_json::to_value(&pane).unwrap();
+        assert_eq!(wire["agent_state"], "idle");
+        assert_eq!(wire["agent_done"], true);
     }
 
     #[test]
@@ -773,6 +778,7 @@ mod tests {
             label: None,
             agent: None,
             agent_state: None,
+            agent_done: false,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             scrollback: Vec::new(),

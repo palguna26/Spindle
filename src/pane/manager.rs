@@ -10,6 +10,7 @@ const DEFAULT_SCROLLBACK_BYTES: usize = 64 * 1024;
 const IDLE_CONFIRM_INTERVAL: Duration = Duration::from_millis(100);
 const IDLE_CONFIRM_CAP: Duration = Duration::from_millis(700);
 const IDLE_CONFIRMATIONS: u8 = 3;
+const AGENT_EXIT_CONFIRMATIONS: u8 = 2;
 
 #[derive(Debug, Default)]
 struct PendingIdleConfirmation {
@@ -88,6 +89,8 @@ pub struct Pane {
     pub status: PaneStatus,
     pub agent: Option<AgentKind>,
     pub agent_state: Option<AgentState>,
+    pub agent_done: bool,
+    agent_missing_scans: u8,
     pub scrollback: VecDeque<u8>,
     pub terminal: TerminalEmulator,
     session: PtySession,
@@ -151,6 +154,8 @@ impl PaneManager {
                 status: PaneStatus::Running,
                 agent: None,
                 agent_state: None,
+                agent_done: false,
+                agent_missing_scans: 0,
                 scrollback: VecDeque::with_capacity(self.scrollback_limit),
                 terminal: TerminalEmulator::new(rows, cols, self.scrollback_limit),
                 session,
@@ -203,6 +208,7 @@ impl PaneManager {
         };
         if pane.agent.is_some() {
             pane.agent_state = Some(AgentState::Idle);
+            pane.agent_done = true;
         }
         Ok(vec![PaneEvent::Status {
             pane_id: id.into(),
@@ -223,11 +229,21 @@ impl PaneManager {
                     .session
                     .process_id()
                     .and_then(detect::detect_in_process_tree);
-                agent_changed = detected != pane.agent;
+                let (changed, agent_exited) =
+                    observe_agent_process(&mut pane.agent, detected, &mut pane.agent_missing_scans);
+                agent_changed = changed;
+                if detected.is_some() {
+                    pane.agent_done = false;
+                }
                 if agent_changed {
-                    pane.agent = detected;
                     pane.terminal.clear_agent_osc_evidence();
                     pane.pending_idle.clear();
+                }
+                if agent_exited {
+                    pane.pending_idle.clear();
+                    pane.terminal.clear_agent_osc_evidence();
+                    pane.agent_state = Some(AgentState::Idle);
+                    pane.agent_done = true;
                 }
             }
             while let Ok(Some(bytes)) = pane.session.try_read_output() {
@@ -248,7 +264,7 @@ impl PaneManager {
 
             if pane.status.is_running() {
                 let terminal = pane.terminal.snapshot();
-                if let Some(agent) = pane.agent {
+                if let Some(agent) = pane.agent.filter(|_| pane.agent_missing_scans == 0) {
                     let next_state = detect::detect_state_with_osc(
                         agent,
                         &terminal.contents,
@@ -273,7 +289,10 @@ impl PaneManager {
                     }
                 } else {
                     pane.pending_idle.clear();
-                    pane.agent_state = None;
+                    if pane.agent.is_none() {
+                        pane.agent_state = None;
+                        pane.agent_done = false;
+                    }
                 }
             }
 
@@ -282,6 +301,7 @@ impl PaneManager {
                     pane.pending_idle.clear();
                     if pane.agent.is_some() {
                         pane.agent_state = Some(AgentState::Idle);
+                        pane.agent_done = true;
                     }
                     pane.status = if exit_code == 0 {
                         PaneStatus::Completed { exit_code: 0 }
@@ -308,12 +328,32 @@ impl PaneManager {
     }
 }
 
+fn observe_agent_process(
+    current: &mut Option<AgentKind>,
+    detected: Option<AgentKind>,
+    missing_scans: &mut u8,
+) -> (bool, bool) {
+    if let Some(detected) = detected {
+        let changed = *current != Some(detected);
+        *current = Some(detected);
+        *missing_scans = 0;
+        return (changed, false);
+    }
+    if current.is_none() {
+        *missing_scans = 0;
+        return (false, false);
+    }
+    *missing_scans = missing_scans.saturating_add(1);
+    (false, *missing_scans == AGENT_EXIT_CONFIRMATIONS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        PaneConfig, PaneManager, PendingIdleConfirmation, IDLE_CONFIRM_CAP, IDLE_CONFIRM_INTERVAL,
+        observe_agent_process, PaneConfig, PaneManager, PendingIdleConfirmation,
+        AGENT_EXIT_CONFIRMATIONS, IDLE_CONFIRM_CAP, IDLE_CONFIRM_INTERVAL,
     };
-    use crate::detect::AgentState;
+    use crate::detect::{AgentKind, AgentState};
     use std::collections::BTreeMap;
     use std::time::{Duration, Instant};
 
@@ -344,6 +384,39 @@ mod tests {
             .spawn("pane-1", config("spindle-command-that-does-not-exist.exe"))
             .is_err());
         assert!(manager.get("pane-1").is_none());
+    }
+
+    #[test]
+    fn agent_identity_survives_a_missed_scan_and_finishes_after_confirmation() {
+        let mut missing_scans = 0;
+        let mut agent = Some(AgentKind::Claude);
+        assert_eq!(
+            observe_agent_process(&mut agent, None, &mut missing_scans,),
+            (false, false)
+        );
+        assert_eq!(agent, Some(AgentKind::Claude));
+        assert_eq!(missing_scans, 1);
+        assert_eq!(
+            observe_agent_process(&mut agent, Some(AgentKind::Claude), &mut missing_scans,),
+            (false, false)
+        );
+        assert_eq!(missing_scans, 0);
+        assert_eq!(
+            observe_agent_process(&mut agent, None, &mut missing_scans,),
+            (false, false)
+        );
+        assert_eq!(
+            observe_agent_process(&mut agent, None, &mut missing_scans,),
+            (false, true)
+        );
+        assert_eq!(agent, Some(AgentKind::Claude));
+        assert_eq!(missing_scans, AGENT_EXIT_CONFIRMATIONS);
+        assert_eq!(
+            observe_agent_process(&mut agent, Some(AgentKind::Codex), &mut missing_scans,),
+            (true, false)
+        );
+        assert_eq!(agent, Some(AgentKind::Codex));
+        assert_eq!(missing_scans, 0);
     }
 
     #[test]

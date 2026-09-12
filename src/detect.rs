@@ -39,6 +39,37 @@ impl AgentState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentDisplayState {
+    Unknown,
+    Idle,
+    Working,
+    Blocked,
+    Done,
+}
+
+impl AgentDisplayState {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Idle => "idle",
+            Self::Working => "working",
+            Self::Blocked => "blocked",
+            Self::Done => "done",
+        }
+    }
+
+    pub fn sidebar_marker(self) -> &'static str {
+        match self {
+            Self::Unknown => "?",
+            Self::Idle => "I",
+            Self::Working => "W",
+            Self::Blocked => "!",
+            Self::Done => "✓",
+        }
+    }
+}
+
 impl AgentKind {
     pub fn label(self) -> &'static str {
         match self {

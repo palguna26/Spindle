@@ -377,7 +377,7 @@ fn sidebar_rows(snapshot: &SessionSnapshot, agent_priority_sort: bool) -> Vec<Si
             let SidebarRow::Agent { pane, .. } = row else {
                 unreachable!()
             };
-            std::cmp::Reverse(agent_state_priority(pane.agent_state))
+            std::cmp::Reverse(agent_state_priority(pane.agent_display_state()))
         });
         rows.push(SidebarRow::AgentHeader);
         rows.extend(priority_agents);
@@ -385,12 +385,13 @@ fn sidebar_rows(snapshot: &SessionSnapshot, agent_priority_sort: bool) -> Vec<Si
     rows
 }
 
-fn agent_state_priority(state: Option<crate::detect::AgentState>) -> u8 {
-    match state.unwrap_or(crate::detect::AgentState::Unknown) {
-        crate::detect::AgentState::Blocked => 3,
-        crate::detect::AgentState::Working => 2,
-        crate::detect::AgentState::Idle => 1,
-        crate::detect::AgentState::Unknown => 0,
+fn agent_state_priority(state: crate::detect::AgentDisplayState) -> u8 {
+    match state {
+        crate::detect::AgentDisplayState::Blocked => 4,
+        crate::detect::AgentDisplayState::Done => 3,
+        crate::detect::AgentDisplayState::Working => 2,
+        crate::detect::AgentDisplayState::Idle => 1,
+        crate::detect::AgentDisplayState::Unknown => 0,
     }
 }
 
@@ -493,15 +494,14 @@ pub(super) fn render_sidebar_with_scroll_and_sort(
                 workspace_name,
                 ..
             } => {
-                let state = pane
-                    .agent_state
-                    .unwrap_or(crate::detect::AgentState::Unknown);
+                let state = pane.agent_display_state();
                 let focused = snapshot.focused_pane_id.as_deref() == Some(&pane.pane_id);
                 let mut state_style = Style::default().fg(match state {
-                    crate::detect::AgentState::Unknown => Color::DarkGray,
-                    crate::detect::AgentState::Idle => Color::Green,
-                    crate::detect::AgentState::Working => Color::Yellow,
-                    crate::detect::AgentState::Blocked => Color::Red,
+                    crate::detect::AgentDisplayState::Unknown => Color::DarkGray,
+                    crate::detect::AgentDisplayState::Idle => Color::Green,
+                    crate::detect::AgentDisplayState::Working => Color::Yellow,
+                    crate::detect::AgentDisplayState::Blocked => Color::Red,
+                    crate::detect::AgentDisplayState::Done => Color::Cyan,
                 });
                 let mut label_style = Style::default().fg(Color::Gray);
                 let mut tab_style = Style::default().fg(Color::DarkGray);
@@ -675,7 +675,7 @@ mod tests {
     use super::super::layout::main_areas;
     use super::super::layout::{pane_rectangles, pane_sizes, split_areas, split_handles};
     use super::{
-        hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
+        agent_state_priority, hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
         hit_test_with_sidebar_scroll_and_sort, render_sidebar, render_sidebar_with_collapsed,
         render_sidebar_with_scroll, render_tabs, ClickTarget,
     };
@@ -685,6 +685,26 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
     use ratatui::Terminal;
+
+    #[test]
+    fn priority_sort_matches_herdr_agent_status_order() {
+        assert!(
+            agent_state_priority(crate::detect::AgentDisplayState::Blocked)
+                > agent_state_priority(crate::detect::AgentDisplayState::Done)
+        );
+        assert!(
+            agent_state_priority(crate::detect::AgentDisplayState::Done)
+                > agent_state_priority(crate::detect::AgentDisplayState::Working)
+        );
+        assert!(
+            agent_state_priority(crate::detect::AgentDisplayState::Working)
+                > agent_state_priority(crate::detect::AgentDisplayState::Idle)
+        );
+        assert!(
+            agent_state_priority(crate::detect::AgentDisplayState::Idle)
+                > agent_state_priority(crate::detect::AgentDisplayState::Unknown)
+        );
+    }
 
     fn agent_pane(pane_id: &str, agent: &str, state: &str) -> crate::server::session::PaneView {
         serde_json::from_value(serde_json::json!({

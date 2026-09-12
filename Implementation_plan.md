@@ -139,16 +139,18 @@ and quick-start "Use the mouse". Spindle: `src/client/app.rs`,
   transitions as behavioral references, not copied implementation. Partial:
   direct and wrapped Claude/Codex/OpenCode processes, Claude OSC title/progress
   and selected prompt signals, Claude live-turn/background-agent/MCP and `/btw`
-  working cues, selected manifest blocker prompts,
+  working cues, selected manifest blocker prompts, and done status after two
+  consecutive agent-process misses while retaining the pane's identity,
   Herdr-aligned OpenCode permission/interrupt and Codex directory-trust rules
   are detected; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Full manifest rules remain.
-- [x] Expose agent kind and unknown/idle/working/blocked state in pane chrome and
+- [x] Expose agent kind and unknown/idle/working/blocked/done state in pane chrome and
   the sidebar. Pane chrome shows identity/state; the sidebar lists each detected
   agent under its workspace with a state marker and tab, and selecting a row
   opens that space/workspace/tab and focuses the pane; within each grouped tab,
-  the sidebar supports Herdr-style grouped and priority views, with blocked
-  agents first in priority mode. The selected view is saved per client. Richer
+  the sidebar supports Herdr-style grouped and priority views, ordered
+  blocked/done/working/idle/unknown in priority mode. The selected view is
+  saved per client. Richer
   lifecycle transitions remain.
 - [ ] Keep state associated with the correct pane, tab, and workspace through
   switches, restarts, and recovery.

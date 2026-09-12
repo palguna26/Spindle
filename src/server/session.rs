@@ -44,6 +44,8 @@ pub struct PaneView {
     pub agent: Option<crate::detect::AgentKind>,
     #[serde(default)]
     pub agent_state: Option<crate::detect::AgentState>,
+    #[serde(default)]
+    pub agent_done: bool,
     pub scrollback_bytes: usize,
     #[serde(default)]
     pub scrollback: Vec<u8>,
@@ -84,6 +86,19 @@ impl PaneView {
         !self.alternate_screen
             && !self.mouse_reporting
             && (!self.application_cursor || self.bracketed_paste)
+    }
+
+    pub fn agent_display_state(&self) -> crate::detect::AgentDisplayState {
+        use crate::detect::{AgentDisplayState as Display, AgentState};
+        if self.agent_done {
+            return Display::Done;
+        }
+        match self.agent_state.unwrap_or(AgentState::Unknown) {
+            AgentState::Unknown => Display::Unknown,
+            AgentState::Idle => Display::Idle,
+            AgentState::Working => Display::Working,
+            AgentState::Blocked => Display::Blocked,
+        }
     }
 }
 
@@ -269,6 +284,7 @@ impl Session {
                 for pane in &mut snapshot.panes {
                     pane.agent = None;
                     pane.agent_state = None;
+                    pane.agent_done = false;
                     pane.mouse_reporting = false;
                     pane.mouse_release = false;
                     pane.mouse_motion = false;
@@ -567,6 +583,7 @@ impl Session {
             label: request.label,
             agent: None,
             agent_state: None,
+            agent_done: false,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -1168,6 +1185,7 @@ impl Session {
         pane.status = PaneStatus::Running;
         pane.agent = None;
         pane.agent_state = None;
+        pane.agent_done = false;
         pane.screen.clear();
         pane.cursor = (0, 0);
         pane.cursor_visible = false;
@@ -1401,6 +1419,7 @@ impl Session {
                 pane.status = current.status.clone();
                 pane.agent = current.agent;
                 pane.agent_state = current.agent_state;
+                pane.agent_done = current.agent_done;
                 pane.cols = current.terminal.snapshot().cols;
                 pane.rows = current.terminal.snapshot().rows;
                 pane.scrollback_bytes = current.scrollback.len();
@@ -1544,6 +1563,7 @@ mod tests {
         }))
         .unwrap();
         assert_eq!((pane.cols, pane.rows), (80, 24));
+        assert!(!pane.agent_done);
     }
 
     #[test]
@@ -1608,6 +1628,7 @@ mod tests {
             label: None,
             agent: None,
             agent_state: None,
+            agent_done: false,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -1781,6 +1802,7 @@ mod tests {
             label: None,
             agent: None,
             agent_state: None,
+            agent_done: false,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -1873,7 +1895,8 @@ mod tests {
             rows: 24,
             label: None,
             agent: Some(crate::detect::AgentKind::Codex),
-            agent_state: Some(crate::detect::AgentState::Blocked),
+            agent_state: Some(crate::detect::AgentState::Idle),
+            agent_done: true,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 3,
             scrollback: vec![1, 2, 3],
@@ -1906,10 +1929,13 @@ mod tests {
             history["data"]["panes"][0]["scrollback"],
             serde_json::json!([1, 2, 3])
         );
+        assert_eq!(metadata["data"]["panes"][0]["agent_state"], "idle");
+        assert_eq!(metadata["data"]["panes"][0]["agent_done"], true);
         let restored = Session::load_or_default(&path).unwrap();
         assert_eq!(restored.snapshot().panes[0].scrollback, vec![1, 2, 3]);
         assert_eq!(restored.snapshot().panes[0].agent, None);
         assert_eq!(restored.snapshot().panes[0].agent_state, None);
+        assert!(!restored.snapshot().panes[0].agent_done);
         let _ = std::fs::remove_dir_all(directory);
     }
 
@@ -1991,6 +2017,7 @@ mod tests {
             label: None,
             agent: None,
             agent_state: None,
+            agent_done: false,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -2027,6 +2054,7 @@ mod tests {
             label: None,
             agent: None,
             agent_state: None,
+            agent_done: false,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
