@@ -284,23 +284,36 @@ fn sidebar_rows(snapshot: &SessionSnapshot) -> Vec<SidebarRow<'_>> {
                         .as_ref()
                         .map(|layout| layout.pane_ids())
                         .unwrap_or_default();
-                    snapshot
+                    let mut agents = snapshot
                         .panes
                         .iter()
                         .filter(move |pane| {
                             pane.agent.is_some() && pane_ids.contains(&pane.pane_id.as_str())
                         })
-                        .map(move |pane| SidebarRow::Agent {
-                            space_id: &space.space_id,
-                            workspace_id: &workspace.workspace_id,
-                            tab_id: &tab.tab_id,
-                            tab_name: &tab.name,
-                            pane,
-                        })
+                        .collect::<Vec<_>>();
+                    agents.sort_by_key(|pane| {
+                        std::cmp::Reverse(agent_state_priority(pane.agent_state))
+                    });
+                    agents.into_iter().map(move |pane| SidebarRow::Agent {
+                        space_id: &space.space_id,
+                        workspace_id: &workspace.workspace_id,
+                        tab_id: &tab.tab_id,
+                        tab_name: &tab.name,
+                        pane,
+                    })
                 }))
             }))
         })
         .collect()
+}
+
+fn agent_state_priority(state: Option<crate::detect::AgentState>) -> u8 {
+    match state.unwrap_or(crate::detect::AgentState::Unknown) {
+        crate::detect::AgentState::Blocked => 3,
+        crate::detect::AgentState::Working => 2,
+        crate::detect::AgentState::Idle => 1,
+        crate::detect::AgentState::Unknown => 0,
+    }
 }
 
 #[cfg(test)]
@@ -918,12 +931,41 @@ mod tests {
             .unwrap();
         let buffer = terminal.backend().buffer();
         assert_eq!(
-            buffer.cell((sidebar.x + 8, sidebar.y + 5)).unwrap().bg,
+            buffer.cell((sidebar.x + 8, sidebar.y + 4)).unwrap().bg,
             ratatui::style::Color::DarkGray
         );
         assert_ne!(
-            buffer.cell((sidebar.x + 8, sidebar.y + 4)).unwrap().bg,
+            buffer.cell((sidebar.x + 8, sidebar.y + 5)).unwrap().bg,
             ratatui::style::Color::DarkGray
+        );
+    }
+
+    #[test]
+    fn sidebar_orders_blocked_agents_before_working_agents() {
+        let mut snapshot = sample_snapshot();
+        snapshot.panes = vec![
+            agent_pane("pane-1", "codex", "working"),
+            agent_pane("pane-2", "open_code", "blocked"),
+        ];
+        let area = Rect::new(0, 0, 100, 30);
+        let sidebar = main_areas(area).sidebar;
+        assert_eq!(
+            hit_test(&snapshot, area, click(sidebar.x + 3, sidebar.y + 4)),
+            Some(ClickTarget::Agent {
+                space_id: "space-1".into(),
+                workspace_id: "workspace-2".into(),
+                tab_id: "tab-3".into(),
+                pane_id: "pane-2".into(),
+            })
+        );
+        assert_eq!(
+            hit_test(&snapshot, area, click(sidebar.x + 3, sidebar.y + 5)),
+            Some(ClickTarget::Agent {
+                space_id: "space-1".into(),
+                workspace_id: "workspace-2".into(),
+                tab_id: "tab-3".into(),
+                pane_id: "pane-1".into(),
+            })
         );
     }
 
