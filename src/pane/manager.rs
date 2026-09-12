@@ -1,5 +1,5 @@
 use super::PaneEvent;
-use crate::detect::{self, AgentKind, AgentState};
+use crate::detect::{self, AgentKind, AgentProcessScan, AgentState};
 use crate::model::status::PaneStatus;
 use crate::pty::{PtyConfig, PtySession, PtySessionError};
 use crate::terminal::{TerminalEmulator, TerminalSnapshot};
@@ -225,14 +225,15 @@ impl PaneManager {
         for pane in self.panes.values_mut() {
             let mut agent_changed = false;
             if scan_agents && pane.status.is_running() {
-                let detected = pane
+                let scan = pane
                     .session
                     .process_id()
-                    .and_then(detect::detect_in_process_tree);
+                    .map(detect::detect_in_process_tree)
+                    .unwrap_or(AgentProcessScan::Unavailable);
                 let (changed, agent_exited) =
-                    observe_agent_process(&mut pane.agent, detected, &mut pane.agent_missing_scans);
+                    observe_agent_process(&mut pane.agent, scan, &mut pane.agent_missing_scans);
                 agent_changed = changed;
-                if detected.is_some() {
+                if matches!(scan, AgentProcessScan::Found(_)) {
                     pane.agent_done = false;
                 }
                 if agent_changed {
@@ -330,14 +331,18 @@ impl PaneManager {
 
 fn observe_agent_process(
     current: &mut Option<AgentKind>,
-    detected: Option<AgentKind>,
+    scan: AgentProcessScan,
     missing_scans: &mut u8,
 ) -> (bool, bool) {
-    if let Some(detected) = detected {
+    if let AgentProcessScan::Found(detected) = scan {
         let changed = *current != Some(detected);
         *current = Some(detected);
         *missing_scans = 0;
         return (changed, false);
+    }
+    if scan == AgentProcessScan::Unavailable {
+        *missing_scans = 0;
+        return (false, false);
     }
     if current.is_none() {
         *missing_scans = 0;
@@ -353,7 +358,7 @@ mod tests {
         observe_agent_process, PaneConfig, PaneManager, PendingIdleConfirmation,
         AGENT_EXIT_CONFIRMATIONS, IDLE_CONFIRM_CAP, IDLE_CONFIRM_INTERVAL,
     };
-    use crate::detect::{AgentKind, AgentState};
+    use crate::detect::{AgentKind, AgentProcessScan, AgentState};
     use std::collections::BTreeMap;
     use std::time::{Duration, Instant};
 
@@ -391,32 +396,60 @@ mod tests {
         let mut missing_scans = 0;
         let mut agent = Some(AgentKind::Claude);
         assert_eq!(
-            observe_agent_process(&mut agent, None, &mut missing_scans,),
+            observe_agent_process(&mut agent, AgentProcessScan::Absent, &mut missing_scans,),
             (false, false)
         );
         assert_eq!(agent, Some(AgentKind::Claude));
         assert_eq!(missing_scans, 1);
         assert_eq!(
-            observe_agent_process(&mut agent, Some(AgentKind::Claude), &mut missing_scans,),
+            observe_agent_process(
+                &mut agent,
+                AgentProcessScan::Found(AgentKind::Claude),
+                &mut missing_scans,
+            ),
             (false, false)
         );
         assert_eq!(missing_scans, 0);
         assert_eq!(
-            observe_agent_process(&mut agent, None, &mut missing_scans,),
+            observe_agent_process(&mut agent, AgentProcessScan::Absent, &mut missing_scans,),
             (false, false)
         );
         assert_eq!(
-            observe_agent_process(&mut agent, None, &mut missing_scans,),
+            observe_agent_process(&mut agent, AgentProcessScan::Absent, &mut missing_scans,),
             (false, true)
         );
         assert_eq!(agent, Some(AgentKind::Claude));
         assert_eq!(missing_scans, AGENT_EXIT_CONFIRMATIONS);
         assert_eq!(
-            observe_agent_process(&mut agent, Some(AgentKind::Codex), &mut missing_scans,),
+            observe_agent_process(
+                &mut agent,
+                AgentProcessScan::Found(AgentKind::Codex),
+                &mut missing_scans,
+            ),
             (true, false)
         );
         assert_eq!(agent, Some(AgentKind::Codex));
         assert_eq!(missing_scans, 0);
+    }
+
+    #[test]
+    fn unavailable_process_scans_do_not_change_agent_identity_or_status() {
+        let mut missing_scans = 1;
+        let mut agent = Some(AgentKind::Claude);
+        assert_eq!(
+            observe_agent_process(
+                &mut agent,
+                AgentProcessScan::Unavailable,
+                &mut missing_scans,
+            ),
+            (false, false)
+        );
+        assert_eq!(agent, Some(AgentKind::Claude));
+        assert_eq!(missing_scans, 0);
+        assert_eq!(
+            observe_agent_process(&mut agent, AgentProcessScan::Absent, &mut missing_scans,),
+            (false, false)
+        );
     }
 
     #[test]

@@ -48,6 +48,13 @@ pub enum AgentDisplayState {
     Done,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AgentProcessScan {
+    Found(AgentKind),
+    Absent,
+    Unavailable,
+}
+
 impl AgentDisplayState {
     pub fn label(self) -> &'static str {
         match self {
@@ -470,6 +477,22 @@ fn identify_descendant(root_pid: u32, processes: &[ProcessEntry]) -> Option<Agen
 }
 
 #[cfg(any(windows, test))]
+fn classify_agent_process_scan(
+    root_present: bool,
+    enumeration_complete: bool,
+    command_line_read_failed: bool,
+    detected: Option<AgentKind>,
+) -> AgentProcessScan {
+    if let Some(agent) = detected {
+        AgentProcessScan::Found(agent)
+    } else if root_present && enumeration_complete && !command_line_read_failed {
+        AgentProcessScan::Absent
+    } else {
+        AgentProcessScan::Unavailable
+    }
+}
+
+#[cfg(any(windows, test))]
 fn descendant_process_ids(root_pid: u32, processes: &[ProcessEntry]) -> Vec<u32> {
     let mut descendants = vec![root_pid];
     let mut index = 0;
@@ -486,9 +509,11 @@ fn descendant_process_ids(root_pid: u32, processes: &[ProcessEntry]) -> Vec<u32>
 }
 
 #[cfg(windows)]
-pub(crate) fn detect_in_process_tree(root_pid: u32) -> Option<AgentKind> {
+pub(crate) fn detect_in_process_tree(root_pid: u32) -> AgentProcessScan {
     use std::mem::size_of;
-    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, ERROR_NO_MORE_FILES, INVALID_HANDLE_VALUE,
+    };
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
@@ -496,7 +521,7 @@ pub(crate) fn detect_in_process_tree(root_pid: u32) -> Option<AgentKind> {
 
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
     if snapshot == INVALID_HANDLE_VALUE {
-        return None;
+        return AgentProcessScan::Unavailable;
     }
     struct Snapshot(windows_sys::Win32::Foundation::HANDLE);
     impl Drop for Snapshot {
@@ -510,8 +535,10 @@ pub(crate) fn detect_in_process_tree(root_pid: u32) -> Option<AgentKind> {
     let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
     entry.dwSize = size_of::<PROCESSENTRY32W>() as u32;
     let mut processes = Vec::new();
-    let mut has_entry = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
-    while has_entry {
+    if unsafe { Process32FirstW(snapshot, &mut entry) } == 0 {
+        return AgentProcessScan::Unavailable;
+    }
+    let enumeration_complete = loop {
         let name = String::from_utf16_lossy(
             &entry.szExeFile[..entry
                 .szExeFile
@@ -525,9 +552,13 @@ pub(crate) fn detect_in_process_tree(root_pid: u32) -> Option<AgentKind> {
             command_line: None,
             name,
         });
-        has_entry = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
-    }
+        if unsafe { Process32NextW(snapshot, &mut entry) } == 0 {
+            break unsafe { GetLastError() } == ERROR_NO_MORE_FILES;
+        }
+    };
+    let root_present = processes.iter().any(|process| process.pid == root_pid);
     let descendant_ids = descendant_process_ids(root_pid, &processes);
+    let mut command_line_read_failed = false;
     for process in &mut processes {
         if descendant_ids.contains(&process.pid)
             && matches!(
@@ -536,9 +567,15 @@ pub(crate) fn detect_in_process_tree(root_pid: u32) -> Option<AgentKind> {
             )
         {
             process.command_line = read_command_line(process.pid);
+            command_line_read_failed |= process.command_line.is_none();
         }
     }
-    identify_descendant(root_pid, &processes)
+    classify_agent_process_scan(
+        root_present,
+        enumeration_complete,
+        command_line_read_failed,
+        identify_descendant(root_pid, &processes),
+    )
 }
 
 #[cfg(windows)]
@@ -721,16 +758,44 @@ fn parse_windows_command_line(command_line: &str) -> Option<Vec<String>> {
 }
 
 #[cfg(not(windows))]
-pub(crate) fn detect_in_process_tree(_root_pid: u32) -> Option<AgentKind> {
-    None
+pub(crate) fn detect_in_process_tree(_root_pid: u32) -> AgentProcessScan {
+    AgentProcessScan::Unavailable
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_state, detect_state_with_osc, identify_descendant, identify_process,
-        identify_process_command, AgentKind, AgentState, ProcessEntry,
+        classify_agent_process_scan, detect_state, detect_state_with_osc, identify_descendant,
+        identify_process, identify_process_command, AgentKind, AgentProcessScan, AgentState,
+        ProcessEntry,
     };
+
+    #[test]
+    fn process_scan_failures_are_not_treated_as_agent_exit() {
+        assert_eq!(
+            classify_agent_process_scan(true, true, false, None),
+            AgentProcessScan::Absent
+        );
+        for (root_present, enumeration_complete, command_line_read_failed) in [
+            (false, true, false),
+            (true, false, false),
+            (true, true, true),
+        ] {
+            assert_eq!(
+                classify_agent_process_scan(
+                    root_present,
+                    enumeration_complete,
+                    command_line_read_failed,
+                    None
+                ),
+                AgentProcessScan::Unavailable
+            );
+        }
+        assert_eq!(
+            classify_agent_process_scan(false, false, true, Some(AgentKind::Claude)),
+            AgentProcessScan::Found(AgentKind::Claude)
+        );
+    }
 
     #[test]
     fn recognizes_herdr_agent_process_names() {

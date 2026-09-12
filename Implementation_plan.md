@@ -140,7 +140,8 @@ and quick-start "Use the mouse". Spindle: `src/client/app.rs`,
   direct and wrapped Claude/Codex/OpenCode processes, Claude OSC title/progress
   and selected prompt signals, Claude live-turn/background-agent/MCP and `/btw`
   working cues, selected manifest blocker prompts, and done status after two
-  consecutive agent-process misses while retaining the pane's identity,
+  consecutive confirmed process scans while retaining the pane's identity;
+  unavailable process scans do not change status,
   Herdr-aligned OpenCode permission/interrupt and Codex directory-trust rules
   are detected; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Full manifest rules remain.
