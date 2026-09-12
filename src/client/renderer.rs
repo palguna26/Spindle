@@ -12,7 +12,8 @@ pub(crate) use layout::{
 use navigation::render_tabs;
 pub use navigation::{
     hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll, sidebar_scroll_max,
-    sidebar_scroll_region, ClickTarget,
+    sidebar_scroll_offset_from_drag_row, sidebar_scroll_region, sidebar_scroll_thumb_grab_offset,
+    ClickTarget,
 };
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -189,6 +190,7 @@ pub fn render_help(frame: &mut Frame<'_>) {
     let rows = [
         "Mouse",
         "Click sidebar, tabs, or panes to switch or focus.",
+        "Sidebar: wheel, drag thumb, click track.",
         "Drag split borders to resize; right-click for actions.",
         "PageUp/PageDown or wheel scroll history; drag text to copy.",
         "Double-click selects a word.",
@@ -441,6 +443,7 @@ mod tests {
             .collect();
         assert!(content.contains("Spindle help"));
         assert!(content.contains("right-click for actions"));
+        assert!(content.contains("drag thumb"));
         assert!(content.contains("palette"));
     }
 

@@ -60,6 +60,7 @@ struct PaneMouseCapture {
 struct MouseState {
     sidebar_collapsed: bool,
     sidebar_scroll: usize,
+    sidebar_scroll_drag: Option<u16>,
     preferences_path: std::path::PathBuf,
     split_drag: Option<SplitDrag>,
     pane_capture: Option<PaneMouseCapture>,
@@ -646,6 +647,7 @@ fn handle_mouse(
     }
     if mouse.kind == MouseEventKind::Down(MouseButton::Right) {
         mouse_state.split_drag = None;
+        mouse_state.sidebar_scroll_drag = None;
         mouse_state.selection = None;
         mouse_state.last_click = None;
         if context_menu.is_some() {
@@ -686,6 +688,18 @@ fn handle_mouse(
         return Ok(());
     }
     if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+        mouse_state.sidebar_scroll_drag = None;
+        if let Some(grab_row_offset) = renderer::sidebar_scroll_thumb_grab_offset(
+            snapshot,
+            area,
+            mouse_state.sidebar_collapsed,
+            mouse_state.sidebar_scroll,
+            mouse.column,
+            mouse.row,
+        ) {
+            mouse_state.sidebar_scroll_drag = Some(grab_row_offset);
+            return Ok(());
+        }
         let pane_area =
             renderer::pane_content_area_with_sidebar(area, mouse_state.sidebar_collapsed);
         if let Some(handle) = renderer::split_handles(snapshot, pane_area)
@@ -725,6 +739,23 @@ fn handle_mouse(
         )? {
             return Ok(());
         }
+    }
+    if matches!(
+        mouse.kind,
+        MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
+    ) && mouse_state.sidebar_scroll_drag.is_some()
+    {
+        mouse_state.sidebar_scroll = renderer::sidebar_scroll_offset_from_drag_row(
+            snapshot,
+            area,
+            mouse_state.sidebar_collapsed,
+            mouse.row,
+            mouse_state.sidebar_scroll_drag.unwrap_or_default(),
+        );
+        if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
+            mouse_state.sidebar_scroll_drag = None;
+        }
+        return Ok(());
     }
     if matches!(
         mouse.kind,

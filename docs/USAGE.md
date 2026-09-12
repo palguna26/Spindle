@@ -34,10 +34,11 @@ The screen shows spaces and workspaces in a left sidebar and tabs above the
 panes. Click a space, workspace, tab, or pane to switch focus. Drag split
 borders to resize. Right-click panes, tabs, and workspaces for actions. Drag
 terminal text to select and copy it; double-click a word to select it. Use the
-wheel inside the sidebar to browse long space/workspace lists, or click its
-scrollbar track to jump. Use the wheel or PageUp/PageDown over a pane to browse
-recent output when the foreground app does not claim those inputs. Mouse-aware
-terminal apps receive mouse input when they request it.
+wheel inside the sidebar to browse long space/workspace lists, click its
+scrollbar track to jump, or drag the thumb. Use the wheel or PageUp/PageDown
+over a pane to browse recent output when the foreground app does not claim
+those inputs. Mouse-aware terminal apps receive mouse input when they request
+it.
 
 Useful commands:
 

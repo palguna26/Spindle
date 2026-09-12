@@ -64,10 +64,12 @@ pub fn hit_test_with_sidebar_scroll(
         let rows = sidebar_rows(snapshot);
         let max_scroll = rows.len().saturating_sub(usize::from(body.height));
         if max_scroll > 0 && body.width > 1 && x == body.right().saturating_sub(1) {
-            let row = usize::from(y.saturating_sub(body.y));
-            let offset =
-                row.saturating_mul(max_scroll) / usize::from(body.height.saturating_sub(1).max(1));
-            return Some(ClickTarget::SidebarScroll(offset.min(max_scroll)));
+            return Some(ClickTarget::SidebarScroll(sidebar_scroll_for_track_row(
+                body,
+                rows.len(),
+                max_scroll,
+                y,
+            )));
         }
         let row =
             usize::from(y.saturating_sub(body.y)).saturating_add(sidebar_scroll.min(max_scroll));
@@ -119,6 +121,100 @@ pub fn sidebar_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: boo
 pub fn sidebar_scroll_region(area: Rect, collapsed: bool, x: u16, y: u16) -> bool {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     contains(sidebar_body(sidebar), x, y)
+}
+
+pub fn sidebar_scroll_thumb_grab_offset(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    scroll: usize,
+    x: u16,
+    y: u16,
+) -> Option<u16> {
+    let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
+    let body = sidebar_body(sidebar);
+    let max_scroll = sidebar_scroll_max(snapshot, area, collapsed);
+    if max_scroll == 0
+        || body.width <= 1
+        || x != body.right().saturating_sub(1)
+        || !contains(body, x, y)
+    {
+        return None;
+    }
+    let (thumb_top, thumb_height) =
+        sidebar_scrollbar_thumb(body, scroll, max_scroll, sidebar_rows(snapshot).len())?;
+    let row = y.saturating_sub(body.y);
+    (row >= thumb_top && row < thumb_top.saturating_add(thumb_height)).then_some(row - thumb_top)
+}
+
+pub fn sidebar_scroll_offset_from_drag_row(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    row: u16,
+    grab_row_offset: u16,
+) -> usize {
+    let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
+    let body = sidebar_body(sidebar);
+    let max_scroll = sidebar_scroll_max(snapshot, area, collapsed);
+    let rows = sidebar_rows(snapshot).len();
+    let Some((_, thumb_height)) = sidebar_scrollbar_thumb(body, 0, max_scroll, rows) else {
+        return 0;
+    };
+    let track_height = usize::from(body.height);
+    let max_thumb_top = track_height.saturating_sub(usize::from(thumb_height));
+    if max_thumb_top == 0 {
+        return 0;
+    }
+    let clamped_row = row.clamp(body.y, body.bottom().saturating_sub(1));
+    let row_offset = usize::from(clamped_row.saturating_sub(body.y));
+    let desired_top = row_offset.saturating_sub(usize::from(grab_row_offset));
+    rounded_ratio(desired_top.min(max_thumb_top), max_scroll, max_thumb_top).min(max_scroll)
+}
+
+fn sidebar_scroll_for_track_row(
+    body: Rect,
+    row_count: usize,
+    max_scroll: usize,
+    row: u16,
+) -> usize {
+    let Some((_, thumb_height)) = sidebar_scrollbar_thumb(body, 0, max_scroll, row_count) else {
+        return 0;
+    };
+    let track_height = usize::from(body.height);
+    let max_thumb_top = track_height.saturating_sub(usize::from(thumb_height));
+    if max_thumb_top == 0 {
+        return 0;
+    }
+    let row_offset = usize::from(row.saturating_sub(body.y));
+    let desired_top = row_offset.saturating_sub(usize::from(thumb_height / 2));
+    rounded_ratio(desired_top.min(max_thumb_top), max_scroll, max_thumb_top).min(max_scroll)
+}
+
+fn sidebar_scrollbar_thumb(
+    body: Rect,
+    scroll: usize,
+    max_scroll: usize,
+    row_count: usize,
+) -> Option<(u16, u16)> {
+    let height = usize::from(body.height);
+    if max_scroll == 0 || height == 0 {
+        return None;
+    }
+    let thumb_height = ((height * height) as f64 / row_count.max(1) as f64)
+        .round()
+        .max(1.0)
+        .min(height as f64) as usize;
+    let max_thumb_top = height.saturating_sub(thumb_height);
+    let thumb_top = rounded_ratio(scroll.min(max_scroll), max_thumb_top, max_scroll);
+    Some((thumb_top as u16, thumb_height as u16))
+}
+
+fn rounded_ratio(value: usize, numerator: usize, denominator: usize) -> usize {
+    if denominator == 0 {
+        return 0;
+    }
+    ((value as f64 * numerator as f64) / denominator as f64).round() as usize
 }
 
 fn sidebar_body(area: Rect) -> Rect {
@@ -319,15 +415,17 @@ fn render_sidebar_scrollbar(
     max_scroll: usize,
     row_count: usize,
 ) {
+    let Some((thumb_top, thumb_height)) =
+        sidebar_scrollbar_thumb(body, start, max_scroll, row_count)
+    else {
+        return;
+    };
     let height = usize::from(body.height);
-    let thumb_height = (height.saturating_mul(height) / row_count.max(1))
-        .max(1)
-        .min(height);
-    let thumb_top = start.saturating_mul(height.saturating_sub(thumb_height)) / max_scroll.max(1);
     let x = body.right().saturating_sub(1);
     for row in 0..height {
         if let Some(cell) = frame.buffer_mut().cell_mut((x, body.y + row as u16)) {
-            let thumb = row >= thumb_top && row < thumb_top + thumb_height;
+            let thumb = row >= usize::from(thumb_top)
+                && row < usize::from(thumb_top.saturating_add(thumb_height));
             cell.set_symbol(if thumb { "#" } else { "|" });
             cell.set_fg(if thumb { Color::Gray } else { Color::DarkGray });
         }
@@ -644,7 +742,30 @@ mod tests {
                 false,
                 0,
             ),
-            Some(ClickTarget::SidebarScroll(3))
+            Some(ClickTarget::SidebarScroll(2))
+        );
+        let track_x = body.right() - 1;
+        assert_eq!(
+            super::sidebar_scroll_thumb_grab_offset(&snapshot, area, false, 0, track_x, body.y + 1),
+            Some(1)
+        );
+        assert_eq!(
+            super::sidebar_scroll_thumb_grab_offset(&snapshot, area, false, 0, track_x, body.y - 1,),
+            None
+        );
+        assert_eq!(
+            super::sidebar_scroll_offset_from_drag_row(&snapshot, area, false, body.y + 1, 1,),
+            0
+        );
+        assert_eq!(
+            super::sidebar_scroll_offset_from_drag_row(
+                &snapshot,
+                area,
+                false,
+                body.bottom() - 1,
+                1,
+            ),
+            max_scroll
         );
         assert_eq!(
             hit_test_with_sidebar_scroll(&snapshot, area, click(body.x, body.y), false, 3),
