@@ -89,6 +89,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Click spaces, workspaces, tabs, and panes to switch/focus them.
 - [x] Toggle a compact four-column sidebar from the Herdr `prefix+b` binding
   or the sidebar footer control; compact rows remain clickable.
+- [x] Save the sidebar's manually selected collapsed state with the local
+  project's client preferences, matching Herdr's chrome-preference behavior.
 - [x] Drag split borders to resize, updating both the saved layout and PTY
   dimensions.
 - [x] Right-click workspaces, tabs, and panes for context-specific actions.

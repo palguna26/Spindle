@@ -71,6 +71,7 @@ to mouse and keyboard controls. Press `:` for the command palette. Other keys:
 | `v` | Vertical split |
 | `"` / `%` | Horizontal / vertical split (alternate) |
 | `z` | Zoom / restore focused pane |
+| `b` | Toggle compact sidebar (saved for this project) |
 | `<` / `>` | Resize pane |
 | `?` | Open mouse and keyboard help |
 | `:` | Open command palette |

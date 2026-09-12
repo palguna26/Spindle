@@ -97,7 +97,8 @@ fn attach_server(project: &Project) -> io::Result<()> {
         start_server(project)?;
     }
     let address = fs::read_to_string(project.endpoint_path())?;
-    crate::client::app::run(address.trim()).map_err(|error| io::Error::other(format!("{error:?}")))
+    crate::client::app::run(address.trim(), &project.state_dir)
+        .map_err(|error| io::Error::other(format!("{error:?}")))
 }
 
 fn ping_server(project: &Project) -> io::Result<Response<Value>> {

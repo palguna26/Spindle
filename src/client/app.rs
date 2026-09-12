@@ -59,6 +59,7 @@ struct PaneMouseCapture {
 #[derive(Default)]
 struct MouseState {
     sidebar_collapsed: bool,
+    preferences_path: std::path::PathBuf,
     split_drag: Option<SplitDrag>,
     pane_capture: Option<PaneMouseCapture>,
     selection: Option<TextSelection>,
@@ -109,8 +110,13 @@ impl SplitDrag {
     }
 }
 
-pub fn run(address: impl Into<String>) -> Result<(), ClientError> {
+pub fn run(
+    address: impl Into<String>,
+    state_dir: impl AsRef<std::path::Path>,
+) -> Result<(), ClientError> {
     let client = ControlClient::connect(address)?;
+    let preferences_path = state_dir.as_ref().join("client.json");
+    let preferences = super::preferences::load(&preferences_path);
     let terminal_size = size().map_err(ClientError::Io)?;
     client.attach_with_terminal(
         terminal_size.0,
@@ -121,7 +127,13 @@ pub fn run(address: impl Into<String>) -> Result<(), ClientError> {
     let startup_error = ensure_active_default_pane(&client, terminal_size)
         .err()
         .map(startup_error_message);
-    let result = event_loop(&mut terminal, &client, startup_error);
+    let result = event_loop(
+        &mut terminal,
+        &client,
+        startup_error,
+        preferences.sidebar_collapsed,
+        &preferences_path,
+    );
     restore_terminal(&mut terminal).map_err(ClientError::Io)?;
     result
 }
@@ -153,6 +165,8 @@ fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     client: &ControlClient,
     mut startup_error: Option<String>,
+    sidebar_collapsed: bool,
+    preferences_path: &std::path::Path,
 ) -> Result<(), ClientError> {
     let mut prefix_active = false;
     let mut palette_selected = 0;
@@ -161,7 +175,11 @@ fn event_loop(
     let mut context_menu: Option<ContextMenu> = None;
     let mut help_open = false;
     let mut last_pane_sizes = None;
-    let mut mouse_state = MouseState::default();
+    let mut mouse_state = MouseState {
+        sidebar_collapsed,
+        preferences_path: preferences_path.to_path_buf(),
+        ..MouseState::default()
+    };
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
     loop {
@@ -399,6 +417,12 @@ fn event_loop(
             mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
             mouse_state.selection = None;
             mouse_state.last_click = None;
+            let _ = super::preferences::store(
+                &mouse_state.preferences_path,
+                super::preferences::ClientPreferences {
+                    sidebar_collapsed: mouse_state.sidebar_collapsed,
+                },
+            );
             prefix_active = false;
             continue;
         }
@@ -755,6 +779,12 @@ fn handle_mouse(
             mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
             mouse_state.selection = None;
             mouse_state.last_click = None;
+            let _ = super::preferences::store(
+                &mouse_state.preferences_path,
+                super::preferences::ClientPreferences {
+                    sidebar_collapsed: mouse_state.sidebar_collapsed,
+                },
+            );
         }
         renderer::ClickTarget::SplitBorder(_) => {}
         renderer::ClickTarget::Space(space_id) => {
