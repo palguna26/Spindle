@@ -161,6 +161,10 @@ fn event_loop(
         };
         if snapshot_has_focused_pane(&snapshot) {
             startup_error = None;
+        } else if connected && startup_error.is_none() {
+            startup_error = ensure_active_default_pane(client, terminal_size)
+                .err()
+                .map(startup_error_message);
         }
         if connected && !was_connected {
             connected = client
@@ -1463,7 +1467,15 @@ fn ensure_active_default_pane(
         "ensure_active_pane",
         pane_request_for_snapshot(&snapshot, terminal_size),
     )?;
-    Ok(())
+    let updated = current_snapshot(client)?;
+    if snapshot_has_focused_pane(&updated) {
+        Ok(())
+    } else {
+        Err(ClientError::Server(
+            "the server accepted shell creation, but the active tab still has no usable pane"
+                .into(),
+        ))
+    }
 }
 
 fn startup_error_message(error: ClientError) -> String {

@@ -276,6 +276,9 @@ fn ensuring_active_pane_is_idempotent_and_restores_tab_focus() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
     let client = ControlClient::connect(address.trim()).unwrap();
+    client
+        .attach_with_terminal(100, 30, vec!["alternate_screen".into()])
+        .unwrap();
     let pane_request = serde_json::json!({
         "command": "cmd.exe",
         "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
@@ -309,6 +312,22 @@ fn ensuring_active_pane_is_idempotent_and_restores_tab_focus() {
     assert!(first.ok);
     let first_payload = first.payload.unwrap();
     assert_eq!(first_payload["created"], true);
+    let first_snapshot = client
+        .request(
+            "ensure-first-snapshot",
+            "get_snapshot",
+            serde_json::json!({}),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    let focused = first_snapshot["focused_pane_id"].as_str().unwrap();
+    assert_eq!(focused, first_payload["pane_id"].as_str().unwrap());
+    assert!(first_snapshot["panes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|pane| pane["pane_id"] == focused));
 
     let second = client
         .request("ensure-second", "ensure_active_pane", pane_request.clone())
