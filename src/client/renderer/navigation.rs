@@ -91,6 +91,40 @@ enum SidebarRow<'a> {
     },
 }
 
+fn workspace_agent_counts(snapshot: &SessionSnapshot, workspace_id: &str) -> [usize; 4] {
+    let Some(workspace) = snapshot
+        .spaces
+        .iter()
+        .flat_map(|space| &space.workspaces)
+        .find(|workspace| workspace.workspace_id == workspace_id)
+    else {
+        return [0; 4];
+    };
+    let pane_ids = workspace
+        .tabs
+        .iter()
+        .filter_map(|tab| tab.layout.as_ref())
+        .flat_map(|layout| layout.pane_ids())
+        .collect::<Vec<_>>();
+    let mut counts = [0; 4];
+    for pane in &snapshot.panes {
+        if !pane_ids.contains(&pane.pane_id.as_str()) || pane.agent.is_none() {
+            continue;
+        }
+        let index = match pane
+            .agent_state
+            .unwrap_or(crate::detect::AgentState::Unknown)
+        {
+            crate::detect::AgentState::Unknown => 0,
+            crate::detect::AgentState::Idle => 1,
+            crate::detect::AgentState::Working => 2,
+            crate::detect::AgentState::Blocked => 3,
+        };
+        counts[index] += 1;
+    }
+    counts
+}
+
 fn sidebar_rows(snapshot: &SessionSnapshot) -> Vec<SidebarRow<'_>> {
     snapshot
         .spaces
@@ -144,7 +178,7 @@ pub(super) fn render_sidebar(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, 
                     .find(|space| space.space_id == *space_id);
                 let active = *space_id == snapshot.active_space_id
                     && space.is_some_and(|space| space.active_workspace_id == *workspace_id);
-                Line::from(vec![
+                let mut spans = vec![
                     Span::raw("  "),
                     Span::styled(
                         if active { "● " } else { "○ " },
@@ -154,11 +188,23 @@ pub(super) fn render_sidebar(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, 
                             Color::DarkGray
                         }),
                     ),
-                    Span::styled(
-                        (*name).to_owned(),
-                        Style::default().fg(if active { Color::White } else { Color::Gray }),
-                    ),
-                ])
+                ];
+                let counts = workspace_agent_counts(snapshot, workspace_id);
+                let labels = ["?", "I", "W", "!"];
+                let colors = [Color::DarkGray, Color::Green, Color::Yellow, Color::Red];
+                for (index, count) in counts.into_iter().enumerate() {
+                    if count > 0 {
+                        spans.push(Span::styled(
+                            format!(" {}{count}", labels[index]),
+                            Style::default().fg(colors[index]),
+                        ));
+                    }
+                }
+                spans.push(Span::styled(
+                    (*name).to_owned(),
+                    Style::default().fg(if active { Color::White } else { Color::Gray }),
+                ));
+                Line::from(spans)
             }
         })
         .collect::<Vec<_>>();
@@ -257,6 +303,20 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
     use ratatui::Terminal;
+
+    fn agent_pane(pane_id: &str, agent: &str, state: &str) -> crate::server::session::PaneView {
+        serde_json::from_value(serde_json::json!({
+            "pane_id": pane_id,
+            "command": "powershell.exe",
+            "args": [],
+            "cwd": "C:/",
+            "status": "Running",
+            "scrollback_bytes": 0,
+            "agent": agent,
+            "agent_state": state
+        }))
+        .unwrap()
+    }
 
     fn sample_snapshot() -> SessionSnapshot {
         SessionSnapshot {
@@ -436,6 +496,32 @@ mod tests {
         assert!(content.contains("Current project"));
         assert!(content.contains("Docs"));
         assert!(content.contains("Activity"));
+    }
+
+    #[test]
+    fn sidebar_shows_agent_state_counts_for_each_workspace() {
+        let mut snapshot = sample_snapshot();
+        snapshot.panes = vec![
+            agent_pane("pane-1", "codex", "working"),
+            agent_pane("pane-2", "open_code", "blocked"),
+            agent_pane("pane-other", "codex", "idle"),
+        ];
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let sidebar = main_areas(Rect::new(0, 0, 100, 30)).sidebar;
+        terminal
+            .draw(|frame| render_sidebar(frame, &snapshot, sidebar))
+            .unwrap();
+        let content = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(content.contains("W1"));
+        assert!(content.contains("!1"));
+        assert!(!content.contains("I1"));
     }
 
     #[test]

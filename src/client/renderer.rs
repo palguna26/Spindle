@@ -161,6 +161,7 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "?: help; colon: palette; q / d: detach",
         "",
         "Create, rename, and delete actions are in the command palette.",
+        "Sidebar agent badges: W working, ! blocked, I idle, ? unknown.",
         "Press any key or click to close.",
     ]
     .into_iter()
@@ -287,7 +288,13 @@ fn pane_title_text(pane: &crate::server::session::PaneView) -> String {
         pane.pane_id,
         label,
         pane.agent
-            .map(|agent| format!(" [{}]", agent.label()))
+            .map(|agent| {
+                let state = pane
+                    .agent_state
+                    .map(|state| format!(" {}", state.label()))
+                    .unwrap_or_default();
+                format!(" [{}{state}]", agent.label())
+            })
             .unwrap_or_default(),
         status_detail(&pane.status),
         alternate
@@ -464,6 +471,7 @@ mod tests {
                 rows: 24,
                 label: None,
                 agent: None,
+                agent_state: None,
                 status: PaneStatus::Running,
                 scrollback_bytes: 0,
                 scrollback: Vec::new(),
@@ -515,6 +523,7 @@ mod tests {
             rows: 24,
             label: None,
             agent: Some(crate::detect::AgentKind::Codex),
+            agent_state: Some(crate::detect::AgentState::Working),
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -531,7 +540,7 @@ mod tests {
             right_click_passthrough: false,
         };
         assert!(pane_title_text(&pane).contains("Editor"));
-        assert!(pane_title_text(&pane).contains("[Codex]"));
+        assert!(pane_title_text(&pane).contains("[Codex working]"));
         assert!(pane_title_text(&pane).contains("running"));
         assert!(pane_title_text(&pane).contains("[alt]"));
         assert_eq!(
@@ -551,6 +560,7 @@ mod tests {
             rows: 24,
             label: None,
             agent: None,
+            agent_state: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             scrollback: Vec::new(),

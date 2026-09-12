@@ -1,5 +1,5 @@
 use super::PaneEvent;
-use crate::detect::{self, AgentKind};
+use crate::detect::{self, AgentKind, AgentState};
 use crate::model::status::PaneStatus;
 use crate::pty::{PtyConfig, PtySession, PtySessionError};
 use crate::terminal::{TerminalEmulator, TerminalSnapshot};
@@ -23,6 +23,7 @@ pub struct Pane {
     pub config: PaneConfig,
     pub status: PaneStatus,
     pub agent: Option<AgentKind>,
+    pub agent_state: Option<AgentState>,
     pub scrollback: VecDeque<u8>,
     pub terminal: TerminalEmulator,
     session: PtySession,
@@ -84,6 +85,7 @@ impl PaneManager {
                 config,
                 status: PaneStatus::Running,
                 agent: None,
+                agent_state: None,
                 scrollback: VecDeque::with_capacity(self.scrollback_limit),
                 terminal: TerminalEmulator::new(rows, cols, self.scrollback_limit),
                 session,
@@ -132,6 +134,9 @@ impl PaneManager {
         pane.status = PaneStatus::Halted {
             reason: "stopped by user".into(),
         };
+        if pane.agent.is_some() {
+            pane.agent_state = Some(AgentState::Idle);
+        }
         Ok(vec![PaneEvent::Status {
             pane_id: id.into(),
             status: pane.status.clone(),
@@ -166,7 +171,17 @@ impl PaneManager {
             }
 
             if pane.status.is_running() {
+                let terminal = pane.terminal.snapshot();
+                pane.agent_state = pane
+                    .agent
+                    .map(|agent| detect::detect_state(agent, &terminal.contents, &terminal.title));
+            }
+
+            if pane.status.is_running() {
                 if let Ok(Some(exit_code)) = pane.session.try_wait() {
+                    if pane.agent.is_some() {
+                        pane.agent_state = Some(AgentState::Idle);
+                    }
                     pane.status = if exit_code == 0 {
                         PaneStatus::Completed { exit_code: 0 }
                     } else {

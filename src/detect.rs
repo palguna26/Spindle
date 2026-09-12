@@ -9,6 +9,35 @@ pub enum AgentKind {
     OpenCode,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentState {
+    Unknown,
+    Idle,
+    Working,
+    Blocked,
+}
+
+impl AgentState {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Idle => "idle",
+            Self::Working => "working",
+            Self::Blocked => "blocked",
+        }
+    }
+
+    pub fn sidebar_marker(self) -> &'static str {
+        match self {
+            Self::Unknown => "?",
+            Self::Idle => "I",
+            Self::Working => "W",
+            Self::Blocked => "!",
+        }
+    }
+}
+
 impl AgentKind {
     pub fn label(self) -> &'static str {
         match self {
@@ -16,6 +45,80 @@ impl AgentKind {
             Self::OpenCode => "OpenCode",
         }
     }
+}
+
+/// Classify only visible, agent-specific signals. Missing signals stay unknown.
+/// The rules follow Herdr's Codex/OpenCode manifests and avoid guessing from
+/// shell activity alone.
+pub(crate) fn detect_state(agent: AgentKind, screen: &str, title: &str) -> AgentState {
+    let screen_lower = screen.to_ascii_lowercase();
+    let title_lower = title.to_ascii_lowercase();
+    let combined = format!("{title_lower}\n{screen_lower}");
+    let blocked = combined.contains("action required")
+        || combined.contains("permission required")
+        || combined.contains("do you trust the contents of this directory?")
+        || combined.contains("allow command?")
+        || combined.contains("press enter to confirm or esc to cancel")
+        || (combined.contains("esc dismiss")
+            && (combined.contains("enter confirm")
+                || combined.contains("enter submit")
+                || combined.contains("enter toggle")));
+    if blocked {
+        return AgentState::Blocked;
+    }
+
+    let working = match agent {
+        AgentKind::Codex => {
+            title.chars().any(is_codex_spinner)
+                || screen.lines().rev().take(3).any(|line| {
+                    line.to_ascii_lowercase().contains("working (")
+                        && line.to_ascii_lowercase().contains("esc to interrupt")
+                })
+        }
+        AgentKind::OpenCode => {
+            [
+                "esc to interrupt",
+                "ctrl+c to interrupt",
+                "press esc to interrupt",
+            ]
+            .iter()
+            .any(|signal| combined.contains(signal))
+                || has_progress_bar(screen)
+        }
+    };
+    if working {
+        return AgentState::Working;
+    }
+
+    if agent == AgentKind::Codex && !title.trim().is_empty() {
+        AgentState::Idle
+    } else {
+        AgentState::Unknown
+    }
+}
+
+fn is_codex_spinner(character: char) -> bool {
+    matches!(
+        character,
+        '⠋' | '⠙' | '⠹' | '⠸' | '⠼' | '⠴' | '⠦' | '⠧' | '⠇' | '⠏'
+    )
+}
+
+fn has_progress_bar(screen: &str) -> bool {
+    screen.lines().any(|line| {
+        let mut run = 0;
+        for character in line.chars() {
+            if matches!(character, '█' | '⬝') {
+                run += 1;
+                if run >= 4 {
+                    return true;
+                }
+            } else {
+                run = 0;
+            }
+        }
+        false
+    })
 }
 
 #[cfg(any(windows, test))]
@@ -107,7 +210,9 @@ pub(crate) fn detect_in_process_tree(_root_pid: u32) -> Option<AgentKind> {
 
 #[cfg(test)]
 mod tests {
-    use super::{identify_descendant, identify_process, AgentKind, ProcessEntry};
+    use super::{
+        detect_state, identify_descendant, identify_process, AgentKind, AgentState, ProcessEntry,
+    };
 
     #[test]
     fn recognizes_herdr_agent_process_names() {
@@ -142,5 +247,45 @@ mod tests {
         ];
         assert_eq!(identify_descendant(10, &processes), Some(AgentKind::Codex));
         assert_eq!(identify_descendant(40, &processes), None);
+    }
+
+    #[test]
+    fn follows_herdr_codex_state_signals() {
+        assert_eq!(
+            detect_state(AgentKind::Codex, "Action Required", "Codex"),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Codex, "", "Codex ⠋"),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Codex, "", "Codex"),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(AgentKind::Codex, "plain shell", ""),
+            AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_opencode_blocked_and_working_signals() {
+        assert_eq!(
+            detect_state(
+                AgentKind::OpenCode,
+                "△ Permission required\nEsc dismiss · Enter confirm",
+                "OpenCode"
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::OpenCode, "Press esc to interrupt", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::OpenCode, "Ready for prompt", ""),
+            AgentState::Unknown
+        );
     }
 }

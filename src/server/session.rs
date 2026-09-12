@@ -42,6 +42,8 @@ pub struct PaneView {
     pub status: PaneStatus,
     #[serde(default)]
     pub agent: Option<crate::detect::AgentKind>,
+    #[serde(default)]
+    pub agent_state: Option<crate::detect::AgentState>,
     pub scrollback_bytes: usize,
     #[serde(default)]
     pub scrollback: Vec<u8>,
@@ -247,6 +249,8 @@ impl Session {
             Ok(mut snapshot) => {
                 load_history(&path, &mut snapshot)?;
                 for pane in &mut snapshot.panes {
+                    pane.agent = None;
+                    pane.agent_state = None;
                     pane.mouse_reporting = false;
                     pane.mouse_release = false;
                     pane.mouse_motion = false;
@@ -525,6 +529,7 @@ impl Session {
             rows: request.rows,
             label: request.label,
             agent: None,
+            agent_state: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -1067,6 +1072,8 @@ impl Session {
             .find(|pane| pane.pane_id == pane_id)
             .expect("pane was found before restart");
         pane.status = PaneStatus::Running;
+        pane.agent = None;
+        pane.agent_state = None;
         pane.screen.clear();
         pane.cursor = (0, 0);
         let tab = self.active_tab_mut()?;
@@ -1225,6 +1232,7 @@ impl Session {
             if let Some(current) = self.pane_manager.get(&pane.pane_id) {
                 pane.status = current.status.clone();
                 pane.agent = current.agent;
+                pane.agent_state = current.agent_state;
                 pane.cols = current.terminal.snapshot().cols;
                 pane.rows = current.terminal.snapshot().rows;
                 pane.scrollback_bytes = current.scrollback.len();
@@ -1404,6 +1412,7 @@ mod tests {
             rows: 24,
             label: None,
             agent: None,
+            agent_state: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -1500,6 +1509,7 @@ mod tests {
             rows: 24,
             label: None,
             agent: None,
+            agent_state: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -1588,7 +1598,8 @@ mod tests {
             cols: 80,
             rows: 24,
             label: None,
-            agent: None,
+            agent: Some(crate::detect::AgentKind::Codex),
+            agent_state: Some(crate::detect::AgentState::Blocked),
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 3,
             scrollback: vec![1, 2, 3],
@@ -1620,6 +1631,8 @@ mod tests {
         );
         let restored = Session::load_or_default(&path).unwrap();
         assert_eq!(restored.snapshot().panes[0].scrollback, vec![1, 2, 3]);
+        assert_eq!(restored.snapshot().panes[0].agent, None);
+        assert_eq!(restored.snapshot().panes[0].agent_state, None);
         let _ = std::fs::remove_dir_all(directory);
     }
 
@@ -1700,6 +1713,7 @@ mod tests {
             rows: 24,
             label: None,
             agent: None,
+            agent_state: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -1732,6 +1746,7 @@ mod tests {
             rows: 24,
             label: None,
             agent: None,
+            agent_state: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
