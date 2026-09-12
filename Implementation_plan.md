@@ -131,11 +131,17 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Keep keyboard command-palette actions for pane, tab, and workspace
   actions available through the mouse, including clearing a pane's manual name.
 - [x] Add in-app help that explains both keyboard shortcuts and mouse controls.
+- [x] Ctrl-click visible `http://` and `https://` URLs in panes to open them;
+  use terminal display columns for hit testing and trim sentence punctuation.
+- [ ] Add OSC 8 hyperlink metadata and Herdr-style plugin link handlers; the
+  current `vt100` screen snapshot exposes visible text only.
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior; manually verify in Windows Terminal and PowerShell.
 
 Reference: Herdr `src/client/shell/mouse.rs`, `context_menu.rs`, `selection.rs`,
-and quick-start "Use the mouse". Spindle: `src/client/app.rs`,
+`src/app/actions.rs` (`url_at_column`, `url_at_pane_surface_cell`),
+`src/app/api/plugins/mod.rs` (`handle_pane_link_activate`), and quick-start
+"Use the mouse". Spindle: `src/client/app.rs`, `src/client/links.rs`,
 `src/client/input.rs`, and `src/client/renderer.rs`.
 
 ## 4. Add agent-aware workspace status

@@ -40,6 +40,9 @@ over a pane to browse recent output when the foreground app does not claim
 those inputs. Mouse-aware terminal apps receive mouse input when they request
 it.
 
+Ctrl-click a visible `http://` or `https://` URL in a pane to open it in your
+default browser. OSC 8 hyperlinks are not supported yet.
+
 Useful commands:
 
 ```text

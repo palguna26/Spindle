@@ -3,6 +3,7 @@ mod clipboard;
 mod context_menu;
 mod control;
 pub mod input;
+mod links;
 pub mod palette;
 mod preferences;
 pub mod prompt;

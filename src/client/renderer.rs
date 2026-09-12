@@ -256,6 +256,7 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "Drag split borders to resize; right-click for actions.",
         "PageUp/PageDown or wheel scroll history; drag text to copy.",
         "Double-click selects a word.",
+        "Ctrl-click visible web URLs to open them.",
         "Terminal apps receive mouse events when requested.",
         "",
         "Keyboard (press Ctrl-b, then the key)",
@@ -577,6 +578,7 @@ mod tests {
         assert!(content.contains("Spindle help"));
         assert!(content.contains("right-click for actions"));
         assert!(content.contains("drag thumb"));
+        assert!(content.contains("Ctrl-click visible web URLs"));
         assert!(content.contains("palette"));
     }
 

@@ -905,6 +905,21 @@ fn handle_mouse(
         }
         return Ok(());
     }
+    if mouse.kind == MouseEventKind::Down(MouseButton::Left)
+        && mouse
+            .modifiers
+            .contains(crossterm::event::KeyModifiers::CONTROL)
+    {
+        if let Some(url) = visible_web_url_at_point(
+            snapshot,
+            renderer::pane_content_area_with_sidebar(area, mouse_state.sidebar_collapsed),
+            mouse.column,
+            mouse.row,
+        ) {
+            let _ = super::links::open_web_url(&url);
+            return Ok(());
+        }
+    }
     if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
         mouse_state.sidebar_scroll_drag = None;
         if let Some(grab_row_offset) = renderer::sidebar_scroll_thumb_grab_offset_with_sort(
@@ -1434,6 +1449,36 @@ fn begin_text_selection(
         });
     }
     Ok(true)
+}
+
+fn visible_web_url_at_point(
+    snapshot: &SessionSnapshot,
+    pane_area: Rect,
+    column: u16,
+    row: u16,
+) -> Option<String> {
+    let pane_rect = renderer::pane_rectangles(snapshot, pane_area)
+        .into_iter()
+        .find(|pane| {
+            let inner = Rect::new(
+                pane.rect.x.saturating_add(1),
+                pane.rect.y.saturating_add(1),
+                pane.rect.width.saturating_sub(2),
+                pane.rect.height.saturating_sub(2),
+            );
+            column >= inner.x && column < inner.right() && row >= inner.y && row < inner.bottom()
+        })?;
+    let pane = snapshot
+        .panes
+        .iter()
+        .find(|candidate| candidate.pane_id == pane_rect.pane_id)?;
+    let inner_x = pane_rect.rect.x.saturating_add(1);
+    let inner_y = pane_rect.rect.y.saturating_add(1);
+    super::links::web_url_at_cell(
+        &pane.screen,
+        row.saturating_sub(inner_y),
+        column.saturating_sub(inner_x),
+    )
 }
 
 fn clear_mouse_capture(capture: &mut Option<PaneMouseCapture>, kind: MouseEventKind) {
@@ -2345,10 +2390,10 @@ mod tests {
         active_tab_id, active_workspace, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
         adjust_scrollback_offset, apply_scrollback_views, current_snapshot,
         ensure_active_default_pane, key_code_bytes, page_key_bytes, pane_size,
-        reconnect_requires_reattach, record_action_error, require_server_success,
-        snapshot_has_focused_pane, startup_error_action, workspace_id_by_name,
-        CachedScrollbackView, ControlClient, PaneClick, SplitDirection, SplitDrag,
-        StartupErrorAction,
+        reconnect_requires_reattach, record_action_error, renderer, require_server_success,
+        snapshot_has_focused_pane, startup_error_action, visible_web_url_at_point,
+        workspace_id_by_name, CachedScrollbackView, ControlClient, PaneClick, SplitDirection,
+        SplitDrag, StartupErrorAction,
     };
     use crate::protocol::{ProtocolError, Response, PROTOCOL_VERSION};
     use crate::server::session::Session;
@@ -2459,6 +2504,41 @@ mod tests {
         assert_eq!(
             startup_error_action(KeyCode::Char('x')),
             StartupErrorAction::Ignore
+        );
+    }
+
+    #[test]
+    fn ctrl_click_hit_testing_maps_window_coordinates_to_the_visible_pane_url() {
+        let mut snapshot = Session::default().snapshot().clone();
+        snapshot.panes.push(
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-1",
+                "command": "powershell.exe",
+                "args": [],
+                "cwd": "C:/",
+                "status": "Running",
+                "scrollback_bytes": 0,
+                "screen": "See https://example.test",
+            }))
+            .unwrap(),
+        );
+        let tab = &mut snapshot.spaces[0].workspaces[0].tabs[0];
+        tab.layout = Some(crate::model::layout::LayoutNode::Pane {
+            pane_id: "pane-1".into(),
+        });
+        tab.focused_pane_id = Some("pane-1".into());
+        snapshot.focused_pane_id = Some("pane-1".into());
+
+        let pane_area = renderer::pane_content_area(Rect::new(0, 0, 100, 30));
+        assert_eq!(
+            visible_web_url_at_point(&snapshot, pane_area, pane_area.x + 5, pane_area.y + 1)
+                .as_deref(),
+            Some("https://example.test")
+        );
+        assert_eq!(
+            visible_web_url_at_point(&snapshot, pane_area, pane_area.x, pane_area.y),
+            None,
+            "pane borders do not activate links"
         );
     }
 
