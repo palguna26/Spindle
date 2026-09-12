@@ -75,9 +75,12 @@ pub fn render_with_sidebar_scroll_and_cursor(
     let panes = pane_rectangles(snapshot, main.panes);
     if panes.is_empty() {
         let message = if active_workspace(snapshot).is_some() {
-            active_title(snapshot)
+            format!(
+                "No shell in this tab\n{}\nCtrl-b : then select New PowerShell pane\nCtrl-b c starts a new tab",
+                active_title(snapshot)
+            )
         } else {
-            "No active workspace\nPress Ctrl-b c to create one".into()
+            "No active workspace\nPress Ctrl-b c to create one".to_owned()
         };
         frame.render_widget(
             Paragraph::new(message).block(Block::default().borders(Borders::ALL).title("Session")),
@@ -475,6 +478,24 @@ mod tests {
             .collect();
         assert!(content.contains("No active workspace"));
         assert!(content.contains("Ctrl-b c"));
+    }
+
+    #[test]
+    fn empty_active_tab_explains_how_to_start_a_shell() {
+        let backend = TestBackend::new(80, 14);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let snapshot = Session::default().snapshot().clone();
+        terminal.draw(|frame| render(frame, &snapshot)).unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("No shell in this tab"));
+        assert!(content.contains("New PowerShell pane"));
+        assert!(content.contains("Ctrl-b c starts a new tab"));
     }
 
     #[test]

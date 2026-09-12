@@ -150,5 +150,12 @@ fn wake_server(address: &str) {
 
 #[cfg(windows)]
 fn wake_server(address: &str) {
-    let _ = transport::connect(address);
+    // The listener creates its next named-pipe instance only after handling
+    // the current request. Retry the wakeup if shutdown races that gap.
+    for _ in 0..20 {
+        if transport::connect(address).is_ok() {
+            return;
+        }
+        thread::sleep(std::time::Duration::from_millis(10));
+    }
 }

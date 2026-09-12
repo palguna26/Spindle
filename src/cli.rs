@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::client::ControlClient;
 use crate::protocol::Response;
@@ -49,7 +49,15 @@ pub fn run() -> io::Result<()> {
             }
         }
         "stop" => {
-            send_command(&project, "stop_server")?;
+            let response = send_command(&project, "stop_server")?;
+            if !response.ok {
+                let error = response
+                    .error
+                    .map(|error| error.message)
+                    .unwrap_or_else(|| "server rejected the stop request".into());
+                return Err(io::Error::other(error));
+            }
+            wait_for_server_stop(&project)?;
             println!("server stopped");
         }
         "help" | "--help" | "-h" => print_help(),
@@ -89,6 +97,20 @@ fn start_server(project: &Project) -> io::Result<()> {
         io::ErrorKind::TimedOut,
         "server did not become ready",
     ))
+}
+
+fn wait_for_server_stop(project: &Project) -> io::Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while project.endpoint_path().exists() {
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "server did not remove its endpoint after the stop request",
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    Ok(())
 }
 
 fn attach_server(project: &Project) -> io::Result<()> {

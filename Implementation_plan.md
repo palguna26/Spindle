@@ -84,8 +84,9 @@ commit `68d86ad` as partial startup work; do not count it as completion.
 - [x] Add visible tab controls and a focused-pane/status area.
 - [x] Save focused pane per tab and restore it when switching tabs or
   workspaces, matching Herdr's focus in each tab layout.
-- [ ] Render the active pane tree in the remaining area with clear focus and
-  lifecycle states.
+- [x] Render the active pane tree in the remaining area with clear focus and
+  lifecycle states; show shell and workspace recovery actions when that tree is
+  empty.
 - [x] Track terminal cursor visibility and place the host cursor in the focused
   pane; hide it for overlays and while viewing scrollback, following Herdr's
   `src/ui/panes.rs` behavior.
@@ -112,7 +113,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   dimensions.
 - [x] Right-click workspaces, tabs, and panes for context-specific actions.
 - [x] Support pane split, close, rename, zoom/focus actions from menus where
-  the matching Herdr action exists.
+  the matching Herdr action exists, including swapping a clicked pane with the
+  previously focused pane.
 - [x] Bind focused-pane zoom to `Ctrl-b z`, matching Herdr's default.
 - [x] Align tab creation, pane/tab close, tab navigation, split, and pane-focus
   shortcuts with Herdr's default bindings.
@@ -163,6 +165,10 @@ approved design changes it.
   Spindle workflow; do not silently omit it.
 - [ ] Improve Windows-specific process launch, terminal input/output, resizing,
   recovery, installer, and diagnostics based on observed gaps in the matrix.
+- [x] Make `spindle stop` wait for endpoint cleanup and retry Windows named-pipe
+  wakeups through the listener handoff race, following Herdr's bounded server
+  stop wait. The Windows and installer smoke scripts pass after stale-endpoint
+  recovery.
 
 Reference areas: Herdr `src/main.rs`, `src/config/`, `src/terminal/`,
 `src/client/notifications.rs`, `src/integration/`, `src/remote/`,
