@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum AgentKind {
     Pi,
+    QoderCli,
     Claude,
     Codex,
     Gemini,
@@ -84,6 +85,7 @@ impl AgentKind {
     pub fn label(self) -> &'static str {
         match self {
             Self::Pi => "Pi",
+            Self::QoderCli => "Qoder CLI",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -116,6 +118,7 @@ pub(crate) fn detect_state_with_osc(
     let bottom_five = recent_nonempty_lines(screen, 5).to_ascii_lowercase();
     let blocked = match agent {
         AgentKind::Pi => false,
+        AgentKind::QoderCli => qodercli_permission_required(&recent),
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -136,6 +139,7 @@ pub(crate) fn detect_state_with_osc(
 
     let working = match agent {
         AgentKind::Pi => recent.contains("working..."),
+        AgentKind::QoderCli => qodercli_is_working(&recent),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -183,6 +187,7 @@ pub(crate) fn has_visible_idle_signal(
 ) -> bool {
     match agent {
         AgentKind::Pi => false,
+        AgentKind::QoderCli => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -207,6 +212,45 @@ fn claude_permission_required(recent: &str) -> bool {
                 || recent.contains("enter to select")
                 || recent.contains("arrow keys to navigate")
                 || recent.contains("tab/arrow keys to navigate")))
+}
+
+fn qodercli_permission_required(recent: &str) -> bool {
+    [
+        "permission required",
+        "allow once or always?",
+        "asking user",
+        "enter your response",
+        "review your answers:",
+        "shell awaiting input",
+    ]
+    .iter()
+    .any(|signal| recent.contains(signal))
+        || (recent.contains("waiting for user confirmation")
+            && ["yes", "no", "allow", "reject"]
+                .iter()
+                .any(|signal| recent.contains(signal)))
+        || (recent.contains("awaiting approval")
+            && ["allow", "reject"]
+                .iter()
+                .any(|signal| recent.contains(signal)))
+}
+
+fn qodercli_is_working(recent: &str) -> bool {
+    recent.contains("(esc to cancel,")
+        || recent.lines().any(|line| {
+            let line = line.trim_start();
+            let Some(spinner) = line.chars().next() else {
+                return false;
+            };
+            let rest = &line[spinner.len_utf8()..];
+            is_braille_spinner(spinner)
+                && rest.chars().next().is_some_and(char::is_whitespace)
+                && rest.chars().any(char::is_alphabetic)
+        })
+}
+
+fn is_braille_spinner(character: char) -> bool {
+    ('\u{2800}'..='\u{28ff}').contains(&character)
 }
 
 fn gemini_permission_required(recent: &str) -> bool {
@@ -518,6 +562,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
     match basename {
         "claude" | "claude-code" => Some(AgentKind::Claude),
         "pi" => Some(AgentKind::Pi),
+        "qodercli" | "qoderclicn" | "qoder" | "qodercn" => Some(AgentKind::QoderCli),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -888,6 +933,9 @@ mod tests {
     #[test]
     fn recognizes_herdr_agent_process_names() {
         assert_eq!(identify_process("pi.exe"), Some(AgentKind::Pi));
+        assert_eq!(identify_process("qodercli.exe"), Some(AgentKind::QoderCli));
+        assert_eq!(identify_process("qoder.cmd"), Some(AgentKind::QoderCli));
+        assert_eq!(identify_process("qodercn"), Some(AgentKind::QoderCli));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -899,6 +947,7 @@ mod tests {
         );
         assert_eq!(identify_process("ghcs.cmd"), Some(AgentKind::GithubCopilot));
         assert_eq!(AgentKind::Pi.label(), "Pi");
+        assert_eq!(AgentKind::QoderCli.label(), "Qoder CLI");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -956,6 +1005,44 @@ mod tests {
         assert_eq!(
             detect_state(AgentKind::Pi, "Ready for input", ""),
             AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_qodercli_blocked_and_working_signals() {
+        for prompt in [
+            "Permission required",
+            "Allow once or always?",
+            "Asking user",
+            "Enter your response",
+            "Review your answers:",
+            "Shell awaiting input",
+            "Waiting for user confirmation\nYes / No",
+            "Awaiting approval: Allow / Reject",
+        ] {
+            assert_eq!(
+                detect_state(AgentKind::QoderCli, prompt, ""),
+                AgentState::Blocked,
+                "expected blocker for {prompt:?}"
+            );
+        }
+        assert_eq!(
+            detect_state(AgentKind::QoderCli, "Waiting for user confirmation", ""),
+            AgentState::Unknown,
+            "confirmation text alone is not enough"
+        );
+        assert_eq!(
+            detect_state(AgentKind::QoderCli, "(Esc to cancel, press q to quit)", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::QoderCli, "⠋ Thinking", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::QoderCli, "⠋ 123", ""),
+            AgentState::Unknown,
+            "the manifest requires spinner text with an alphabetic character"
         );
     }
 
