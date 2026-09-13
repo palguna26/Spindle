@@ -9,6 +9,7 @@ pub enum AgentKind {
     QoderCli,
     Droid,
     Kiro,
+    Cline,
     Claude,
     Codex,
     Gemini,
@@ -90,6 +91,7 @@ impl AgentKind {
             Self::QoderCli => "Qoder CLI",
             Self::Droid => "Droid",
             Self::Kiro => "Kiro",
+            Self::Cline => "Cline",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -126,6 +128,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::QoderCli => qodercli_permission_required(&recent),
         AgentKind::Droid => droid_permission_required(&recent, &bottom_eight),
         AgentKind::Kiro => kiro_permission_required(&recent),
+        AgentKind::Cline => cline_permission_required(&recent),
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -149,6 +152,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::QoderCli => qodercli_is_working(&recent),
         AgentKind::Droid => recent.contains("esc to stop"),
         AgentKind::Kiro => kiro_is_working(&recent),
+        AgentKind::Cline => !recent.is_empty(),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -204,6 +208,7 @@ pub(crate) fn has_visible_idle_signal(
                 && !screen.contains("kiro is working")
                 && !screen.contains("esc to cancel")
         }
+        AgentKind::Cline => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -320,6 +325,20 @@ fn kiro_is_working(recent: &str) -> bool {
                         .next()
                         .is_some_and(char::is_alphabetic)
             }))
+}
+
+fn cline_permission_required(recent: &str) -> bool {
+    recent.contains("let cline use this tool")
+        || [
+            ("[act mode]", "execute command?", "yes"),
+            ("[act mode]", "use this tool?", "yes"),
+            ("[plan mode]", "execute command?", "yes"),
+            ("[plan mode]", "use this tool?", "yes"),
+        ]
+        .iter()
+        .any(|(mode, action, approval)| {
+            recent.contains(mode) && recent.contains(action) && recent.contains(approval)
+        })
 }
 
 fn is_braille_spinner(character: char) -> bool {
@@ -638,6 +657,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "qodercli" | "qoderclicn" | "qoder" | "qodercn" => Some(AgentKind::QoderCli),
         "droid" => Some(AgentKind::Droid),
         "kiro" | "kiro-cli" => Some(AgentKind::Kiro),
+        "cline" => Some(AgentKind::Cline),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -1014,6 +1034,7 @@ mod tests {
         assert_eq!(identify_process("droid.exe"), Some(AgentKind::Droid));
         assert_eq!(identify_process("kiro.exe"), Some(AgentKind::Kiro));
         assert_eq!(identify_process("kiro-cli.cmd"), Some(AgentKind::Kiro));
+        assert_eq!(identify_process("cline.cmd"), Some(AgentKind::Cline));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -1028,6 +1049,7 @@ mod tests {
         assert_eq!(AgentKind::QoderCli.label(), "Qoder CLI");
         assert_eq!(AgentKind::Droid.label(), "Droid");
         assert_eq!(AgentKind::Kiro.label(), "Kiro");
+        assert_eq!(AgentKind::Cline.label(), "Cline");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1222,6 +1244,33 @@ mod tests {
             AgentState::Working,
             "the working marker suppresses the idle prompt"
         );
+    }
+
+    #[test]
+    fn follows_herdr_cline_tool_approval_and_working_rules() {
+        for prompt in [
+            "Let Cline use this tool",
+            "[Act Mode] Execute command? Yes",
+            "[Act Mode] Use this tool? Yes",
+            "[Plan Mode] Execute command? Yes",
+            "[Plan Mode] Use this tool? Yes",
+        ] {
+            assert_eq!(
+                detect_state(AgentKind::Cline, prompt, ""),
+                AgentState::Blocked,
+                "expected blocker for {prompt:?}"
+            );
+        }
+        assert_eq!(
+            detect_state(AgentKind::Cline, "[Act Mode] Execute command? No", ""),
+            AgentState::Working,
+            "an incomplete approval prompt falls through to Herdr's visible-output working rule"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Cline, "ordinary visible Cline output", ""),
+            AgentState::Working
+        );
+        assert_eq!(detect_state(AgentKind::Cline, "", ""), AgentState::Unknown);
     }
 
     #[test]
