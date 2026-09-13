@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentKind {
+    Pi,
     Claude,
     Codex,
     Gemini,
@@ -82,6 +83,7 @@ impl AgentDisplayState {
 impl AgentKind {
     pub fn label(self) -> &'static str {
         match self {
+            Self::Pi => "Pi",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -113,6 +115,7 @@ pub(crate) fn detect_state_with_osc(
     let bottom_twelve = recent_nonempty_lines(screen, 12).to_ascii_lowercase();
     let bottom_five = recent_nonempty_lines(screen, 5).to_ascii_lowercase();
     let blocked = match agent {
+        AgentKind::Pi => false,
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -132,6 +135,7 @@ pub(crate) fn detect_state_with_osc(
     }
 
     let working = match agent {
+        AgentKind::Pi => recent.contains("working..."),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -178,6 +182,7 @@ pub(crate) fn has_visible_idle_signal(
     osc_progress: &str,
 ) -> bool {
     match agent {
+        AgentKind::Pi => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -512,6 +517,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         .unwrap_or(&basename);
     match basename {
         "claude" | "claude-code" => Some(AgentKind::Claude),
+        "pi" => Some(AgentKind::Pi),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -778,7 +784,14 @@ fn identify_process_command(name: &str, command_line: Option<&str>) -> Option<Ag
         }
         "node" => argv.iter().skip(1).find_map(|arg| {
             let normalized = arg.replace('/', "\\").to_ascii_lowercase();
-            if normalized.ends_with("\\node_modules\\codex\\bin\\codex.js")
+            if normalized
+                .ends_with("\\node_modules\\@earendil-works\\pi-coding-agent\\dist\\cli.js")
+                || normalized.ends_with(
+                    "\\node_modules\\@earendil-works\\pi-coding-agent\\dist\\bundle\\cli.js",
+                )
+            {
+                Some(AgentKind::Pi)
+            } else if normalized.ends_with("\\node_modules\\codex\\bin\\codex.js")
                 || normalized.ends_with("\\node_modules\\@openai\\codex\\bin\\codex.js")
             {
                 Some(AgentKind::Codex)
@@ -793,6 +806,14 @@ fn identify_process_command(name: &str, command_line: Option<&str>) -> Option<Ag
             } else {
                 None
             }
+        }),
+        "bun" => argv.iter().skip(1).find_map(|arg| {
+            let normalized = arg.replace('/', "\\").to_ascii_lowercase();
+            (normalized.ends_with("\\node_modules\\@earendil-works\\pi-coding-agent\\dist\\cli.js")
+                || normalized.ends_with(
+                    "\\node_modules\\@earendil-works\\pi-coding-agent\\dist\\bundle\\cli.js",
+                ))
+            .then_some(AgentKind::Pi)
         }),
         "powershell" | "pwsh" => argv
             .iter()
@@ -866,6 +887,7 @@ mod tests {
 
     #[test]
     fn recognizes_herdr_agent_process_names() {
+        assert_eq!(identify_process("pi.exe"), Some(AgentKind::Pi));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -876,6 +898,7 @@ mod tests {
             Some(AgentKind::GithubCopilot)
         );
         assert_eq!(identify_process("ghcs.cmd"), Some(AgentKind::GithubCopilot));
+        assert_eq!(AgentKind::Pi.label(), "Pi");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -912,6 +935,27 @@ mod tests {
         assert_eq!(
             detect_state(AgentKind::Claude, "Ready\n❯ ", ""),
             AgentState::Idle
+        );
+    }
+
+    #[test]
+    fn follows_herdr_pi_working_signal() {
+        assert_eq!(
+            detect_state(AgentKind::Pi, "Working...", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Pi, "working...", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Pi, "Working", ""),
+            AgentState::Unknown,
+            "the manifest requires the full literal working marker"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Pi, "Ready for input", ""),
+            AgentState::Unknown
         );
     }
 
@@ -1045,6 +1089,24 @@ mod tests {
 
     #[test]
     fn recognizes_herdr_style_windows_agent_wrappers() {
+        assert_eq!(
+            identify_process_command(
+                "node.exe",
+                Some(
+                    r#"node.exe "C:\Users\user\AppData\Roaming\npm\node_modules\@earendil-works\pi-coding-agent\dist\cli.js""#
+                )
+            ),
+            Some(AgentKind::Pi)
+        );
+        assert_eq!(
+            identify_process_command(
+                "bun.exe",
+                Some(
+                    r#"bun.exe "C:\Users\user\AppData\Roaming\npm\node_modules\@earendil-works\pi-coding-agent\dist\bundle\cli.js""#
+                )
+            ),
+            Some(AgentKind::Pi)
+        );
         assert_eq!(
             identify_process_command(
                 "cmd.exe",
