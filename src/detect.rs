@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 mod agents;
 use agents::{
     amp_is_idle, amp_is_working, amp_permission_required, antigravity_is_working,
-    antigravity_permission_required, cline_permission_required, cursor_agent_node_argv,
-    cursor_is_working, cursor_permission_required, devin_is_idle, devin_is_working,
-    devin_permission_required, grok_state, hermes_is_idle, hermes_is_priority_working,
-    hermes_is_working, hermes_permission_required, hermes_title_blocked, kilo_permission_required,
-    kimi_is_working, kimi_permission_required, kiro_is_idle, maki_state,
-    muse_should_skip_state_update, muse_state, qodercli_is_working, qodercli_permission_required,
-    qwen_state,
+    antigravity_permission_required, cline_permission_required, codex_should_skip_state_update,
+    cursor_agent_node_argv, cursor_is_working, cursor_permission_required, devin_is_idle,
+    devin_is_working, devin_permission_required, grok_state, hermes_is_idle,
+    hermes_is_priority_working, hermes_is_working, hermes_permission_required,
+    hermes_title_blocked, kilo_permission_required, kimi_is_working, kimi_permission_required,
+    kiro_is_idle, maki_state, muse_should_skip_state_update, muse_state, qodercli_is_working,
+    qodercli_permission_required, qwen_state,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -309,7 +309,11 @@ pub(crate) fn has_visible_idle_signal(
 }
 
 pub(crate) fn should_skip_state_update(agent: AgentKind, screen: &str) -> bool {
-    agent == AgentKind::Muse && muse_should_skip_state_update(screen)
+    match agent {
+        AgentKind::Codex => codex_should_skip_state_update(screen),
+        AgentKind::Muse => muse_should_skip_state_update(screen),
+        _ => false,
+    }
 }
 
 fn claude_permission_required(recent: &str) -> bool {
@@ -2292,6 +2296,19 @@ mod tests {
             ),
             AgentState::Working
         );
+    }
+
+    #[test]
+    fn codex_transcript_viewer_preserves_the_last_detected_agent_state() {
+        let transcript = "• Working (4s · esc to interrupt)\n› transcript\n\
+            ↑/↓ to scroll · pgup/pgdn to move · home/end to jump · q to quit · esc to edit prev\n";
+
+        assert!(should_skip_state_update(AgentKind::Codex, transcript));
+        assert!(!should_skip_state_update(
+            AgentKind::Codex,
+            "› ordinary prompt\n"
+        ));
+        assert!(!should_skip_state_update(AgentKind::OpenCode, transcript));
     }
 
     #[test]
