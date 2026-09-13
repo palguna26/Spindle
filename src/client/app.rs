@@ -1028,10 +1028,13 @@ fn event_loop(
             Action::None => {}
             Action::Help => {}
             Action::CommandPalette => {}
+            Action::CreateWorkspace => {
+                let result = create_workspace_from_current_directory(client, terminal_size);
+                record_action_error(&mut action_error, "create workspace", result);
+            }
             Action::RenameFocusedPane
             | Action::RenameActiveTab
             | Action::RenameActiveWorkspace
-            | Action::CreateWorkspace
             | Action::RenameActiveSpace
             | Action::CreateSpace
             | Action::DeleteActiveWorkspace

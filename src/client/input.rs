@@ -52,6 +52,7 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
             KeyCode::Char('d') => Action::Detach,
             KeyCode::Char('q') => Action::Detach,
             KeyCode::Char('c') => Action::NewTab,
+            KeyCode::Char('N') => Action::CreateWorkspace,
             KeyCode::Char('n') => Action::NextTab,
             KeyCode::Char('p') => Action::PreviousTab,
             KeyCode::Char('x') => Action::ClosePane,
@@ -113,6 +114,10 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
             Action::NewTab
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('N'), KeyModifiers::SHIFT)),
+            Action::CreateWorkspace
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE)),

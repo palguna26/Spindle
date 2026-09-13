@@ -441,15 +441,14 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "Double-click selects a word.",
         "Ctrl-click visible web URLs to open them.",
         "Terminal apps receive mouse events when requested.",
-        "",
         "Keyboard (press Ctrl-b, then the key)",
         "c: new tab; n / p: next / previous tab",
+        "Shift+n: new workspace",
         "x / Shift+x: close pane / tab; s / r: stop / restart",
         "b: compact sidebar; w: choose workspace; g: session navigator",
         "h/j/k/l focus; o / O cycle; picker: arrows/Enter/Esc",
         "v / -: split vertical / horizontal; z: zoom pane",
         "?: help; colon: palette; q / d: detach; [: copy mode",
-        "",
         "Create, rename, and delete actions are in the command palette.",
         "Sidebar agent badges: W working, ! blocked, I idle, ? unknown.",
         "Click the sidebar title to switch grouped/priority agent order.",
@@ -763,7 +762,7 @@ mod tests {
         assert!(content.contains("right-click for actions"));
         assert!(content.contains("drag thumb"));
         assert!(content.contains("Ctrl-click visible web URLs"));
-        assert!(content.contains("palette"));
+        assert!(content.contains("palette"), "help contents: {content}");
     }
 
     #[test]
