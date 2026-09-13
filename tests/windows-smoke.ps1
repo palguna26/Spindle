@@ -41,6 +41,14 @@ try {
     Invoke-Spindle @("stop")
     $staleEndpoint = Join-Path $projectState.FullName "server.endpoint"
     Set-Content -LiteralPath $staleEndpoint -Value "127.0.0.1:1" -NoNewline
+    $staleDoctor = (& $Binary doctor) -join "`n"
+    if ($LASTEXITCODE -ne 0) {
+        throw "spindle doctor failed for stale endpoint metadata"
+    }
+    if ($staleDoctor -notmatch "endpoint status: stale" -or
+        $staleDoctor -notmatch "run spindle start or spindle attach") {
+        throw "doctor did not explain stale endpoint recovery: $staleDoctor"
+    }
     Invoke-Spindle @("start")
     Invoke-Spindle @("doctor")
     Invoke-Spindle @("stop")

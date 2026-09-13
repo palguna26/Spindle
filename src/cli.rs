@@ -46,17 +46,24 @@ pub fn run() -> io::Result<()> {
             println!("project: {}", project.describe());
             println!("state directory: {}", project.state_dir.display());
             println!("state directory exists: {}", project.state_dir.exists());
-            println!("endpoint exists: {}", project.endpoint_path().exists());
-            println!("server running: {}", ping_server(&project).is_ok());
+            let endpoint_exists = project.endpoint_path().exists();
+            let server_running = ping_server(&project).is_ok();
+            let endpoint_status = endpoint_status_label(endpoint_exists, server_running);
+            println!("endpoint exists: {endpoint_exists}");
+            println!("server running: {server_running}");
+            println!("endpoint status: {endpoint_status}");
+            if endpoint_status == "stale" {
+                println!("recovery: run spindle start or spindle attach to replace stale metadata");
+            }
             let pid_path = project.state_dir.join("server.pid");
             match fs::read_to_string(pid_path) {
-                Ok(pid) => println!("server pid: {}", pid.trim()),
-                Err(_) => println!("server pid: unavailable"),
+                Ok(pid) => println!("recorded server pid: {}", pid.trim()),
+                Err(_) => println!("recorded server pid: unavailable"),
             }
             let identity_path = project.state_dir.join("server.json");
             match fs::read_to_string(identity_path) {
-                Ok(identity) => println!("server identity: {}", identity.replace('\n', " ")),
-                Err(_) => println!("server identity: unavailable"),
+                Ok(identity) => println!("last server identity: {}", identity.replace('\n', " ")),
+                Err(_) => println!("last server identity: unavailable"),
             }
         }
         "stop" => {
@@ -135,6 +142,16 @@ fn attach_server(project: &Project) -> io::Result<()> {
 
 fn ping_server(project: &Project) -> io::Result<Response<Value>> {
     send_command(project, "ping")
+}
+
+fn endpoint_status_label(endpoint_exists: bool, server_running: bool) -> &'static str {
+    if server_running {
+        "reachable"
+    } else if endpoint_exists {
+        "stale"
+    } else {
+        "missing"
+    }
 }
 
 fn send_command(project: &Project, operation: &str) -> io::Result<Response<Value>> {
@@ -220,7 +237,7 @@ impl Project {
 
 #[cfg(test)]
 mod tests {
-    use super::project_id;
+    use super::{endpoint_status_label, project_id};
     use std::path::Path;
 
     #[test]
@@ -237,5 +254,13 @@ mod tests {
             project_id(Path::new("C:/repo")),
             project_id(Path::new("C:/other"))
         );
+    }
+
+    #[test]
+    fn doctor_distinguishes_reachable_stale_and_missing_endpoints() {
+        assert_eq!(endpoint_status_label(true, true), "reachable");
+        assert_eq!(endpoint_status_label(true, false), "stale");
+        assert_eq!(endpoint_status_label(false, false), "missing");
+        assert_eq!(endpoint_status_label(false, true), "reachable");
     }
 }

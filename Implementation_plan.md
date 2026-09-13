@@ -231,6 +231,9 @@ approved design changes it.
   Spindle workflow; do not silently omit it.
 - [ ] Improve Windows-specific process launch, terminal input/output, resizing,
   recovery, installer, and diagnostics based on observed gaps in the matrix.
+  `spindle doctor` now labels endpoints missing/reachable/stale and gives a
+  start/attach recovery hint for stale metadata, matching Herdr's explicit
+  running/not-running server status.
 - [x] Make `spindle stop` wait for endpoint cleanup and retry Windows named-pipe
   wakeups through the listener handoff race, following Herdr's bounded server
   stop wait. The Windows and installer smoke scripts pass after stale-endpoint
