@@ -128,10 +128,10 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   now browse recent PTY history, which the same selection/copy path can read;
   history is bounded by the PTY byte ring and reconstructed at the current
   pane size.
-- [ ] Add keyboard copy mode on the matching prefix+[ binding, with Herdr-style
+- [x] Add keyboard copy mode on the matching prefix+[ binding, with Herdr-style
   cursor motion, search, character/line selection, and copy. Keep PTY output
   live while browsing and preserve the viewport until copy mode exits.
-- [ ] Test copy-mode input, history boundaries, search results, selection text,
+- [x] Test copy-mode input, history boundaries, search results, selection text,
   Unicode cell mapping, and output arriving while the user browses history.
 - [x] Keep keyboard command-palette actions for pane, tab, and workspace
   actions available through the mouse, including clearing a pane's manual name.
@@ -145,10 +145,20 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 
 Reference: Herdr `src/client/shell/mouse.rs`, `copy_mode.rs`, `context_menu.rs`,
 `selection.rs`, `src/api/schema/panes.rs` (`PaneCopyMotion`, `PaneCopySearch`),
+`src/app/api/panes.rs`, `src/pane/terminal.rs` (copy motions),
 `src/app/actions.rs` (`url_at_column`, `url_at_pane_surface_cell`),
 `src/app/api/plugins/mod.rs` (`handle_pane_link_activate`), and quick-start
 "Use the mouse". Spindle: `src/client/app.rs`, `src/client/links.rs`,
 `src/client/input.rs`, and `src/client/renderer.rs`.
+
+Copy-mode difference: Herdr asks the server's retained terminal for
+revision-checked motions and searches. Spindle builds a local `vt100` text
+buffer from its existing 64 KiB pane byte ring, so no protocol change is
+needed; history is limited to that retained ring. Keyboard flow, motions,
+search direction/repeat and case rules, selection/copy, and live-output
+viewport pinning are covered by client tests. Full tests, strict Clippy, release
+build, Windows smoke, and installer smoke passed. Direct interactive Windows
+Terminal verification is still pending.
 
 ## 4. Add agent-aware workspace status
 

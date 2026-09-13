@@ -2,6 +2,7 @@ mod layout;
 mod navigation;
 
 use super::context_menu::ContextMenu;
+use super::copy_mode::{CopyMode, SelectionKind};
 use super::selection::TextSelection;
 use crate::model::status::PaneStatus;
 use crate::server::session::{SessionSnapshot, WorkspaceView};
@@ -218,6 +219,79 @@ pub(crate) fn render_selection_with_sidebar(
     }
 }
 
+pub(crate) fn render_copy_mode(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    mode: &CopyMode,
+    sidebar_collapsed: bool,
+) {
+    let Some(pane) = pane_rectangles(
+        snapshot,
+        pane_content_area_with_sidebar(frame.area(), sidebar_collapsed),
+    )
+    .into_iter()
+    .find(|pane| pane.pane_id == mode.pane_id) else {
+        return;
+    };
+    let inner = Block::default().borders(Borders::ALL).inner(pane.rect);
+    let selected = mode.selection.map(|selection| {
+        if selection.anchor <= mode.cursor {
+            (selection.anchor, mode.cursor, selection.kind)
+        } else {
+            (mode.cursor, selection.anchor, selection.kind)
+        }
+    });
+    let search_width = unicode_width::UnicodeWidthStr::width(mode.search_query.as_str());
+    for visible_row in 0..usize::from(inner.height) {
+        let row = mode.viewport_top + visible_row;
+        if row >= mode.rows.len() {
+            continue;
+        }
+        for cell_col in 0..usize::from(inner.width) {
+            let point = super::copy_mode::Point { row, col: cell_col };
+            let in_selection = selected.is_some_and(|(start, end, kind)| match kind {
+                SelectionKind::Line => row >= start.row && row <= end.row,
+                SelectionKind::Character => point >= start && point <= end,
+            });
+            let is_cursor = point == mode.cursor;
+            let is_match = mode.search_matches.iter().any(|found| {
+                found.row == row
+                    && cell_col >= found.col
+                    && cell_col < found.col.saturating_add(search_width)
+            });
+            if in_selection || is_cursor || is_match {
+                if let Some(cell) = frame
+                    .buffer_mut()
+                    .cell_mut((inner.x + cell_col as u16, inner.y + visible_row as u16))
+                {
+                    let (fg, bg) = if is_cursor {
+                        (Color::Black, Color::Yellow)
+                    } else if in_selection {
+                        (Color::Black, Color::Cyan)
+                    } else {
+                        (Color::Black, Color::Green)
+                    };
+                    cell.set_style(Style::default().fg(fg).bg(bg));
+                }
+            }
+        }
+    }
+    let hint = if mode.search_prompt {
+        format!(
+            " COPY SEARCH: {}_  Enter search · Esc cancel ",
+            mode.search_query
+        )
+    } else if mode.selection.is_some() {
+        " COPY SELECT  v char · V line · y copy · Esc clear ".to_owned()
+    } else {
+        " COPY  hjkl move · / search · v select · y copy · q exit ".to_owned()
+    };
+    frame.render_widget(
+        Paragraph::new(hint).style(Style::default().fg(Color::Black).bg(Color::Yellow)),
+        footer_area(frame.area()),
+    );
+}
+
 fn footer_area(area: Rect) -> Rect {
     Rect::new(area.x, area.bottom().saturating_sub(1), area.width, 1)
 }
@@ -265,7 +339,7 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "b: toggle compact sidebar",
         "h/j/k/l or arrows: focus direction; o / O: cycle panes",
         "v / -: split vertical / horizontal; z: zoom pane",
-        "?: help; colon: palette; q / d: detach",
+        "?: help; colon: palette; q / d: detach; [: copy mode",
         "",
         "Create, rename, and delete actions are in the command palette.",
         "Sidebar agent badges: W working, ! blocked, I idle, ? unknown.",

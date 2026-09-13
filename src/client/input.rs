@@ -10,6 +10,7 @@ pub enum Action {
     CloseTab,
     NextTab,
     PreviousTab,
+    EnterCopyMode,
     NextSpace,
     PreviousSpace,
     NextWorkspace,
@@ -54,7 +55,7 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
             KeyCode::Char('x') => Action::ClosePane,
             KeyCode::Char('X') => Action::CloseTab,
             KeyCode::Char(']') => Action::NextTab,
-            KeyCode::Char('[') => Action::PreviousTab,
+            KeyCode::Char('[') => Action::EnterCopyMode,
             KeyCode::Char('}') => Action::NextSpace,
             KeyCode::Char('{') => Action::PreviousSpace,
             KeyCode::Char('w') => Action::NextWorkspace,
@@ -129,6 +130,10 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE)),
             Action::PreviousTab
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('['), KeyModifiers::NONE)),
+            Action::EnterCopyMode
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)),

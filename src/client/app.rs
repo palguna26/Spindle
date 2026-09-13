@@ -1,4 +1,5 @@
 use super::context_menu::{ContextMenu, ContextMenuAction, ContextMenuTarget};
+use super::copy_mode::{CopyMode, KeyResult};
 use super::input::{action, is_prefix, Action};
 use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
@@ -70,6 +71,7 @@ struct MouseState {
     last_click: Option<PaneClick>,
     scroll_offsets: HashMap<String, usize>,
     scrollback_views: HashMap<String, CachedScrollbackView>,
+    copy_mode: Option<CopyMode>,
 }
 
 struct PaneClick {
@@ -205,6 +207,28 @@ fn event_loop(
             }
             Err(_) => false,
         };
+        if let Some(copy_mode) = mouse_state.copy_mode.as_mut() {
+            if snapshot.focused_pane_id.as_deref() != Some(copy_mode.pane_id.as_str()) {
+                let pane_id = copy_mode.pane_id.clone();
+                let saved_offset = copy_mode.saved_offset;
+                mouse_state.copy_mode = None;
+                mouse_state.scroll_offsets.insert(pane_id, saved_offset);
+            } else if let Some(pane) = snapshot
+                .panes
+                .iter()
+                .find(|pane| pane.pane_id == copy_mode.pane_id)
+            {
+                copy_mode.refresh(&pane.scrollback, pane.rows, pane.cols);
+                mouse_state
+                    .scroll_offsets
+                    .insert(copy_mode.pane_id.clone(), copy_mode.scroll_offset());
+            } else {
+                let pane_id = copy_mode.pane_id.clone();
+                let saved_offset = copy_mode.saved_offset;
+                mouse_state.copy_mode = None;
+                mouse_state.scroll_offsets.insert(pane_id, saved_offset);
+            }
+        }
         apply_scrollback_views(
             &mut snapshot,
             &mut mouse_state.scroll_offsets,
@@ -253,7 +277,8 @@ fn event_loop(
             .as_ref()
             .and_then(|pane_id| mouse_state.scroll_offsets.get(pane_id))
             .is_some_and(|offset| *offset > 0);
-        let show_host_cursor = !focused_pane_scrolled
+        let show_host_cursor = mouse_state.copy_mode.is_none()
+            && !focused_pane_scrolled
             && mouse_state.selection.is_none()
             && !palette_open
             && !help_open
@@ -276,6 +301,14 @@ fn event_loop(
                         frame,
                         &snapshot,
                         selection,
+                        mouse_state.sidebar_collapsed,
+                    );
+                }
+                if let Some(copy_mode) = &mouse_state.copy_mode {
+                    renderer::render_copy_mode(
+                        frame,
+                        &snapshot,
+                        copy_mode,
                         mouse_state.sidebar_collapsed,
                     );
                 }
@@ -325,6 +358,11 @@ fn event_loop(
                     help_open = false;
                     continue;
                 }
+                if let Some(mode) = mouse_state.copy_mode.take() {
+                    mouse_state
+                        .scroll_offsets
+                        .insert(mode.pane_id, mode.saved_offset);
+                }
                 if let Err(error) = handle_mouse(
                     client,
                     &snapshot,
@@ -359,9 +397,11 @@ fn event_loop(
             }
             continue;
         }
-        mouse_state.selection = None;
-        mouse_state.last_click = None;
-        mouse_state.scroll_offsets.clear();
+        if mouse_state.copy_mode.is_none() {
+            mouse_state.selection = None;
+            mouse_state.last_click = None;
+            mouse_state.scroll_offsets.clear();
+        }
         if let Some(prompt) = &mut rename_prompt {
             match prompt.apply_key(key.code) {
                 PromptResult::Continue => {}
@@ -430,6 +470,46 @@ fn event_loop(
             }
             continue;
         }
+        if mouse_state.copy_mode.is_some() {
+            if is_prefix(key) {
+                prefix_active = true;
+                continue;
+            }
+            if !prefix_active {
+                let result = mouse_state.copy_mode.as_mut().map(|mode| mode.key(key));
+                match result {
+                    Some(KeyResult::Exit) => {
+                        let mode = mouse_state.copy_mode.take().expect("copy mode exists");
+                        mouse_state
+                            .scroll_offsets
+                            .insert(mode.pane_id, mode.saved_offset);
+                    }
+                    Some(KeyResult::Copy) => {
+                        let mode = mouse_state.copy_mode.take().expect("copy mode exists");
+                        let text = mode.selected_text();
+                        if !text.is_empty() {
+                            record_action_error(
+                                &mut action_error,
+                                "copy terminal selection",
+                                super::clipboard::copy_text(&text).map_err(ClientError::Io),
+                            );
+                        }
+                        mouse_state
+                            .scroll_offsets
+                            .insert(mode.pane_id, mode.saved_offset);
+                    }
+                    Some(KeyResult::Handled) => {
+                        if let Some(mode) = mouse_state.copy_mode.as_ref() {
+                            mouse_state
+                                .scroll_offsets
+                                .insert(mode.pane_id.clone(), mode.scroll_offset());
+                        }
+                    }
+                    None => {}
+                }
+                continue;
+            }
+        }
         if is_prefix(key) {
             prefix_active = true;
             continue;
@@ -486,6 +566,32 @@ fn event_loop(
             continue;
         }
         match pressed {
+            Action::EnterCopyMode => {
+                if mouse_state.copy_mode.is_none() {
+                    if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                        if let Some(pane) =
+                            snapshot.panes.iter().find(|pane| pane.pane_id == pane_id)
+                        {
+                            if !pane.alternate_screen {
+                                let offset = mouse_state
+                                    .scroll_offsets
+                                    .get(pane_id)
+                                    .copied()
+                                    .unwrap_or(0);
+                                mouse_state.copy_mode = Some(CopyMode::new(
+                                    pane_id.to_owned(),
+                                    &pane.scrollback,
+                                    pane.rows,
+                                    pane.cols,
+                                    pane.rows,
+                                    offset,
+                                    pane.cursor,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
             Action::Detach => {
                 let result = client
                     .detach()
