@@ -11,6 +11,7 @@ use agents::{
     devin_permission_required, hermes_is_idle, hermes_is_priority_working, hermes_is_working,
     hermes_permission_required, hermes_title_blocked, kilo_permission_required, kimi_is_working,
     kimi_permission_required, kiro_is_idle, qodercli_is_working, qodercli_permission_required,
+    qwen_state,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,6 +29,7 @@ pub enum AgentKind {
     Kilo,
     Antigravity,
     Hermes,
+    Qwen,
     Claude,
     Codex,
     Gemini,
@@ -117,6 +119,7 @@ impl AgentKind {
             Self::Kilo => "Kilo",
             Self::Antigravity => "Antigravity",
             Self::Hermes => "Hermes",
+            Self::Qwen => "Qwen",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -150,6 +153,9 @@ pub(crate) fn detect_state_with_osc(
     let bottom_five = recent_nonempty_lines(screen, 5).to_ascii_lowercase();
     let bottom_six = recent_nonempty_lines(screen, 6).to_ascii_lowercase();
     let bottom_eight = recent_nonempty_lines(screen, 8).to_ascii_lowercase();
+    if agent == AgentKind::Qwen {
+        return qwen_state(screen, title, osc_progress).unwrap_or(AgentState::Unknown);
+    }
     let blocked = match agent {
         AgentKind::Pi => false,
         AgentKind::QoderCli => qodercli_permission_required(&recent),
@@ -165,6 +171,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Hermes => {
             hermes_title_blocked(&title_lower) || hermes_permission_required(&bottom_fourteen)
         }
+        AgentKind::Qwen => false,
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -202,6 +209,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Kilo => recent.contains("esc interrupt"),
         AgentKind::Antigravity => antigravity_is_working(&recent, &bottom_five),
         AgentKind::Hermes => hermes_is_working(&bottom_five),
+        AgentKind::Qwen => false,
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -260,6 +268,7 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Kilo => false,
         AgentKind::Antigravity => false,
         AgentKind::Hermes => hermes_is_idle(&title.to_ascii_lowercase()),
+        AgentKind::Qwen => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -618,6 +627,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "kilo" | "kilo-code" | "kilo code" => Some(AgentKind::Kilo),
         "agy" | "antigravity" | "antigravity-cli" => Some(AgentKind::Antigravity),
         "hermes" | "hermes-agent" => Some(AgentKind::Hermes),
+        "qwen" | "qwen-code" | "qwen code" => Some(AgentKind::Qwen),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -1019,6 +1029,8 @@ mod tests {
             identify_process("hermes-agent.cmd"),
             Some(AgentKind::Hermes)
         );
+        assert_eq!(identify_process("qwen.exe"), Some(AgentKind::Qwen));
+        assert_eq!(identify_process("qwen-code.cmd"), Some(AgentKind::Qwen));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -1041,6 +1053,7 @@ mod tests {
         assert_eq!(AgentKind::Kilo.label(), "Kilo");
         assert_eq!(AgentKind::Antigravity.label(), "Antigravity");
         assert_eq!(AgentKind::Hermes.label(), "Hermes");
+        assert_eq!(AgentKind::Qwen.label(), "Qwen");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1577,6 +1590,72 @@ mod tests {
         );
         assert_eq!(
             detect_state(AgentKind::Hermes, "ordinary output", ""),
+            AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_qwen_prioritized_state_signals() {
+        for title in ["✳ Working", "✳︎ Blocked"] {
+            assert_eq!(
+                detect_state(AgentKind::Qwen, "", title),
+                AgentState::Blocked
+            );
+        }
+        assert_eq!(
+            detect_state(AgentKind::Qwen, "", "◐ Working"),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Qwen,
+                "⠏ Waiting...\nWaiting for user confirmation...",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Qwen,
+                "yes, allow once\nAllow execution of: command",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Qwen, "❯ 1. First option", ""),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Qwen,
+                "Do you trust this folder?\nTrust folder (enter)\nDon't trust (esc)",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Qwen, "⠋ Thinking (2m 4s · Esc to cancel)", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Qwen, "(3s · Esc to cancel)", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state_with_osc(AgentKind::Qwen, "", "", "4;3;50"),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state_with_osc(AgentKind::Qwen, "", "", "4;30;50"),
+            AgentState::Unknown
+        );
+        assert_eq!(
+            detect_state(AgentKind::Qwen, "> Type your message", ""),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(AgentKind::Qwen, "ordinary output", ""),
             AgentState::Unknown
         );
     }
