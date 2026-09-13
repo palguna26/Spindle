@@ -1399,16 +1399,10 @@ impl Session {
     }
 
     fn workspace_mut(&mut self, workspace_id: &str) -> Result<&mut WorkspaceView, String> {
-        let active_space_id = self.snapshot.active_space_id.clone();
-        let space = self
-            .snapshot
+        self.snapshot
             .spaces
             .iter_mut()
-            .find(|space| space.space_id == active_space_id)
-            .ok_or_else(|| "active space does not exist".to_string())?;
-        space
-            .workspaces
-            .iter_mut()
+            .flat_map(|space| space.workspaces.iter_mut())
             .find(|workspace| workspace.workspace_id == workspace_id)
             .ok_or_else(|| format!("workspace '{workspace_id}' does not exist"))
     }
@@ -1923,6 +1917,23 @@ mod tests {
             workspace_id
         );
         assert_eq!(session.snapshot.active_space_id, "space-2");
+    }
+
+    #[test]
+    fn workspace_rename_resolves_ids_across_spaces_without_changing_focus() {
+        let mut session = Session::default();
+        session.create_space("Other project".into()).unwrap();
+        let workspace_id = session.snapshot.spaces[1].workspaces[0]
+            .workspace_id
+            .clone();
+        session.switch_space("space-1").unwrap();
+
+        session
+            .rename_workspace(&workspace_id, "Review".into())
+            .unwrap();
+
+        assert_eq!(session.snapshot.active_space_id, "space-1");
+        assert_eq!(session.snapshot.spaces[1].workspaces[0].name, "Review");
     }
 
     #[test]

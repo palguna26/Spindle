@@ -29,6 +29,15 @@ try {
     if ($workspaces -notmatch '(?m)^\*\s+\S+\s+Current project\s+\[Default\]$') {
         throw "workspace list did not mark the active workspace: $workspaces"
     }
+    $workspace = (& $Binary workspace get workspace-1) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $workspace -notmatch '(?m)^name: Current project$') {
+        throw "workspace get did not return the requested workspace: $workspace"
+    }
+    Invoke-Spindle @("workspace", "rename", "workspace-1", "Smoke test")
+    $renamedWorkspaces = (& $Binary workspace list) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $renamedWorkspaces -notmatch '(?m)^\*\s+workspace-1\s+Smoke test\s+\[Default\]$') {
+        throw "workspace rename did not update the workspace label: $renamedWorkspaces"
+    }
     Invoke-Spindle @("workspace", "focus", "workspace-1")
     Invoke-Spindle @("list")
     $doctor = (& $Binary doctor) -join "`n"

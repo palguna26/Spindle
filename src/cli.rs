@@ -191,7 +191,9 @@ fn print_help() {
     println!("  list     show the current project identity and state path");
     println!("  doctor   check local Spindle state");
     println!("  workspace list  list workspaces in the current project session");
+    println!("  workspace get <id>  show a workspace by ID");
     println!("  workspace focus <id>  focus a workspace by ID");
+    println!("  workspace rename <id> <label>  rename a workspace");
     println!("Options:");
     println!("  --help, -h       show this help");
     println!("  --version, -V    print the version");

@@ -6,7 +6,11 @@ use std::io;
 pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
         [command] if command == "list" => workspace_list(project),
+        [command, workspace_id] if command == "get" => workspace_get(project, workspace_id),
         [command, workspace_id] if command == "focus" => workspace_focus(project, workspace_id),
+        [command, workspace_id, label @ ..] if command == "rename" && !label.is_empty() => {
+            workspace_rename(project, workspace_id, &label.join(" "))
+        }
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -15,7 +19,7 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle workspace <list|focus <workspace_id>>",
+                "usage: spindle workspace <list|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>>",
             ))
         }
     }
@@ -35,6 +39,65 @@ fn workspace_focus(project: &Project, workspace_id: &str) -> io::Result<()> {
         return Err(io::Error::other(message));
     }
     println!("focused workspace: {workspace_id}");
+    Ok(())
+}
+
+fn workspace_get(project: &Project, workspace_id: &str) -> io::Result<()> {
+    let response = super::send_command(project, "get_snapshot")?;
+    if !response.ok {
+        let message = response
+            .error
+            .map(|error| error.message)
+            .unwrap_or_else(|| "server rejected the workspace lookup request".into());
+        return Err(io::Error::other(message));
+    }
+    let snapshot: SessionSnapshot = serde_json::from_value(
+        response
+            .payload
+            .ok_or_else(|| io::Error::other("server returned no session snapshot"))?,
+    )
+    .map_err(io::Error::other)?;
+    let Some((space, workspace)) = snapshot.spaces.iter().find_map(|space| {
+        space
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.workspace_id == workspace_id)
+            .map(|workspace| (space, workspace))
+    }) else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("workspace '{workspace_id}' does not exist"),
+        ));
+    };
+    let active = space.space_id == snapshot.active_space_id
+        && space.active_workspace_id.as_deref() == Some(workspace_id);
+    println!("workspace: {}", workspace.workspace_id);
+    println!("name: {}", workspace.name);
+    println!("space: {}", space.name);
+    println!(
+        "repository: {}",
+        workspace.repository_path.as_deref().unwrap_or("-")
+    );
+    println!("branch: {}", workspace.branch.as_deref().unwrap_or("-"));
+    println!("tabs: {}", workspace.tabs.len());
+    println!("active: {}", if active { "yes" } else { "no" });
+    Ok(())
+}
+
+fn workspace_rename(project: &Project, workspace_id: &str, name: &str) -> io::Result<()> {
+    let response = super::send_command_with_payload(
+        project,
+        "rename_workspace",
+        serde_json::json!({ "id": workspace_id, "name": name }),
+    )?;
+    if !response.ok {
+        let message = response
+            .error
+            .map(|error| error.message)
+            .unwrap_or_else(|| "server rejected the workspace rename request".into());
+        return Err(io::Error::other(message));
+    }
+    println!("renamed workspace {workspace_id}: {name}");
     Ok(())
 }
 
@@ -78,9 +141,11 @@ fn format_workspace_list(snapshot: &SessionSnapshot) -> String {
 }
 
 fn print_help() {
-    println!("Usage: spindle workspace <list|focus <workspace_id>>");
+    println!("Usage: spindle workspace <list|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>>");
     println!("  list    list workspaces in the current project session");
+    println!("  get     show a workspace by ID");
     println!("  focus   focus a workspace by ID");
+    println!("  rename  rename a workspace by ID");
 }
 
 #[cfg(test)]
