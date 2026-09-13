@@ -44,6 +44,9 @@ pub fn run() -> io::Result<()> {
         }
         "doctor" => {
             println!("project: {}", project.describe());
+            println!("client version: spindle {}", env!("CARGO_PKG_VERSION"));
+            println!("client binary: {}", env::current_exe()?.display());
+            println!("client protocol: {}", crate::protocol::PROTOCOL_VERSION);
             println!("state directory: {}", project.state_dir.display());
             println!("state directory exists: {}", project.state_dir.exists());
             let endpoint_exists = project.endpoint_path().exists();

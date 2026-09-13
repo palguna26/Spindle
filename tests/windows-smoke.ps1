@@ -25,7 +25,14 @@ try {
     Invoke-Spindle @("start")
     Invoke-Spindle @("start")
     Invoke-Spindle @("list")
-    Invoke-Spindle @("doctor")
+    $doctor = (& $Binary doctor) -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw "spindle doctor failed" }
+    if ($doctor -notmatch "client version: spindle " -or
+        $doctor -notmatch ("client binary: " + [regex]::Escape($Binary)) -or
+        $doctor -notmatch "client protocol: ") {
+        throw "doctor did not identify the running client build: $doctor"
+    }
+    Write-Output $doctor
     $projectState = Get-ChildItem -LiteralPath (Join-Path $stateRoot "Spindle\projects") -Directory |
         Select-Object -First 1
     $logPath = Join-Path $projectState.FullName "server.log"

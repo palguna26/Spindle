@@ -233,7 +233,8 @@ approved design changes it.
   recovery, installer, and diagnostics based on observed gaps in the matrix.
   `spindle doctor` now labels endpoints missing/reachable/stale and gives a
   start/attach recovery hint for stale metadata, matching Herdr's explicit
-  running/not-running server status.
+  running/not-running server status. It also prints the client version, binary
+  path, and protocol so users can identify which build they launched.
 - [x] Make `spindle stop` wait for endpoint cleanup and retry Windows named-pipe
   wakeups through the listener handoff race, following Herdr's bounded server
   stop wait. The Windows and installer smoke scripts pass after stale-endpoint

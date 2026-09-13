@@ -50,7 +50,7 @@ spindle start    Start the project server
 spindle attach   Attach to the project server
 spindle stop     Stop the project server
 spindle list     Show project identity and state path
-spindle doctor   Show server health and identity; flags stale endpoint metadata
+spindle doctor   Show client/server identity and flag stale endpoint metadata
 ```
 
 ## Keybindings
