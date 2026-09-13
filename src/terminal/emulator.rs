@@ -190,7 +190,7 @@ impl TerminalEmulator {
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) {
-        self.parser.set_size(rows, cols);
+        self.parser.screen_mut().set_size(rows, cols);
         self.rows = rows;
         self.cols = cols;
     }
@@ -210,7 +210,7 @@ impl TerminalEmulator {
             contents: screen.contents(),
             cursor: screen.cursor_position(),
             cursor_visible: !screen.hide_cursor(),
-            title: screen.title().into(),
+            title: self.agent_osc.latest_title.clone(),
             osc_title: self.agent_osc.latest_title.clone(),
             osc_progress: self.agent_osc.latest_progress.clone(),
             alternate_screen: screen.alternate_screen(),

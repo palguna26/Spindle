@@ -1222,7 +1222,7 @@ fn apply_scrollback_views(
         let mut parser =
             vt100::Parser::new(pane.rows.max(1), pane.cols.max(1), MAX_SCROLLBACK_ROWS);
         parser.process(&pane.scrollback);
-        parser.set_scrollback(*offset);
+        parser.screen_mut().set_scrollback(*offset);
         let screen = parser.screen();
         *offset = screen.scrollback();
         pane.screen = screen.contents();
@@ -2413,21 +2413,23 @@ mod tests {
                 "cols": 20,
                 "rows": 2,
                 "status": "Running",
-                "scrollback_bytes": 24,
-                "scrollback": b"one\r\ntwo\r\nthree\r\nfour".to_vec()
+                "scrollback_bytes": 37,
+                "scrollback": b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix".to_vec()
             }))
             .unwrap(),
         );
-        let mut offsets = std::collections::HashMap::from([("pane-1".into(), 1)]);
+        let mut offsets = std::collections::HashMap::from([("pane-1".into(), 4)]);
         let mut cached_views = std::collections::HashMap::<String, CachedScrollbackView>::new();
 
         apply_scrollback_views(&mut snapshot, &mut offsets, &mut cached_views);
-        assert!(snapshot.panes[0].screen.contains("three"));
-        assert!(!snapshot.panes[0].screen.contains("four"));
+        assert!(snapshot.panes[0].screen.contains("one"));
+        assert!(snapshot.panes[0].screen.contains("two"));
+        assert!(!snapshot.panes[0].screen.contains("five"));
 
         offsets.insert("pane-1".into(), 0);
         apply_scrollback_views(&mut snapshot, &mut offsets, &mut cached_views);
-        assert!(snapshot.panes[0].screen.contains("four"));
+        assert!(snapshot.panes[0].screen.contains("five"));
+        assert!(snapshot.panes[0].screen.contains("six"));
         assert!(!offsets.contains_key("pane-1"));
     }
 
