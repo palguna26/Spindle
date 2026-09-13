@@ -208,8 +208,10 @@ Terminal verification is still pending.
   lifecycle transitions remain.
 - [ ] Keep state associated with the correct pane, tab, and workspace through
   switches, restarts, and recovery. A session test now verifies status remains
-  attached to its pane across tab and workspace switches; restart/recovery
-  status behavior still needs explicit verification.
+  attached to its pane across tab and workspace switches; a restart test now
+  verifies stale agent identity, scrollback, title, cursor, and terminal modes
+  are cleared while pane labels and user preferences survive. Re-detection
+  after recovery still needs live verification.
 - [ ] Make detection optional/fault-tolerant so normal shell use is unaffected.
 - [ ] Test detection fixtures and status transitions; verify Codex and OpenCode
   side-by-side on Windows.

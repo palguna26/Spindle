@@ -1186,9 +1186,21 @@ impl Session {
         pane.agent = None;
         pane.agent_state = None;
         pane.agent_done = false;
+        pane.scrollback.clear();
+        pane.scrollback_bytes = 0;
         pane.screen.clear();
         pane.cursor = (0, 0);
         pane.cursor_visible = false;
+        pane.title.clear();
+        pane.alternate_screen = false;
+        pane.mouse_reporting = false;
+        pane.mouse_release = false;
+        pane.mouse_motion = false;
+        pane.mouse_any_motion = false;
+        pane.sgr_mouse = false;
+        pane.utf8_mouse = false;
+        pane.application_cursor = false;
+        pane.bracketed_paste = false;
         let tab = self.active_tab_mut()?;
         if tab
             .layout
@@ -2154,5 +2166,69 @@ mod tests {
             right_click_passthrough: false,
         });
         assert!(session.restart_pane("pane-1").is_err());
+    }
+
+    #[test]
+    fn restarting_a_pane_clears_the_previous_agents_identity_and_state() {
+        let mut session = Session::default();
+        session.snapshot.panes.push(PaneView {
+            pane_id: "pane-1".into(),
+            command: "powershell.exe".into(),
+            args: vec!["-NoLogo".into(), "-NoProfile".into()],
+            cwd: "C:/".into(),
+            cols: 80,
+            rows: 24,
+            label: Some("build shell".into()),
+            agent: Some(crate::detect::AgentKind::Claude),
+            agent_state: Some(crate::detect::AgentState::Blocked),
+            agent_done: true,
+            status: PaneStatus::Halted {
+                reason: "process exited".into(),
+            },
+            scrollback_bytes: b"old scrollback".len(),
+            scrollback: b"old scrollback".to_vec(),
+            screen: "previous agent screen".into(),
+            cursor: (5, 1),
+            cursor_visible: true,
+            title: "Claude".into(),
+            alternate_screen: true,
+            mouse_reporting: true,
+            mouse_release: true,
+            mouse_motion: true,
+            mouse_any_motion: true,
+            sgr_mouse: true,
+            utf8_mouse: true,
+            application_cursor: true,
+            bracketed_paste: true,
+            right_click_passthrough: true,
+        });
+        session.snapshot.spaces[0].workspaces[0].tabs[0].layout = Some(LayoutNode::pane("pane-1"));
+        session.snapshot.spaces[0].workspaces[0].tabs[0].focused_pane_id = Some("pane-1".into());
+        session.snapshot.focused_pane_id = Some("pane-1".into());
+
+        session.restart_pane("pane-1").unwrap();
+
+        let pane = &session.snapshot.panes[0];
+        assert!(pane.status.is_running());
+        assert_eq!(pane.label.as_deref(), Some("build shell"));
+        assert_eq!(pane.agent, None);
+        assert_eq!(pane.agent_state, None);
+        assert!(!pane.agent_done);
+        assert!(pane.scrollback.is_empty());
+        assert_eq!(pane.scrollback_bytes, 0);
+        assert!(pane.screen.is_empty());
+        assert_eq!(pane.cursor, (0, 0));
+        assert!(!pane.cursor_visible);
+        assert!(pane.title.is_empty());
+        assert!(!pane.alternate_screen);
+        assert!(!pane.mouse_reporting);
+        assert!(!pane.mouse_release);
+        assert!(!pane.mouse_motion);
+        assert!(!pane.mouse_any_motion);
+        assert!(!pane.sgr_mouse);
+        assert!(!pane.utf8_mouse);
+        assert!(!pane.application_cursor);
+        assert!(!pane.bracketed_paste);
+        assert!(pane.right_click_passthrough);
     }
 }
