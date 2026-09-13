@@ -40,8 +40,9 @@ spindle --help   show commands
 spindle --version  show the build version
 ```
 
-Press `Ctrl-b`, then `?` for the in-app mouse and keyboard guide. Press `:` to
-open the command palette. Other common keys:
+Press `Ctrl-b`, then `?` for the in-app mouse and keyboard guide. Press `Ctrl-b`,
+then `:` to open the command palette. Unless noted otherwise, the shortcuts
+below are pressed after `Ctrl-b`:
 
 | Keys | Action |
 | --- | --- |
@@ -59,11 +60,11 @@ open the command palette. Other common keys:
 | `s` / `r` | Stop / restart pane |
 | `]` / `[` | Next / previous tab (alternate) |
 | `}` / `{` | Next / previous space |
-| `w` | Next workspace |
+| `w` | Preview workspaces; use arrows and Enter to switch, or Esc to cancel |
 
-The command palette can create more PowerShell panes, rename objects,
-switches to a workspace by name, and requires typing the exact name before
-deleting a space or workspace.
+The command palette can create more PowerShell panes, rename objects, switch
+to a workspace by name, and requires typing the exact name before deleting a
+space or workspace.
 
 ## State and recovery
 
