@@ -9,6 +9,7 @@ pub enum AgentKind {
     Codex,
     Gemini,
     OpenCode,
+    GithubCopilot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,6 +86,7 @@ impl AgentKind {
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
             Self::OpenCode => "OpenCode",
+            Self::GithubCopilot => "GitHub Copilot",
         }
     }
 }
@@ -123,6 +125,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::OpenCode => opencode_permission_required(&recent),
         AgentKind::Claude => claude_permission_required(&recent),
         AgentKind::Gemini => gemini_permission_required(&recent),
+        AgentKind::GithubCopilot => copilot_permission_required(&recent),
     };
     if blocked {
         return AgentState::Blocked;
@@ -153,6 +156,9 @@ pub(crate) fn detect_state_with_osc(
         }
         AgentKind::Claude => claude_is_working(&bottom_twelve, &bottom_five, title),
         AgentKind::Gemini => recent.contains("esc to cancel"),
+        AgentKind::GithubCopilot => {
+            copilot_has_cancel_hint(&recent) || copilot_background_agents_working(&recent)
+        }
     };
     if working {
         return AgentState::Working;
@@ -182,6 +188,7 @@ pub(crate) fn has_visible_idle_signal(
         }
         AgentKind::OpenCode => false,
         AgentKind::Gemini => false,
+        AgentKind::GithubCopilot => false,
     }
 }
 
@@ -208,6 +215,42 @@ fn gemini_permission_required(recent: &str) -> bool {
             let line = line.trim_start();
             line.starts_with('❯') && (line.contains("yes") || line.contains("allow"))
         })
+}
+
+fn copilot_permission_required(recent: &str) -> bool {
+    let escape_hint = recent.contains("esc to cancel") || recent.contains("esc cancel");
+    let confirmation_hint = [
+        "enter to select",
+        "enter to confirm",
+        "enter to submit",
+        "enter accept",
+    ]
+    .iter()
+    .any(|hint| recent.contains(hint));
+    escape_hint && confirmation_hint
+}
+
+fn copilot_has_cancel_hint(recent: &str) -> bool {
+    [
+        "esc to cancel",
+        "esc cancel",
+        "esc again to cancel",
+        "esc interrupt",
+    ]
+    .iter()
+    .any(|hint| recent.contains(hint))
+}
+
+fn copilot_background_agents_working(recent: &str) -> bool {
+    recent_nonempty_lines(recent, 6).lines().any(|line| {
+        line.trim_start()
+            .strip_prefix('\u{25ce}')
+            .is_some_and(|message| {
+                message
+                    .trim_start()
+                    .starts_with("waiting for background agents")
+            })
+    })
 }
 
 fn claude_is_working(bottom: &str, bottom_five: &str, title: &str) -> bool {
@@ -472,6 +515,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
+        "copilot" | "github-copilot" | "ghcs" => Some(AgentKind::GithubCopilot),
         _ => None,
     }
 }
@@ -828,6 +872,12 @@ mod tests {
         assert_eq!(identify_process("gemini.cmd"), Some(AgentKind::Gemini));
         assert_eq!(identify_process("opencode2"), Some(AgentKind::OpenCode));
         assert_eq!(
+            identify_process("copilot.exe"),
+            Some(AgentKind::GithubCopilot)
+        );
+        assert_eq!(identify_process("ghcs.cmd"), Some(AgentKind::GithubCopilot));
+        assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
+        assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
             Some(AgentKind::OpenCode)
         );
@@ -862,6 +912,39 @@ mod tests {
         assert_eq!(
             detect_state(AgentKind::Claude, "Ready\n❯ ", ""),
             AgentState::Idle
+        );
+    }
+
+    #[test]
+    fn follows_herdr_copilot_blocker_and_working_signals() {
+        assert_eq!(
+            detect_state(
+                AgentKind::GithubCopilot,
+                "Select an option\nEsc to cancel\nEnter to confirm",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::GithubCopilot, "Esc again to cancel", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::GithubCopilot,
+                "\u{25ce} Waiting for background agents",
+                ""
+            ),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::GithubCopilot, "Esc to cancel", ""),
+            AgentState::Working,
+            "a lone cancel hint is working chrome, not a confirmation blocker"
+        );
+        assert_eq!(
+            detect_state(AgentKind::GithubCopilot, "Normal prompt", ""),
+            AgentState::Unknown
         );
     }
 
