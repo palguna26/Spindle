@@ -443,7 +443,7 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "Terminal apps receive mouse events when requested.",
         "Keyboard (press Ctrl-b, then the key)",
         "c: new tab; n / p: next / previous tab",
-        "Shift+n: new workspace",
+        "Shift+n new workspace; Shift+w rename workspace",
         "x / Shift+x: close pane / tab; s / r: stop / restart",
         "b: compact sidebar; w: choose workspace; g: session navigator",
         "h/j/k/l focus; o / O cycle; picker: arrows/Enter/Esc",

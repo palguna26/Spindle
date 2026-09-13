@@ -1032,9 +1032,11 @@ fn event_loop(
                 let result = create_workspace_from_current_directory(client, terminal_size);
                 record_action_error(&mut action_error, "create workspace", result);
             }
+            Action::RenameActiveWorkspace => {
+                rename_prompt = Some(RenamePrompt::new(RenameTarget::Workspace));
+            }
             Action::RenameFocusedPane
             | Action::RenameActiveTab
-            | Action::RenameActiveWorkspace
             | Action::RenameActiveSpace
             | Action::CreateSpace
             | Action::DeleteActiveWorkspace

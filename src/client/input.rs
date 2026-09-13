@@ -62,6 +62,7 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
             KeyCode::Char('}') => Action::NextSpace,
             KeyCode::Char('{') => Action::PreviousSpace,
             KeyCode::Char('w') => Action::WorkspacePicker,
+            KeyCode::Char('W') => Action::RenameActiveWorkspace,
             KeyCode::Char('g') => Action::SessionNavigator,
             KeyCode::Char('s') => Action::StopFocusedPane,
             KeyCode::Char('r') => Action::RestartFocusedPane,
@@ -134,6 +135,10 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE)),
             Action::WorkspacePicker
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('W'), KeyModifiers::SHIFT)),
+            Action::RenameActiveWorkspace
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
