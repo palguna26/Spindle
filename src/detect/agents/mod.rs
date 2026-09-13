@@ -9,6 +9,7 @@ mod hermes;
 mod kilo;
 mod kimi;
 mod kiro;
+mod maki;
 mod qoder_cli;
 mod qwen;
 
@@ -26,5 +27,6 @@ pub(super) use hermes::{
 pub(super) use kilo::kilo_permission_required;
 pub(super) use kimi::{kimi_is_working, kimi_permission_required};
 pub(super) use kiro::{kiro_is_idle, kiro_is_working, kiro_permission_required};
+pub(super) use maki::maki_state;
 pub(super) use qoder_cli::{qodercli_is_working, qodercli_permission_required};
 pub(super) use qwen::qwen_state;

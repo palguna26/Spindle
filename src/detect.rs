@@ -10,7 +10,7 @@ use agents::{
     cursor_is_working, cursor_permission_required, devin_is_idle, devin_is_working,
     devin_permission_required, grok_state, hermes_is_idle, hermes_is_priority_working,
     hermes_is_working, hermes_permission_required, hermes_title_blocked, kilo_permission_required,
-    kimi_is_working, kimi_permission_required, kiro_is_idle, qodercli_is_working,
+    kimi_is_working, kimi_permission_required, kiro_is_idle, maki_state, qodercli_is_working,
     qodercli_permission_required, qwen_state,
 };
 
@@ -31,6 +31,7 @@ pub enum AgentKind {
     Hermes,
     Qwen,
     Grok,
+    Maki,
     Claude,
     Codex,
     Gemini,
@@ -122,6 +123,7 @@ impl AgentKind {
             Self::Hermes => "Hermes",
             Self::Qwen => "Qwen",
             Self::Grok => "Grok",
+            Self::Maki => "Maki",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -161,6 +163,9 @@ pub(crate) fn detect_state_with_osc(
     if agent == AgentKind::Grok {
         return grok_state(screen, title, osc_progress);
     }
+    if agent == AgentKind::Maki {
+        return maki_state(screen);
+    }
     let blocked = match agent {
         AgentKind::Pi => false,
         AgentKind::QoderCli => qodercli_permission_required(&recent),
@@ -178,6 +183,7 @@ pub(crate) fn detect_state_with_osc(
         }
         AgentKind::Qwen => false,
         AgentKind::Grok => false,
+        AgentKind::Maki => false,
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -217,6 +223,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Hermes => hermes_is_working(&bottom_five),
         AgentKind::Qwen => false,
         AgentKind::Grok => false,
+        AgentKind::Maki => false,
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -277,6 +284,7 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Hermes => hermes_is_idle(&title.to_ascii_lowercase()),
         AgentKind::Qwen => false,
         AgentKind::Grok => false,
+        AgentKind::Maki => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -637,6 +645,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "hermes" | "hermes-agent" => Some(AgentKind::Hermes),
         "qwen" | "qwen-code" | "qwen code" => Some(AgentKind::Qwen),
         "grok" | "grok-build" => Some(AgentKind::Grok),
+        "maki" => Some(AgentKind::Maki),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -1042,6 +1051,7 @@ mod tests {
         assert_eq!(identify_process("qwen-code.cmd"), Some(AgentKind::Qwen));
         assert_eq!(identify_process("grok.exe"), Some(AgentKind::Grok));
         assert_eq!(identify_process("grok-build.cmd"), Some(AgentKind::Grok));
+        assert_eq!(identify_process("maki.exe"), Some(AgentKind::Maki));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -1066,6 +1076,7 @@ mod tests {
         assert_eq!(AgentKind::Hermes.label(), "Hermes");
         assert_eq!(AgentKind::Qwen.label(), "Qwen");
         assert_eq!(AgentKind::Grok.label(), "Grok");
+        assert_eq!(AgentKind::Maki.label(), "Maki");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1741,6 +1752,52 @@ mod tests {
         );
         assert_eq!(
             detect_state(AgentKind::Grok, "ordinary output", ""),
+            AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_maki_prompt_and_status_bar_signals() {
+        for prompt in [
+            "Permission required\nY allow\nN deny",
+            "Permission required\nConfirm allow",
+            "Permission required\nConfirm deny",
+            "Permission required\nEnter deny\nEsc cancel",
+            "Plan complete\nEnter confirm\nSpace toggle parallel",
+            "Plan complete\nEnter confirm\nEdit plan",
+        ] {
+            assert_eq!(
+                detect_state(AgentKind::Maki, prompt, ""),
+                AgentState::Blocked,
+                "expected blocker for {prompt:?}"
+            );
+        }
+        assert_eq!(
+            detect_state(AgentKind::Maki, " ⠋ [BUILD] status", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Maki, " ⠋ ⠙ [PLAN] status", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Maki, " [BASH] status", ""),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(AgentKind::Maki, "Panel\n❯ Type here", ""),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(AgentKind::Maki, "Panel\n❯ Queue another prompt", ""),
+            AgentState::Unknown
+        );
+        assert_eq!(
+            detect_state(AgentKind::Maki, " ⠋ Streaming\n❯ ", ""),
+            AgentState::Unknown
+        );
+        assert_eq!(
+            detect_state(AgentKind::Maki, "ordinary output", ""),
             AgentState::Unknown
         );
     }
