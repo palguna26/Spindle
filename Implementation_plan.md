@@ -212,7 +212,12 @@ Terminal verification is still pending.
   verifies stale agent identity, scrollback, title, cursor, and terminal modes
   are cleared while pane labels and user preferences survive. Re-detection
   after recovery still needs live verification.
-- [ ] Make detection optional/fault-tolerant so normal shell use is unaffected.
+- [x] Make detection optional/fault-tolerant so normal shell use is unaffected.
+  Detection runs only for recognized agents; unavailable process scans preserve
+  the last known identity/status, and detection is separate from PTY input,
+  output, and terminal parsing. `pane::manager::tests::unavailable_process_scans_do_not_change_agent_identity_or_status`
+  verifies the unavailable-scan behavior, matching Herdr's best-effort scan
+  boundary in `src/pane/agent_detection.rs`.
 - [ ] Test detection fixtures and status transitions; verify Codex and OpenCode
   side-by-side on Windows.
 
