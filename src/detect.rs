@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub enum AgentKind {
     Pi,
     QoderCli,
+    Droid,
     Claude,
     Codex,
     Gemini,
@@ -86,6 +87,7 @@ impl AgentKind {
         match self {
             Self::Pi => "Pi",
             Self::QoderCli => "Qoder CLI",
+            Self::Droid => "Droid",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -116,9 +118,11 @@ pub(crate) fn detect_state_with_osc(
     let bottom_three = recent_nonempty_lines(screen, 3).to_ascii_lowercase();
     let bottom_twelve = recent_nonempty_lines(screen, 12).to_ascii_lowercase();
     let bottom_five = recent_nonempty_lines(screen, 5).to_ascii_lowercase();
+    let bottom_eight = recent_nonempty_lines(screen, 8).to_ascii_lowercase();
     let blocked = match agent {
         AgentKind::Pi => false,
         AgentKind::QoderCli => qodercli_permission_required(&recent),
+        AgentKind::Droid => droid_permission_required(&recent, &bottom_eight),
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -140,6 +144,7 @@ pub(crate) fn detect_state_with_osc(
     let working = match agent {
         AgentKind::Pi => recent.contains("working..."),
         AgentKind::QoderCli => qodercli_is_working(&recent),
+        AgentKind::Droid => recent.contains("esc to stop"),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -188,6 +193,7 @@ pub(crate) fn has_visible_idle_signal(
     match agent {
         AgentKind::Pi => false,
         AgentKind::QoderCli => false,
+        AgentKind::Droid => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -247,6 +253,23 @@ fn qodercli_is_working(recent: &str) -> bool {
                 && rest.chars().next().is_some_and(char::is_whitespace)
                 && rest.chars().any(char::is_alphabetic)
         })
+}
+
+fn droid_permission_required(recent: &str, bottom_eight: &str) -> bool {
+    let execute_selection = recent.contains("enter to select")
+        && recent.contains("esc to cancel")
+        && ["↑↓ to navigate", "use ↑↓ to navigate"]
+            .iter()
+            .any(|signal| recent.contains(signal))
+        && ["> yes, allow", "> no, cancel"]
+            .iter()
+            .any(|signal| recent.contains(signal));
+    let selection_menu = bottom_eight.contains("enter select")
+        && bottom_eight.contains("esc cancel")
+        && ["↑/↓ navigate", "↑↓ navigate"]
+            .iter()
+            .any(|signal| bottom_eight.contains(signal));
+    execute_selection || selection_menu
 }
 
 fn is_braille_spinner(character: char) -> bool {
@@ -563,6 +586,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "claude" | "claude-code" => Some(AgentKind::Claude),
         "pi" => Some(AgentKind::Pi),
         "qodercli" | "qoderclicn" | "qoder" | "qodercn" => Some(AgentKind::QoderCli),
+        "droid" => Some(AgentKind::Droid),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -936,6 +960,7 @@ mod tests {
         assert_eq!(identify_process("qodercli.exe"), Some(AgentKind::QoderCli));
         assert_eq!(identify_process("qoder.cmd"), Some(AgentKind::QoderCli));
         assert_eq!(identify_process("qodercn"), Some(AgentKind::QoderCli));
+        assert_eq!(identify_process("droid.exe"), Some(AgentKind::Droid));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -948,6 +973,7 @@ mod tests {
         assert_eq!(identify_process("ghcs.cmd"), Some(AgentKind::GithubCopilot));
         assert_eq!(AgentKind::Pi.label(), "Pi");
         assert_eq!(AgentKind::QoderCli.label(), "Qoder CLI");
+        assert_eq!(AgentKind::Droid.label(), "Droid");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1043,6 +1069,52 @@ mod tests {
             detect_state(AgentKind::QoderCli, "⠋ 123", ""),
             AgentState::Unknown,
             "the manifest requires spinner text with an alphabetic character"
+        );
+    }
+
+    #[test]
+    fn follows_herdr_droid_blocked_and_working_signals() {
+        assert_eq!(
+            detect_state(
+                AgentKind::Droid,
+                "Confirm execution\nEnter to select\nEsc to cancel\n↑↓ to navigate\n> Yes, allow",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Droid,
+                "Choose an option\nEnter select · Esc cancel · ↑/↓ navigate",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Droid,
+                "Enter to select\nEsc to cancel\n↑↓ to navigate",
+                ""
+            ),
+            AgentState::Unknown,
+            "selection hints without an allow/cancel choice are not a blocker"
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Droid,
+                "Old menu:\nEnter select · Esc cancel · ↑↓ navigate\n\n1\n2\n3\n4\n5\n6\n7\nReady",
+                ""
+            ),
+            AgentState::Unknown,
+            "the menu rule only inspects the last eight non-empty lines"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Droid, "Esc to stop", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Droid, "Working", ""),
+            AgentState::Unknown
         );
     }
 

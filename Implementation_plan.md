@@ -154,8 +154,9 @@ Reference: Herdr `src/client/shell/mouse.rs`, `copy_mode.rs`, `context_menu.rs`,
 
 - [ ] Port process/terminal agent detection using Herdr's manifests and state
   transitions as behavioral references, not copied implementation. Partial:
-  direct and wrapped Pi/Qoder CLI/Claude/Codex/Gemini/OpenCode/GitHub Copilot
-  processes, Herdr-aligned Pi `Working...`, Qoder CLI blocker/working cues, and Copilot selection blocker,
+  direct and wrapped Pi/Qoder CLI/Droid/Claude/Codex/Gemini/OpenCode/GitHub
+  Copilot processes, Herdr-aligned Pi `Working...`, Qoder CLI and Droid
+  blocker/working cues, and Copilot selection blocker,
   cancel-hint and background-agent working cues, Claude OSC title/progress
   and selected prompt signals, Claude live-turn/background-agent/MCP and `/btw`
   working cues, selected manifest blocker prompts, and done status after two
