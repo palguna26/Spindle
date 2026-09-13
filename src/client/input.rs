@@ -51,6 +51,7 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
         return match key.code {
             KeyCode::Char('d') => Action::Detach,
             KeyCode::Char('q') => Action::Detach,
+            KeyCode::Char('D') => Action::DeleteActiveWorkspace,
             KeyCode::Char('c') => Action::NewTab,
             KeyCode::Char('N') => Action::CreateWorkspace,
             KeyCode::Char('n') => Action::NextTab,
@@ -111,6 +112,10 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE)),
             Action::Detach
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('D'), KeyModifiers::SHIFT)),
+            Action::DeleteActiveWorkspace
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),

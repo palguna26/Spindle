@@ -1035,11 +1035,13 @@ fn event_loop(
             Action::RenameActiveWorkspace => {
                 rename_prompt = Some(RenamePrompt::new(RenameTarget::Workspace));
             }
+            Action::DeleteActiveWorkspace => {
+                rename_prompt = Some(RenamePrompt::new(RenameTarget::DeleteWorkspace));
+            }
             Action::RenameFocusedPane
             | Action::RenameActiveTab
             | Action::RenameActiveSpace
             | Action::CreateSpace
-            | Action::DeleteActiveWorkspace
             | Action::DeleteActiveSpace
             | Action::SwitchWorkspaceByName => {}
         }
