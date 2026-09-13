@@ -76,6 +76,8 @@ Reference starting points: Herdr `docs/preview/website/src/content/docs/quick-st
 - [x] Exercise the real client attach and detach/reattach flow end-to-end. On
   Windows, the installed release showed the PowerShell prompt, accepted a
   command, and reattached to the same live pane with its output intact.
+- [x] Match Herdr's detach behavior: `Ctrl-b q` detaches, while a bare `q` is
+  sent to the focused shell. Keep `Ctrl-b d` as a Spindle compatibility alias.
 
 Reference: Herdr `Workspace::new`, `create_tab_with_runtime`,
 `App::ensure_default_workspace`, and quick-start "Create a workspace" /

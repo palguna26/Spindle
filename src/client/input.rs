@@ -87,11 +87,7 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('b') {
         return Action::None;
     }
-    if key.code == KeyCode::Char('q') {
-        Action::Detach
-    } else {
-        Action::Send(key.code)
-    }
+    Action::Send(key.code)
 }
 
 pub fn is_prefix(key: KeyEvent) -> bool {
@@ -191,10 +187,10 @@ mod tests {
     }
 
     #[test]
-    fn q_detaches_without_a_prefix() {
+    fn bare_q_is_sent_to_the_focused_pane() {
         assert_eq!(
             action(false, KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE)),
-            Action::Detach
+            Action::Send(KeyCode::Char('q'))
         );
     }
 }
