@@ -266,27 +266,29 @@ impl PaneManager {
             if pane.status.is_running() {
                 let terminal = pane.terminal.snapshot();
                 if let Some(agent) = pane.agent.filter(|_| pane.agent_missing_scans == 0) {
-                    let next_state = detect::detect_state_with_osc(
-                        agent,
-                        &terminal.contents,
-                        &terminal.osc_title,
-                        &terminal.osc_progress,
-                    );
-                    let visible_idle = detect::has_visible_idle_signal(
-                        agent,
-                        &terminal.contents,
-                        &terminal.osc_title,
-                        &terminal.osc_progress,
-                    );
-                    if !pane.pending_idle.should_hold(
-                        pane.agent_state,
-                        next_state,
-                        visible_idle,
-                        agent_changed,
-                        false,
-                        Instant::now(),
-                    ) {
-                        pane.agent_state = Some(next_state);
+                    if !detect::should_skip_state_update(agent, &terminal.contents) {
+                        let next_state = detect::detect_state_with_osc(
+                            agent,
+                            &terminal.contents,
+                            &terminal.osc_title,
+                            &terminal.osc_progress,
+                        );
+                        let visible_idle = detect::has_visible_idle_signal(
+                            agent,
+                            &terminal.contents,
+                            &terminal.osc_title,
+                            &terminal.osc_progress,
+                        );
+                        if !pane.pending_idle.should_hold(
+                            pane.agent_state,
+                            next_state,
+                            visible_idle,
+                            agent_changed,
+                            false,
+                            Instant::now(),
+                        ) {
+                            pane.agent_state = Some(next_state);
+                        }
                     }
                 } else {
                     pane.pending_idle.clear();

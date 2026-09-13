@@ -10,8 +10,9 @@ use agents::{
     cursor_is_working, cursor_permission_required, devin_is_idle, devin_is_working,
     devin_permission_required, grok_state, hermes_is_idle, hermes_is_priority_working,
     hermes_is_working, hermes_permission_required, hermes_title_blocked, kilo_permission_required,
-    kimi_is_working, kimi_permission_required, kiro_is_idle, maki_state, qodercli_is_working,
-    qodercli_permission_required, qwen_state,
+    kimi_is_working, kimi_permission_required, kiro_is_idle, maki_state,
+    muse_should_skip_state_update, muse_state, qodercli_is_working, qodercli_permission_required,
+    qwen_state,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +33,7 @@ pub enum AgentKind {
     Qwen,
     Grok,
     Maki,
+    Muse,
     Claude,
     Codex,
     Gemini,
@@ -124,6 +126,7 @@ impl AgentKind {
             Self::Qwen => "Qwen",
             Self::Grok => "Grok",
             Self::Maki => "Maki",
+            Self::Muse => "Muse",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -166,6 +169,9 @@ pub(crate) fn detect_state_with_osc(
     if agent == AgentKind::Maki {
         return maki_state(screen);
     }
+    if agent == AgentKind::Muse {
+        return muse_state(screen);
+    }
     let blocked = match agent {
         AgentKind::Pi => false,
         AgentKind::QoderCli => qodercli_permission_required(&recent),
@@ -184,6 +190,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Qwen => false,
         AgentKind::Grok => false,
         AgentKind::Maki => false,
+        AgentKind::Muse => false,
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -224,6 +231,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Qwen => false,
         AgentKind::Grok => false,
         AgentKind::Maki => false,
+        AgentKind::Muse => false,
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -285,6 +293,7 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Qwen => false,
         AgentKind::Grok => false,
         AgentKind::Maki => false,
+        AgentKind::Muse => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -297,6 +306,10 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Gemini => false,
         AgentKind::GithubCopilot => false,
     }
+}
+
+pub(crate) fn should_skip_state_update(agent: AgentKind, screen: &str) -> bool {
+    agent == AgentKind::Muse && muse_should_skip_state_update(screen)
 }
 
 fn claude_permission_required(recent: &str) -> bool {
@@ -646,6 +659,13 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "qwen" | "qwen-code" | "qwen code" => Some(AgentKind::Qwen),
         "grok" | "grok-build" => Some(AgentKind::Grok),
         "maki" => Some(AgentKind::Maki),
+        "muse" | "muse-code" | "muse-cli" => Some(AgentKind::Muse),
+        _ if basename.strip_prefix("muse-bin-").is_some_and(|version| {
+            version.starts_with(|character: char| character.is_ascii_digit())
+        }) =>
+        {
+            Some(AgentKind::Muse)
+        }
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -983,8 +1003,8 @@ pub(crate) fn detect_in_process_tree(_root_pid: u32) -> AgentProcessScan {
 mod tests {
     use super::{
         classify_agent_process_scan, detect_state, detect_state_with_osc, identify_descendant,
-        identify_process, identify_process_command, AgentKind, AgentProcessScan, AgentState,
-        ProcessEntry,
+        identify_process, identify_process_command, should_skip_state_update, AgentKind,
+        AgentProcessScan, AgentState, ProcessEntry,
     };
 
     #[test]
@@ -1052,6 +1072,14 @@ mod tests {
         assert_eq!(identify_process("grok.exe"), Some(AgentKind::Grok));
         assert_eq!(identify_process("grok-build.cmd"), Some(AgentKind::Grok));
         assert_eq!(identify_process("maki.exe"), Some(AgentKind::Maki));
+        assert_eq!(identify_process("muse-code.exe"), Some(AgentKind::Muse));
+        assert_eq!(identify_process("muse-cli.cmd"), Some(AgentKind::Muse));
+        assert_eq!(
+            identify_process("muse-bin-0.2.1.exe"),
+            Some(AgentKind::Muse)
+        );
+        assert_eq!(identify_process("muse-binary.exe"), None);
+        assert_eq!(identify_process("muse-bin.exe"), None);
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -1077,6 +1105,7 @@ mod tests {
         assert_eq!(AgentKind::Qwen.label(), "Qwen");
         assert_eq!(AgentKind::Grok.label(), "Grok");
         assert_eq!(AgentKind::Maki.label(), "Maki");
+        assert_eq!(AgentKind::Muse.label(), "Muse");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1798,6 +1827,69 @@ mod tests {
         );
         assert_eq!(
             detect_state(AgentKind::Maki, "ordinary output", ""),
+            AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_muse_approval_picker_menu_and_idle_cues() {
+        for prompt in [
+            "Do you trust this workspace?\nTrust and continue",
+            "Do you trust this workspace?\nUse Up/Down to select",
+            "Enter to select\nTab for an optional note",
+            "Enter to toggle\nEsc to interrupt",
+            "Allow this stage once\nAlways allow in this workspace",
+            "Allow once\nAllow for this session",
+            "Yes, proceed\nYes, don't ask again this session",
+        ] {
+            assert_eq!(
+                detect_state(AgentKind::Muse, prompt, ""),
+                AgentState::Blocked,
+                "expected blocker for {prompt:?}"
+            );
+        }
+        for menu in [
+            "Enter confirm\nEsc go back",
+            "Enter save\nEsc go back",
+            "Space toggle\nEsc close\nType filter",
+        ] {
+            assert_eq!(
+                detect_state(AgentKind::Muse, menu, ""),
+                AgentState::Unknown,
+                "user menu should not look like agent work: {menu:?}"
+            );
+        }
+        assert!(should_skip_state_update(
+            AgentKind::Muse,
+            "Enter confirm\nEsc go back"
+        ));
+        assert!(!should_skip_state_update(
+            AgentKind::Muse,
+            "ordinary output"
+        ));
+        assert!(!should_skip_state_update(
+            AgentKind::Claude,
+            "Enter confirm\nEsc go back"
+        ));
+        assert_eq!(
+            detect_state(AgentKind::Muse, "Searching\nEsc to interrupt", ""),
+            AgentState::Working
+        );
+        assert_eq!(detect_state(AgentKind::Muse, "⟩ ", ""), AgentState::Idle);
+        assert_eq!(
+            detect_state(AgentKind::Muse, "⟩ Explain this code", ""),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(AgentKind::Muse, "⟩ Type response\nEsc to interrupt", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Muse, "Model · high · C:\\repo", ""),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(AgentKind::Muse, "ordinary output", ""),
             AgentState::Unknown
         );
     }
