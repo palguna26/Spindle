@@ -589,6 +589,20 @@ fn event_loop(
                     }
                     mouse_state.navigation_workspace = None;
                 }
+                WorkspacePickerKey::Choose(index) => {
+                    if let Some(workspace_id) = indexed_workspace_selection(&snapshot, index) {
+                        let result = request_action(
+                            client,
+                            "navigate-workspace",
+                            "switch_workspace",
+                            json!({ "id": workspace_id }),
+                            "switch workspace",
+                        )
+                        .and_then(|()| ensure_active_default_pane(client, terminal_size));
+                        record_action_error(&mut action_error, "switch workspace", result);
+                        mouse_state.navigation_workspace = None;
+                    }
+                }
                 WorkspacePickerKey::Ignore => {}
             }
             continue;
@@ -2238,11 +2252,20 @@ fn move_workspace_selection(
     ))
 }
 
+fn indexed_workspace_selection(snapshot: &SessionSnapshot, index: usize) -> Option<String> {
+    let space = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)?;
+    Some(space.workspaces.get(index)?.workspace_id.clone())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WorkspacePickerKey {
     Cancel,
     Move(bool),
     Confirm,
+    Choose(usize),
     Ignore,
 }
 
@@ -2255,6 +2278,13 @@ fn workspace_picker_key(key: KeyEvent) -> WorkspacePickerKey {
         WorkspacePickerKey::Move(true)
     } else if key.modifiers.is_empty() && key.code == KeyCode::Enter {
         WorkspacePickerKey::Confirm
+    } else if key.modifiers.is_empty() {
+        match key.code {
+            KeyCode::Char(digit @ '1'..='9') => {
+                WorkspacePickerKey::Choose((digit as usize) - ('1' as usize))
+            }
+            _ => WorkspacePickerKey::Ignore,
+        }
     } else {
         WorkspacePickerKey::Ignore
     }
@@ -2792,12 +2822,13 @@ mod tests {
     use super::{
         active_tab_id, active_workspace, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
         adjust_scrollback_offset, apply_scrollback_views, current_snapshot,
-        ensure_active_default_pane, key_code_bytes, move_workspace_selection, page_key_bytes,
-        pane_mouse_target, pane_size, reconnect_requires_reattach, record_action_error, renderer,
-        require_server_success, should_forward_pane_mouse, snapshot_has_focused_pane,
-        startup_error_action, visible_web_url_at_point, workspace_id_by_name, workspace_picker_key,
-        CachedScrollbackView, ControlClient, PaneClick, PaneMouseCapture, SplitDirection,
-        SplitDrag, StartupErrorAction, WorkspacePickerKey,
+        ensure_active_default_pane, indexed_workspace_selection, key_code_bytes,
+        move_workspace_selection, page_key_bytes, pane_mouse_target, pane_size,
+        reconnect_requires_reattach, record_action_error, renderer, require_server_success,
+        should_forward_pane_mouse, snapshot_has_focused_pane, startup_error_action,
+        visible_web_url_at_point, workspace_id_by_name, workspace_picker_key, CachedScrollbackView,
+        ControlClient, PaneClick, PaneMouseCapture, SplitDirection, SplitDrag, StartupErrorAction,
+        WorkspacePickerKey,
     };
     use crate::protocol::{ProtocolError, Response, PROTOCOL_VERSION};
     use crate::server::session::Session;
@@ -3286,6 +3317,19 @@ mod tests {
     }
 
     #[test]
+    fn workspace_picker_number_selects_a_workspace_in_the_active_space() {
+        let mut session = Session::default();
+        let second = session.create_workspace("Build".into()).unwrap()["workspace_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let snapshot = session.snapshot();
+
+        assert_eq!(indexed_workspace_selection(snapshot, 1), Some(second));
+        assert_eq!(indexed_workspace_selection(snapshot, 9), None);
+    }
+
+    #[test]
     fn workspace_picker_keys_match_herdr_navigation_controls() {
         for (key, expected) in [
             (KeyCode::Up, WorkspacePickerKey::Move(false)),
@@ -3301,6 +3345,22 @@ mod tests {
         assert_eq!(
             workspace_picker_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL,)),
             WorkspacePickerKey::Cancel
+        );
+        assert_eq!(
+            workspace_picker_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE)),
+            WorkspacePickerKey::Choose(0)
+        );
+        assert_eq!(
+            workspace_picker_key(KeyEvent::new(KeyCode::Char('9'), KeyModifiers::NONE)),
+            WorkspacePickerKey::Choose(8)
+        );
+        assert_eq!(
+            workspace_picker_key(KeyEvent::new(KeyCode::Char('0'), KeyModifiers::NONE)),
+            WorkspacePickerKey::Ignore
+        );
+        assert_eq!(
+            workspace_picker_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::CONTROL)),
+            WorkspacePickerKey::Ignore
         );
     }
 

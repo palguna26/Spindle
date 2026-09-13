@@ -60,7 +60,7 @@ below are pressed after `Ctrl-b`:
 | `s` / `r` | Stop / restart pane |
 | `]` / `[` | Next / previous tab (alternate) |
 | `}` / `{` | Next / previous space |
-| `w` | Preview workspaces; use arrows and Enter to switch, or Esc to cancel |
+| `w` | Preview workspaces; use arrows and Enter or `1`–`9` to switch, Esc to cancel |
 
 The command palette can create more PowerShell panes, rename objects, switch
 to a workspace by name, and requires typing the exact name before deleting a
