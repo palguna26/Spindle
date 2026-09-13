@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 #[path = "detect/agents/mod.rs"]
 mod agents;
 use agents::{
-    cline_permission_required, devin_is_idle, devin_is_working, devin_permission_required,
+    cline_permission_required, cursor_agent_node_argv, cursor_is_working,
+    cursor_permission_required, devin_is_idle, devin_is_working, devin_permission_required,
     kimi_is_working, kimi_permission_required, kiro_is_idle, qodercli_is_working,
     qodercli_permission_required,
 };
@@ -20,6 +21,7 @@ pub enum AgentKind {
     Cline,
     Kimi,
     Devin,
+    Cursor,
     Claude,
     Codex,
     Gemini,
@@ -104,6 +106,7 @@ impl AgentKind {
             Self::Cline => "Cline",
             Self::Kimi => "Kimi",
             Self::Devin => "Devin",
+            Self::Cursor => "Cursor",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -134,6 +137,7 @@ pub(crate) fn detect_state_with_osc(
     let bottom_three = recent_nonempty_lines(screen, 3).to_ascii_lowercase();
     let bottom_twelve = recent_nonempty_lines(screen, 12).to_ascii_lowercase();
     let bottom_five = recent_nonempty_lines(screen, 5).to_ascii_lowercase();
+    let bottom_six = recent_nonempty_lines(screen, 6).to_ascii_lowercase();
     let bottom_eight = recent_nonempty_lines(screen, 8).to_ascii_lowercase();
     let blocked = match agent {
         AgentKind::Pi => false,
@@ -143,6 +147,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Cline => cline_permission_required(&recent),
         AgentKind::Kimi => kimi_permission_required(&recent),
         AgentKind::Devin => devin_permission_required(&bottom_eight),
+        AgentKind::Cursor => cursor_permission_required(&recent, &bottom_eight),
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -169,6 +174,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Cline => !recent.is_empty(),
         AgentKind::Kimi => kimi_is_working(&recent, &bottom_three),
         AgentKind::Devin => devin_is_working(&bottom_eight),
+        AgentKind::Cursor => cursor_is_working(&bottom_six, &bottom_five, &bottom_eight),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -222,6 +228,7 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Cline => false,
         AgentKind::Kimi => false,
         AgentKind::Devin => devin_is_idle(screen),
+        AgentKind::Cursor => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -575,6 +582,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "cline" => Some(AgentKind::Cline),
         "kimi" | "kimi-code" | "kimi code" => Some(AgentKind::Kimi),
         "devin" | "devin-cli" | "devin cli" => Some(AgentKind::Devin),
+        "cursor" | "cursor-agent" => Some(AgentKind::Cursor),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -839,6 +847,7 @@ fn identify_process_command(name: &str, command_line: Option<&str>) -> Option<Ag
             let first_command_arg = parse_windows_command_line(command)?.into_iter().next()?;
             identify_process(&first_command_arg)
         }
+        "node" if cursor_agent_node_argv(&argv) => Some(AgentKind::Cursor),
         "node" => argv.iter().skip(1).find_map(|arg| {
             let normalized = arg.replace('/', "\\").to_ascii_lowercase();
             if normalized
@@ -956,6 +965,11 @@ mod tests {
         assert_eq!(identify_process("kimi-code.cmd"), Some(AgentKind::Kimi));
         assert_eq!(identify_process("devin.exe"), Some(AgentKind::Devin));
         assert_eq!(identify_process("devin-cli.cmd"), Some(AgentKind::Devin));
+        assert_eq!(identify_process("cursor.exe"), Some(AgentKind::Cursor));
+        assert_eq!(
+            identify_process("cursor-agent.cmd"),
+            Some(AgentKind::Cursor)
+        );
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -973,6 +987,7 @@ mod tests {
         assert_eq!(AgentKind::Cline.label(), "Cline");
         assert_eq!(AgentKind::Kimi.label(), "Kimi");
         assert_eq!(AgentKind::Devin.label(), "Devin");
+        assert_eq!(AgentKind::Cursor.label(), "Cursor");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1306,6 +1321,40 @@ mod tests {
     }
 
     #[test]
+    fn follows_herdr_cursor_blocked_and_working_signals() {
+        for prompt in [
+            "Write to this file?\nProceed (Y)\nReject & propose changes",
+            "Waiting for approval\nRun this command?\nRun (once) (Y)",
+            "(Y) (Enter)",
+            "Allow command? (Y)",
+            "Skip (Esc or N)",
+            "→ Run command (Y)",
+        ] {
+            assert_eq!(
+                detect_state(AgentKind::Cursor, prompt, ""),
+                AgentState::Blocked,
+                "expected blocker for {prompt:?}"
+            );
+        }
+        assert_eq!(
+            detect_state(AgentKind::Cursor, "Ctrl+C to stop", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Cursor, "1 background task", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Cursor, "⬡ Thinking", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Cursor, "ordinary Cursor output", ""),
+            AgentState::Unknown
+        );
+    }
+
+    #[test]
     fn follows_herdr_copilot_blocker_and_working_signals() {
         assert_eq!(
             detect_state(
@@ -1435,6 +1484,25 @@ mod tests {
 
     #[test]
     fn recognizes_herdr_style_windows_agent_wrappers() {
+        assert_eq!(
+            identify_process_command(
+                "node.exe",
+                Some(
+                    r#""C:\Users\user\AppData\Local\cursor-agent\versions\2026.08.11-e8db854\node.exe" "C:\Users\user\AppData\Local\cursor-agent\versions\2026.08.11-e8db854\index.js""#
+                )
+            ),
+            Some(AgentKind::Cursor)
+        );
+        assert_eq!(
+            identify_process_command(
+                "node.exe",
+                Some(
+                    r#""C:\Users\user\AppData\Local\cursor-agent\versions\2026.08.11-e8db854\node.exe" "C:\Users\user\AppData\Local\cursor-agent\versions\2026.08.11-e8db854\scripts\postinstall.js""#
+                )
+            ),
+            None,
+            "unrelated scripts inside Cursor's install folder are not agents"
+        );
         assert_eq!(
             identify_process_command(
                 "node.exe",
