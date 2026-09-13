@@ -11,6 +11,29 @@ const IDLE_CONFIRM_INTERVAL: Duration = Duration::from_millis(100);
 const IDLE_CONFIRM_CAP: Duration = Duration::from_millis(700);
 const IDLE_CONFIRMATIONS: u8 = 3;
 const AGENT_EXIT_CONFIRMATIONS: u8 = 2;
+const AGENT_STARTUP_GRACE_WINDOW: Duration = Duration::from_secs(3);
+
+#[derive(Debug, Default)]
+struct AgentStartupGrace {
+    until: Option<Instant>,
+}
+
+impl AgentStartupGrace {
+    fn start(&mut self, agent: Option<AgentKind>, now: Instant) {
+        self.until = agent.map(|_| now + AGENT_STARTUP_GRACE_WINDOW);
+    }
+
+    fn is_active(&mut self, now: Instant) -> bool {
+        let Some(until) = self.until else {
+            return false;
+        };
+        if now < until {
+            return true;
+        }
+        self.until = None;
+        false
+    }
+}
 
 #[derive(Debug, Default)]
 struct PendingIdleConfirmation {
@@ -95,6 +118,7 @@ pub struct Pane {
     pub terminal: TerminalEmulator,
     session: PtySession,
     pending_idle: PendingIdleConfirmation,
+    startup_grace: AgentStartupGrace,
 }
 
 #[derive(Debug)]
@@ -160,6 +184,7 @@ impl PaneManager {
                 terminal: TerminalEmulator::new(rows, cols, self.scrollback_limit),
                 session,
                 pending_idle: PendingIdleConfirmation::default(),
+                startup_grace: AgentStartupGrace::default(),
             },
         );
         Ok(())
@@ -243,8 +268,13 @@ impl PaneManager {
                 if agent_exited {
                     pane.pending_idle.clear();
                     pane.terminal.clear_agent_osc_evidence();
+                    pane.startup_grace.start(None, Instant::now());
                     pane.agent_state = Some(AgentState::Idle);
                     pane.agent_done = true;
+                }
+                if agent_changed {
+                    pane.startup_grace.start(pane.agent, Instant::now());
+                    pane.agent_state = Some(AgentState::Unknown);
                 }
             }
             while let Ok(Some(bytes)) = pane.session.try_read_output() {
@@ -266,7 +296,9 @@ impl PaneManager {
             if pane.status.is_running() {
                 let terminal = pane.terminal.snapshot();
                 if let Some(agent) = pane.agent.filter(|_| pane.agent_missing_scans == 0) {
-                    if !detect::should_skip_state_update(agent, &terminal.contents) {
+                    if pane.startup_grace.is_active(Instant::now()) {
+                        pane.pending_idle.clear();
+                    } else if !detect::should_skip_state_update(agent, &terminal.contents) {
                         let next_state = detect::detect_state_with_osc(
                             agent,
                             &terminal.contents,
@@ -357,8 +389,9 @@ fn observe_agent_process(
 #[cfg(test)]
 mod tests {
     use super::{
-        observe_agent_process, PaneConfig, PaneManager, PendingIdleConfirmation,
-        AGENT_EXIT_CONFIRMATIONS, IDLE_CONFIRM_CAP, IDLE_CONFIRM_INTERVAL,
+        observe_agent_process, AgentStartupGrace, PaneConfig, PaneManager, PendingIdleConfirmation,
+        AGENT_EXIT_CONFIRMATIONS, AGENT_STARTUP_GRACE_WINDOW, IDLE_CONFIRM_CAP,
+        IDLE_CONFIRM_INTERVAL,
     };
     use crate::detect::{AgentKind, AgentProcessScan, AgentState};
     use std::collections::BTreeMap;
@@ -452,6 +485,26 @@ mod tests {
             observe_agent_process(&mut agent, AgentProcessScan::Absent, &mut missing_scans,),
             (false, false)
         );
+    }
+
+    #[test]
+    fn agent_startup_grace_is_active_until_three_seconds_pass() {
+        let started = Instant::now();
+        let mut grace = AgentStartupGrace::default();
+        grace.start(Some(AgentKind::Claude), started);
+
+        assert!(grace.is_active(started + Duration::from_secs(2)));
+        assert!(!grace.is_active(started + AGENT_STARTUP_GRACE_WINDOW));
+        assert!(!grace.is_active(started + AGENT_STARTUP_GRACE_WINDOW));
+    }
+
+    #[test]
+    fn removing_agent_does_not_start_a_detection_grace_period() {
+        let started = Instant::now();
+        let mut grace = AgentStartupGrace::default();
+        grace.start(Some(AgentKind::Claude), started);
+        grace.start(None, started + Duration::from_secs(1));
+        assert!(!grace.is_active(started + Duration::from_secs(1)));
     }
 
     #[test]

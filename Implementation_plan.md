@@ -182,7 +182,9 @@ Terminal verification is still pending.
   Herdr-aligned OpenCode permission/interrupt, Gemini confirmation/cancel cues,
   and Codex directory-trust rules
   are detected; plain working-to-idle transitions now use Herdr's 100 ms
-  recheck, three confirmations, and 700 ms cap. Full manifest rules remain.
+  recheck, three confirmations, and 700 ms cap. Newly detected agents remain
+  unknown for Herdr's three-second startup grace so stale prior-screen text is
+  not reported as the new agent's state. Full manifest rules remain.
 - [x] Expose agent kind and unknown/idle/working/blocked/done state in pane chrome and
   the sidebar. Pane chrome shows identity/state; the sidebar lists each detected
   agent under its workspace with a state marker and tab, and selecting a row
