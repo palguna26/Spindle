@@ -36,6 +36,7 @@ spindle start    start the server
 spindle stop     stop the server
 spindle doctor   show server health and state paths
 spindle workspace list  list workspaces in the current project session
+spindle workspace focus <id>  focus a workspace by ID
 spindle list     show project identity and state path
 spindle --help   show commands
 spindle --version  show the build version

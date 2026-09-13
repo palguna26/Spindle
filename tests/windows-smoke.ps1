@@ -29,6 +29,7 @@ try {
     if ($workspaces -notmatch '(?m)^\*\s+\S+\s+Current project\s+\[Default\]$') {
         throw "workspace list did not mark the active workspace: $workspaces"
     }
+    Invoke-Spindle @("workspace", "focus", "workspace-1")
     Invoke-Spindle @("list")
     $doctor = (& $Binary doctor) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw "spindle doctor failed" }

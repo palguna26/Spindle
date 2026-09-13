@@ -6,6 +6,7 @@ use std::io;
 pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
         [command] if command == "list" => workspace_list(project),
+        [command, workspace_id] if command == "focus" => workspace_focus(project, workspace_id),
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -14,10 +15,27 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle workspace list",
+                "usage: spindle workspace <list|focus <workspace_id>>",
             ))
         }
     }
+}
+
+fn workspace_focus(project: &Project, workspace_id: &str) -> io::Result<()> {
+    let response = super::send_command_with_payload(
+        project,
+        "focus_workspace",
+        serde_json::json!({ "id": workspace_id }),
+    )?;
+    if !response.ok {
+        let message = response
+            .error
+            .map(|error| error.message)
+            .unwrap_or_else(|| "server rejected the workspace focus request".into());
+        return Err(io::Error::other(message));
+    }
+    println!("focused workspace: {workspace_id}");
+    Ok(())
 }
 
 fn workspace_list(project: &Project) -> io::Result<()> {
@@ -60,8 +78,9 @@ fn format_workspace_list(snapshot: &SessionSnapshot) -> String {
 }
 
 fn print_help() {
-    println!("Usage: spindle workspace list");
+    println!("Usage: spindle workspace <list|focus <workspace_id>>");
     println!("  list    list workspaces in the current project session");
+    println!("  focus   focus a workspace by ID");
 }
 
 #[cfg(test)]

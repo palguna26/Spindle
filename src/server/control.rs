@@ -458,6 +458,16 @@ pub(crate) fn response_for_with_interactive(
                 session.switch_workspace(&payload.id)
             })
         }
+        "focus_workspace" => {
+            let payload: IdRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| session.focus_workspace(&payload.id))
+        }
         "rename_workspace" => {
             let payload: IdNameRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,

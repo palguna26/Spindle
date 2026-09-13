@@ -751,6 +751,35 @@ impl Session {
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
+    pub fn focus_workspace(&mut self, workspace_id: &str) -> Result<Value, String> {
+        let space_id = self
+            .snapshot
+            .spaces
+            .iter()
+            .find(|space| {
+                space
+                    .workspaces
+                    .iter()
+                    .any(|workspace| workspace.workspace_id == workspace_id)
+            })
+            .map(|space| space.space_id.clone())
+            .ok_or_else(|| format!("workspace '{workspace_id}' does not exist"))?;
+
+        self.snapshot.active_space_id = space_id.clone();
+        let space = self
+            .snapshot
+            .spaces
+            .iter_mut()
+            .find(|space| space.space_id == space_id)
+            .expect("workspace's space was found above");
+        space.active_workspace_id = Some(workspace_id.into());
+        self.sync_focus_to_active_tab()?;
+        Ok(serde_json::json!({
+            "space_id": space_id,
+            "workspace_id": workspace_id
+        }))
+    }
+
     pub fn rename_workspace(&mut self, workspace_id: &str, name: String) -> Result<Value, String> {
         let workspace = self.workspace_mut(workspace_id)?;
         workspace.name = name;
@@ -1816,6 +1845,29 @@ mod tests {
             None,
             "focus should be empty because the sibling workspace has no shell yet"
         );
+    }
+
+    #[test]
+    fn focusing_workspace_switches_spaces_and_rejects_unknown_ids() {
+        let mut session = Session::default();
+        let other = session.create_space("Other project".into()).unwrap();
+        let other_space_id = other["space_id"].as_str().unwrap().to_string();
+        let other_workspace_id = session.snapshot.spaces[1].workspaces[0]
+            .workspace_id
+            .clone();
+
+        session.focus_workspace("workspace-1").unwrap();
+        assert_eq!(session.snapshot.active_space_id, "space-1");
+        session.focus_workspace(&other_workspace_id).unwrap();
+        assert_eq!(session.snapshot.active_space_id, other_space_id);
+        assert_eq!(
+            session.snapshot.spaces[1].active_workspace_id.as_deref(),
+            Some(other_workspace_id.as_str())
+        );
+
+        let active_space = session.snapshot.active_space_id.clone();
+        assert!(session.focus_workspace("missing-workspace").is_err());
+        assert_eq!(session.snapshot.active_space_id, active_space);
     }
 
     #[test]

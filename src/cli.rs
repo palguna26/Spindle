@@ -163,15 +163,19 @@ fn endpoint_status_label(endpoint_exists: bool, server_running: bool) -> &'stati
 }
 
 fn send_command(project: &Project, operation: &str) -> io::Result<Response<Value>> {
+    send_command_with_payload(project, operation, Value::Object(Default::default()))
+}
+
+fn send_command_with_payload(
+    project: &Project,
+    operation: &str,
+    payload: Value,
+) -> io::Result<Response<Value>> {
     let address = fs::read_to_string(project.endpoint_path())?;
     let client = ControlClient::connect(address.trim())
         .map_err(|error| io::Error::other(format!("{error:?}")))?;
     client
-        .request(
-            format!("cli-{}", std::process::id()),
-            operation,
-            Value::Object(Default::default()),
-        )
+        .request(format!("cli-{}", std::process::id()), operation, payload)
         .map_err(|error| io::Error::other(format!("{error:?}")))
 }
 
@@ -187,6 +191,7 @@ fn print_help() {
     println!("  list     show the current project identity and state path");
     println!("  doctor   check local Spindle state");
     println!("  workspace list  list workspaces in the current project session");
+    println!("  workspace focus <id>  focus a workspace by ID");
     println!("Options:");
     println!("  --help, -h       show this help");
     println!("  --version, -V    print the version");
