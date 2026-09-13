@@ -128,8 +128,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [ ] Match Herdr's workspace navigation bindings: `Ctrl-b w` previews
   workspaces; `Ctrl-b g` opens a searchable space/workspace/tab/pane tree with
   Herdr-style movement, filters, expansion, activation, and cancellation. The
-  navigator is implemented; verify live Windows Terminal interaction before
-  marking parity complete.
+  navigator is implemented; searches now auto-expand collapsed branches to
+  expose matches, matching Herdr's filtering behavior. Verify live Windows
+  Terminal interaction before marking parity complete.
 - [x] Support drag-select/copy and terminal mouse passthrough without stealing
   input from applications that request it. Wheel and mode-aware PageUp/PageDown
   now browse recent PTY history, which the same selection/copy path can read;

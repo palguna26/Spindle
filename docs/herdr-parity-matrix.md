@@ -34,3 +34,4 @@ usable alternative, not just a missing implementation.
 | Additional parity check | Status | Herdr reference | Spindle evidence |
 | --- | --- | --- | --- |
 | Detect Hermes launched through versioned Python | Present | `src/detect/mod.rs` (`wrapped_agent_name_from_runtime_argv`, `is_python_runtime`; `identify_agent_in_job_detects_python_version_wrapped_hermes`) | Spindle reads command lines for versioned Python descendants and recognizes the launched agent name. Tests cover a Hermes executable and ensure Python `-c` and `-m` arguments do not create false positives. |
+| Search across collapsed navigator branches | Present | Herdr `src/client/shell/aggregate_navigation.rs` (`filtering` expands workspace children) | Spindle search now expands matching space/workspace ancestors without changing saved expansion state; a regression test confirms a pane remains searchable after both branches are collapsed. |

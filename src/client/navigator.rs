@@ -101,7 +101,7 @@ impl Navigator {
 
     pub fn rows(&self, snapshot: &SessionSnapshot) -> Vec<Row> {
         let query = self.query.to_lowercase();
-        let filtering = self.filter.is_some();
+        let filtering = self.filter.is_some() || !query.is_empty();
         let mut rows = Vec::new();
         for space in &snapshot.spaces {
             let mut space_rows = Vec::new();
@@ -158,8 +158,8 @@ impl Navigator {
                             });
                         }
                     }
-                    let tab_matches =
-                        !filtering && (query.is_empty() || contains(&[&tab.name], &query));
+                    let tab_matches = self.filter.is_none()
+                        && (query.is_empty() || contains(&[&tab.name], &query));
                     if !tab_rows.is_empty() || tab_matches {
                         let target = Target::Tab {
                             space_id: space.space_id.clone(),
@@ -178,14 +178,16 @@ impl Navigator {
                             current: false,
                             expanded: true,
                         });
-                        if self.expanded_workspaces.iter().any(|item| {
-                            item == &(space.space_id.clone(), workspace.workspace_id.clone())
-                        }) {
+                        if filtering
+                            || self.expanded_workspaces.iter().any(|item| {
+                                item == &(space.space_id.clone(), workspace.workspace_id.clone())
+                            })
+                        {
                             workspace_rows.extend(tab_rows);
                         }
                     }
                 }
-                let workspace_matches = !filtering
+                let workspace_matches = self.filter.is_none()
                     && (query.is_empty()
                         || contains(
                             &[
@@ -210,17 +212,17 @@ impl Navigator {
                             item.0 == space.space_id && item.1 == workspace.workspace_id
                         }),
                     });
-                    if self
-                        .expanded_workspaces
-                        .iter()
-                        .any(|item| item.0 == space.space_id && item.1 == workspace.workspace_id)
+                    if filtering
+                        || self.expanded_workspaces.iter().any(|item| {
+                            item.0 == space.space_id && item.1 == workspace.workspace_id
+                        })
                     {
                         space_rows.extend(workspace_rows);
                     }
                 }
             }
             let space_matches =
-                !filtering && (query.is_empty() || contains(&[&space.name], &query));
+                self.filter.is_none() && (query.is_empty() || contains(&[&space.name], &query));
             if !space_rows.is_empty() || space_matches {
                 let target = Target::Space(space.space_id.clone());
                 rows.push(Row {
@@ -235,7 +237,7 @@ impl Navigator {
                     current: false,
                     expanded: self.expanded_spaces.contains(&space.space_id),
                 });
-                if self.expanded_spaces.contains(&space.space_id) {
+                if filtering || self.expanded_spaces.contains(&space.space_id) {
                     rows.extend(space_rows);
                 }
             }
@@ -523,6 +525,44 @@ mod tests {
             .rows(&snapshot)
             .iter()
             .any(|row| matches!(row.target, Target::Pane { .. })));
+    }
+
+    #[test]
+    fn search_expands_collapsed_space_and_workspace_branches() {
+        let snapshot = snapshot_with_pane();
+        let mut navigator = Navigator::new(&snapshot);
+        navigator.select(Target::Workspace {
+            space_id: "space-1".into(),
+            id: "workspace-1".into(),
+        });
+        navigator.handle_key(
+            KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE),
+            &snapshot,
+        );
+        navigator.select(Target::Space("space-1".into()));
+        navigator.handle_key(
+            KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE),
+            &snapshot,
+        );
+        assert!(navigator
+            .rows(&snapshot)
+            .iter()
+            .all(|row| !matches!(row.target, Target::Pane { .. })));
+
+        navigator.handle_key(
+            KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE),
+            &snapshot,
+        );
+        for character in "pwsh.exe".chars() {
+            navigator.handle_key(
+                KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE),
+                &snapshot,
+            );
+        }
+        assert!(navigator
+            .rows(&snapshot)
+            .iter()
+            .any(|row| matches!(&row.target, Target::Pane { id, .. } if id == "pane-1")));
     }
 
     #[test]
