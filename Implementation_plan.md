@@ -192,7 +192,8 @@ Terminal verification is still pending.
   consecutive confirmed process scans while retaining the pane's identity;
   unavailable process scans do not change status,
   Herdr-aligned OpenCode permission/interrupt, Gemini confirmation/cancel cues,
-  Codex directory-trust rules, and Codex transcript-viewer status preservation
+  Codex directory-trust rules and transcript-viewer status preservation, plus
+  Claude transcript/model-picker status preservation
   are detected; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is

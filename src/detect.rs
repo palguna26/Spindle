@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 mod agents;
 use agents::{
     amp_is_idle, amp_is_working, amp_permission_required, antigravity_is_working,
-    antigravity_permission_required, cline_permission_required, codex_should_skip_state_update,
-    cursor_agent_node_argv, cursor_is_working, cursor_permission_required, devin_is_idle,
-    devin_is_working, devin_permission_required, grok_state, hermes_is_idle,
-    hermes_is_priority_working, hermes_is_working, hermes_permission_required,
-    hermes_title_blocked, kilo_permission_required, kimi_is_working, kimi_permission_required,
-    kiro_is_idle, maki_state, muse_should_skip_state_update, muse_state, qodercli_is_working,
-    qodercli_permission_required, qwen_state,
+    antigravity_permission_required, claude_should_skip_state_update, cline_permission_required,
+    codex_should_skip_state_update, cursor_agent_node_argv, cursor_is_working,
+    cursor_permission_required, devin_is_idle, devin_is_working, devin_permission_required,
+    grok_state, hermes_is_idle, hermes_is_priority_working, hermes_is_working,
+    hermes_permission_required, hermes_title_blocked, kilo_permission_required, kimi_is_working,
+    kimi_permission_required, kiro_is_idle, maki_state, muse_should_skip_state_update, muse_state,
+    qodercli_is_working, qodercli_permission_required, qwen_state,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -310,6 +310,7 @@ pub(crate) fn has_visible_idle_signal(
 
 pub(crate) fn should_skip_state_update(agent: AgentKind, screen: &str) -> bool {
     match agent {
+        AgentKind::Claude => claude_should_skip_state_update(screen),
         AgentKind::Codex => codex_should_skip_state_update(screen),
         AgentKind::Muse => muse_should_skip_state_update(screen),
         _ => false,
@@ -2309,6 +2310,26 @@ mod tests {
             "› ordinary prompt\n"
         ));
         assert!(!should_skip_state_update(AgentKind::OpenCode, transcript));
+    }
+
+    #[test]
+    fn claude_transient_menus_preserve_the_last_detected_agent_state() {
+        assert!(should_skip_state_update(
+            AgentKind::Claude,
+            "Showing detailed transcript\nCtrl+O to toggle"
+        ));
+        assert!(should_skip_state_update(
+            AgentKind::Claude,
+            "Select model\nEnter to set as default\nEsc to cancel"
+        ));
+        assert!(!should_skip_state_update(
+            AgentKind::Claude,
+            "Do you want to proceed?\nEsc to cancel"
+        ));
+        assert!(!should_skip_state_update(
+            AgentKind::Codex,
+            "Select model\nEnter to set as default\nEsc to cancel"
+        ));
     }
 
     #[test]
