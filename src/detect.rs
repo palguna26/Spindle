@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 mod agents;
 use agents::{
     amp_is_idle, amp_is_working, amp_permission_required, antigravity_is_working,
-    antigravity_permission_required, claude_mcp_elicitation_prompt,
+    antigravity_permission_required, claude_dynamic_workflow_prompt, claude_mcp_elicitation_prompt,
     claude_should_skip_state_update, cline_permission_required, codex_should_skip_state_update,
     cursor_agent_node_argv, cursor_is_working, cursor_permission_required, devin_is_idle,
     devin_is_working, devin_permission_required, grok_state, hermes_is_idle,
@@ -319,7 +319,8 @@ pub(crate) fn should_skip_state_update(agent: AgentKind, screen: &str) -> bool {
 }
 
 fn claude_permission_required(recent: &str) -> bool {
-    claude_mcp_elicitation_prompt(recent)
+    claude_dynamic_workflow_prompt(recent)
+        || claude_mcp_elicitation_prompt(recent)
         || recent.contains("waiting for permission")
         || recent.contains("do you want to allow this connection?")
         || recent.contains("review your answers")
@@ -1211,6 +1212,18 @@ mod tests {
             ),
             AgentState::Unknown,
             "the MCP blocker requires an Accept or Decline choice"
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Claude,
+                "Run a dynamic workflow?\nEsc to cancel",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Claude, "Run a dynamic workflow?", ""),
+            AgentState::Unknown
         );
     }
 

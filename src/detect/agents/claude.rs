@@ -29,6 +29,11 @@ pub(in crate::detect) fn claude_mcp_elicitation_prompt(recent: &str) -> bool {
         && recent.lines().any(is_accept_or_decline_choice)
 }
 
+pub(in crate::detect) fn claude_dynamic_workflow_prompt(recent: &str) -> bool {
+    let recent = recent.to_ascii_lowercase();
+    recent.contains("run a dynamic workflow?") && recent.contains("esc to cancel")
+}
+
 fn is_mcp_request_header(line: &str) -> bool {
     let line = line.trim();
     for (opening, closing) in [("mcp server \"", '"'), ("mcp server “", '”')] {
@@ -70,7 +75,10 @@ fn recent_nonempty_lines(screen: &str, limit: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{claude_mcp_elicitation_prompt, claude_should_skip_state_update};
+    use super::{
+        claude_dynamic_workflow_prompt, claude_mcp_elicitation_prompt,
+        claude_should_skip_state_update,
+    };
 
     #[test]
     fn detailed_transcript_controls_suppress_status_updates() {
@@ -123,5 +131,14 @@ mod tests {
         assert!(!claude_mcp_elicitation_prompt(
             "MCP server \"docs\" status\n❯ Accept\nDecline\nEsc to cancel"
         ));
+    }
+
+    #[test]
+    fn dynamic_workflow_prompt_needs_both_manifest_cues() {
+        assert!(claude_dynamic_workflow_prompt(
+            "Run a dynamic workflow?\nEsc to cancel"
+        ));
+        assert!(!claude_dynamic_workflow_prompt("Run a dynamic workflow?"));
+        assert!(!claude_dynamic_workflow_prompt("Esc to cancel"));
     }
 }

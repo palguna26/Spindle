@@ -194,6 +194,7 @@ Terminal verification is still pending.
   Herdr-aligned OpenCode permission/interrupt, Gemini confirmation/cancel cues,
   Codex directory-trust and transcript-viewer rules, and Claude
   transcript/model-picker status preservation plus MCP input-request blockers
+  and dynamic-workflow blockers
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
