@@ -2,6 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
+#[path = "detect/agents/mod.rs"]
+mod agents;
+use agents::{cline_permission_required, qodercli_is_working, qodercli_permission_required};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentKind {
@@ -235,41 +239,6 @@ fn claude_permission_required(recent: &str) -> bool {
                 || recent.contains("tab/arrow keys to navigate")))
 }
 
-fn qodercli_permission_required(recent: &str) -> bool {
-    [
-        "permission required",
-        "allow once or always?",
-        "asking user",
-        "enter your response",
-        "review your answers:",
-        "shell awaiting input",
-    ]
-    .iter()
-    .any(|signal| recent.contains(signal))
-        || (recent.contains("waiting for user confirmation")
-            && ["yes", "no", "allow", "reject"]
-                .iter()
-                .any(|signal| recent.contains(signal)))
-        || (recent.contains("awaiting approval")
-            && ["allow", "reject"]
-                .iter()
-                .any(|signal| recent.contains(signal)))
-}
-
-fn qodercli_is_working(recent: &str) -> bool {
-    recent.contains("(esc to cancel,")
-        || recent.lines().any(|line| {
-            let line = line.trim_start();
-            let Some(spinner) = line.chars().next() else {
-                return false;
-            };
-            let rest = &line[spinner.len_utf8()..];
-            is_braille_spinner(spinner)
-                && rest.chars().next().is_some_and(char::is_whitespace)
-                && rest.chars().any(char::is_alphabetic)
-        })
-}
-
 fn droid_permission_required(recent: &str, bottom_eight: &str) -> bool {
     let execute_selection = recent.contains("enter to select")
         && recent.contains("esc to cancel")
@@ -325,24 +294,6 @@ fn kiro_is_working(recent: &str) -> bool {
                         .next()
                         .is_some_and(char::is_alphabetic)
             }))
-}
-
-fn cline_permission_required(recent: &str) -> bool {
-    recent.contains("let cline use this tool")
-        || [
-            ("[act mode]", "execute command?", "yes"),
-            ("[act mode]", "use this tool?", "yes"),
-            ("[plan mode]", "execute command?", "yes"),
-            ("[plan mode]", "use this tool?", "yes"),
-        ]
-        .iter()
-        .any(|(mode, action, approval)| {
-            recent.contains(mode) && recent.contains(action) && recent.contains(approval)
-        })
-}
-
-fn is_braille_spinner(character: char) -> bool {
-    ('\u{2800}'..='\u{28ff}').contains(&character)
 }
 
 fn gemini_permission_required(recent: &str) -> bool {
