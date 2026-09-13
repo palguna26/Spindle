@@ -194,7 +194,9 @@ Terminal verification is still pending.
   are detected; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
-  not reported as the new agent's state. Full manifest rules remain.
+  not reported as the new agent's state. Herdr-style versioned Python wrappers
+  are checked for Hermes commands, while Python `-c`/`-m` commands are excluded
+  to avoid shell false positives. Full manifest rules remain.
 - [x] Expose agent kind and unknown/idle/working/blocked/done state in pane chrome and
   the sidebar. Pane chrome shows identity/state; the sidebar lists each detected
   agent under its workspace with a state marker and tab, and selecting a row

@@ -778,10 +778,10 @@ pub(crate) fn detect_in_process_tree(root_pid: u32) -> AgentProcessScan {
     let mut command_line_read_failed = false;
     for process in &mut processes {
         if descendant_ids.contains(&process.pid)
-            && matches!(
+            && (matches!(
                 process.name.to_ascii_lowercase().as_str(),
                 "cmd.exe" | "node.exe" | "powershell.exe" | "pwsh.exe"
-            )
+            ) || is_python_process(&process.name))
         {
             process.command_line = read_command_line(process.pid);
             command_line_read_failed |= process.command_line.is_none();
@@ -968,8 +968,49 @@ fn identify_process_command(name: &str, command_line: Option<&str>) -> Option<Ag
             .iter()
             .find(|arg| arg.to_ascii_lowercase().ends_with(".ps1"))
             .and_then(|script| identify_process(script)),
+        python if is_python_runtime(python) => python_script_arg(&argv).and_then(identify_process),
         _ => None,
     }
+}
+
+#[cfg(any(windows, test))]
+fn is_python_runtime(name: &str) -> bool {
+    name == "python"
+        || name.strip_prefix("python").is_some_and(|version| {
+            !version.is_empty()
+                && version
+                    .split('.')
+                    .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
+        })
+}
+
+#[cfg(any(windows, test))]
+fn is_python_process(name: &str) -> bool {
+    let basename = name.rsplit(['\\', '/']).next().unwrap_or(name);
+    let executable = basename.strip_suffix(".exe").unwrap_or(basename);
+    is_python_runtime(&executable.to_ascii_lowercase())
+}
+
+#[cfg(any(windows, test))]
+fn python_script_arg(argv: &[String]) -> Option<&str> {
+    let mut args = argv.iter().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--" {
+            return args.next().map(String::as_str);
+        }
+        if matches!(arg.as_str(), "-c" | "-m") || arg.starts_with("-c") || arg.starts_with("-m") {
+            return None;
+        }
+        if matches!(arg.as_str(), "-W" | "-X" | "--check-hash-based-pycs") {
+            let _ = args.next();
+            continue;
+        }
+        if arg.starts_with('-') {
+            continue;
+        }
+        return Some(arg);
+    }
+    None
 }
 
 #[cfg(any(windows, test))]
@@ -1003,8 +1044,8 @@ pub(crate) fn detect_in_process_tree(_root_pid: u32) -> AgentProcessScan {
 mod tests {
     use super::{
         classify_agent_process_scan, detect_state, detect_state_with_osc, identify_descendant,
-        identify_process, identify_process_command, should_skip_state_update, AgentKind,
-        AgentProcessScan, AgentState, ProcessEntry,
+        identify_process, identify_process_command, is_python_process, should_skip_state_update,
+        AgentKind, AgentProcessScan, AgentState, ProcessEntry,
     };
 
     #[test]
@@ -2020,6 +2061,33 @@ mod tests {
         ];
         assert_eq!(identify_descendant(10, &processes), Some(AgentKind::Codex));
         assert_eq!(identify_descendant(40, &processes), None);
+    }
+
+    #[test]
+    fn finds_hermes_started_by_a_versioned_python_runtime() {
+        let processes = vec![ProcessEntry {
+            pid: 11,
+            parent_pid: 10,
+            name: "python3.12.exe".into(),
+            command_line: Some(
+                r#"python3.12.exe "C:\Users\user\AppData\Local\Programs\Hermes\hermes.exe" --resume session-id"#.into(),
+            ),
+        }];
+        assert_eq!(identify_descendant(10, &processes), Some(AgentKind::Hermes));
+        assert!(is_python_process("C:\\Python\\python3.12.exe"));
+        assert!(!is_python_process("python-tools.exe"));
+    }
+
+    #[test]
+    fn python_one_liners_and_modules_are_not_misidentified_as_agents() {
+        assert_eq!(
+            identify_process_command("python.exe", Some(r#"python.exe -c "codex""#)),
+            None
+        );
+        assert_eq!(
+            identify_process_command("python3.12.exe", Some("python3.12.exe -m codex")),
+            None
+        );
     }
 
     #[test]
