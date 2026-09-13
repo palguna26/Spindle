@@ -154,7 +154,7 @@ Reference: Herdr `src/client/shell/mouse.rs`, `copy_mode.rs`, `context_menu.rs`,
 
 - [ ] Port process/terminal agent detection using Herdr's manifests and state
   transitions as behavioral references, not copied implementation. Partial:
-  Recent Cline and Qoder CLI rule functions are now grouped under
+  Recent Cline, Droid, Kiro, and Qoder CLI rule functions are now grouped under
   `src/detect/agents/`, matching Herdr's per-agent manifest organization.
   direct and wrapped Pi/Qoder CLI/Droid/Kiro/Cline/Claude/Codex/Gemini/
   OpenCode/GitHub Copilot processes, Herdr-aligned Pi `Working...`, Qoder CLI
