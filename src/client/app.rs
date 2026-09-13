@@ -1517,35 +1517,7 @@ fn forward_mouse_to_pane(
     capture: &mut Option<PaneMouseCapture>,
     sidebar_collapsed: bool,
 ) -> Result<bool, ClientError> {
-    let captured = match mouse.kind {
-        MouseEventKind::Drag(button) | MouseEventKind::Up(button) => capture
-            .as_ref()
-            .filter(|capture| capture.button == button)
-            .map(|capture| (capture.pane_id.clone(), capture.rect)),
-        _ => None,
-    };
-    let target = if matches!(mouse.kind, MouseEventKind::Drag(_) | MouseEventKind::Up(_)) {
-        captured
-    } else {
-        renderer::pane_rectangles(
-            snapshot,
-            renderer::pane_content_area_with_sidebar(area, sidebar_collapsed),
-        )
-        .into_iter()
-        .find(|pane| {
-            let inner = Rect::new(
-                pane.rect.x.saturating_add(1),
-                pane.rect.y.saturating_add(1),
-                pane.rect.width.saturating_sub(2),
-                pane.rect.height.saturating_sub(2),
-            );
-            mouse.column >= inner.x
-                && mouse.column < inner.right()
-                && mouse.row >= inner.y
-                && mouse.row < inner.bottom()
-        })
-        .map(|pane| (pane.pane_id, pane.rect))
-    };
+    let target = pane_mouse_target(snapshot, area, mouse, capture, sidebar_collapsed);
     let Some((pane_id, rect)) = target else {
         clear_mouse_capture(capture, mouse.kind);
         return Ok(false);
@@ -1554,18 +1526,7 @@ fn forward_mouse_to_pane(
         clear_mouse_capture(capture, mouse.kind);
         return Ok(false);
     };
-    let right_click = mouse.kind == MouseEventKind::Down(MouseButton::Right);
-    let reports_kind = match mouse.kind {
-        MouseEventKind::Down(_) => pane.mouse_reporting,
-        MouseEventKind::Up(_) => pane.mouse_release,
-        MouseEventKind::Drag(_) => pane.mouse_motion,
-        MouseEventKind::Moved => pane.mouse_any_motion,
-        MouseEventKind::ScrollUp
-        | MouseEventKind::ScrollDown
-        | MouseEventKind::ScrollLeft
-        | MouseEventKind::ScrollRight => pane.mouse_reporting,
-    };
-    if !reports_kind || (right_click && !pane.right_click_passthrough) {
+    if !should_forward_pane_mouse(pane, mouse.kind) {
         clear_mouse_capture(capture, mouse.kind);
         return Ok(false);
     }
@@ -1621,6 +1582,60 @@ fn forward_mouse_to_pane(
         _ => {}
     }
     Ok(true)
+}
+
+fn pane_mouse_target(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    mouse: MouseEvent,
+    capture: &Option<PaneMouseCapture>,
+    sidebar_collapsed: bool,
+) -> Option<(String, Rect)> {
+    if let MouseEventKind::Drag(button) | MouseEventKind::Up(button) = mouse.kind {
+        return capture
+            .as_ref()
+            .filter(|capture| capture.button == button)
+            .map(|capture| (capture.pane_id.clone(), capture.rect));
+    }
+    renderer::pane_rectangles(
+        snapshot,
+        renderer::pane_content_area_with_sidebar(area, sidebar_collapsed),
+    )
+    .into_iter()
+    .find(|pane| {
+        let inner = Rect::new(
+            pane.rect.x.saturating_add(1),
+            pane.rect.y.saturating_add(1),
+            pane.rect.width.saturating_sub(2),
+            pane.rect.height.saturating_sub(2),
+        );
+        mouse.column >= inner.x
+            && mouse.column < inner.right()
+            && mouse.row >= inner.y
+            && mouse.row < inner.bottom()
+    })
+    .map(|pane| (pane.pane_id, pane.rect))
+}
+
+fn pane_reports_mouse_event(pane: &crate::server::session::PaneView, kind: MouseEventKind) -> bool {
+    match kind {
+        MouseEventKind::Down(_) => pane.mouse_reporting,
+        MouseEventKind::Up(_) => pane.mouse_release,
+        MouseEventKind::Drag(_) => pane.mouse_motion,
+        MouseEventKind::Moved => pane.mouse_any_motion,
+        MouseEventKind::ScrollUp
+        | MouseEventKind::ScrollDown
+        | MouseEventKind::ScrollLeft
+        | MouseEventKind::ScrollRight => pane.mouse_reporting,
+    }
+}
+
+fn should_forward_pane_mouse(
+    pane: &crate::server::session::PaneView,
+    kind: MouseEventKind,
+) -> bool {
+    pane_reports_mouse_event(pane, kind)
+        && (kind != MouseEventKind::Down(MouseButton::Right) || pane.right_click_passthrough)
 }
 
 fn begin_text_selection(
@@ -2778,11 +2793,11 @@ mod tests {
         active_tab_id, active_workspace, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
         adjust_scrollback_offset, apply_scrollback_views, current_snapshot,
         ensure_active_default_pane, key_code_bytes, move_workspace_selection, page_key_bytes,
-        pane_size, reconnect_requires_reattach, record_action_error, renderer,
-        require_server_success, snapshot_has_focused_pane, startup_error_action,
-        visible_web_url_at_point, workspace_id_by_name, workspace_picker_key, CachedScrollbackView,
-        ControlClient, PaneClick, SplitDirection, SplitDrag, StartupErrorAction,
-        WorkspacePickerKey,
+        pane_mouse_target, pane_size, reconnect_requires_reattach, record_action_error, renderer,
+        require_server_success, should_forward_pane_mouse, snapshot_has_focused_pane,
+        startup_error_action, visible_web_url_at_point, workspace_id_by_name, workspace_picker_key,
+        CachedScrollbackView, ControlClient, PaneClick, PaneMouseCapture, SplitDirection,
+        SplitDrag, StartupErrorAction, WorkspacePickerKey,
     };
     use crate::protocol::{ProtocolError, Response, PROTOCOL_VERSION};
     use crate::server::session::Session;
@@ -2791,6 +2806,31 @@ mod tests {
     };
     use ratatui::layout::Rect;
     use std::time::{Duration, Instant};
+
+    fn snapshot_with_mouse_pane() -> crate::server::session::SessionSnapshot {
+        let mut snapshot = Session::default().snapshot().clone();
+        snapshot.spaces[0].workspaces[0].tabs[0].layout =
+            Some(crate::model::layout::LayoutNode::pane("pane-1"));
+        snapshot.panes.push(
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-1", "command": "powershell.exe", "args": [],
+                "cwd": "C:/", "status": "Running", "scrollback_bytes": 0,
+                "mouse_reporting": true, "mouse_release": true,
+                "mouse_motion": true, "mouse_any_motion": true
+            }))
+            .unwrap(),
+        );
+        snapshot
+    }
+
+    fn mouse_event(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
 
     #[test]
     fn scrollback_offset_shows_history_and_returns_to_live_screen() {
@@ -2859,6 +2899,128 @@ mod tests {
         assert!((drag.ratio_at(mouse(58)) - 0.6).abs() < f32::EPSILON);
         assert!((drag.ratio_at(mouse(0)) - 0.1).abs() < f32::EPSILON);
         assert!((drag.ratio_at(mouse(100)) - 0.9).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn terminal_mouse_routing_respects_each_reported_event_mode() {
+        let mut snapshot = snapshot_with_mouse_pane();
+        let pane = &mut snapshot.panes[0];
+        for (kind, expected) in [
+            (MouseEventKind::Down(MouseButton::Left), true),
+            (MouseEventKind::Up(MouseButton::Left), true),
+            (MouseEventKind::Drag(MouseButton::Left), true),
+            (MouseEventKind::Moved, true),
+            (MouseEventKind::ScrollDown, true),
+        ] {
+            assert_eq!(should_forward_pane_mouse(pane, kind), expected);
+        }
+        pane.mouse_release = false;
+        pane.mouse_motion = false;
+        pane.mouse_any_motion = false;
+        assert!(!should_forward_pane_mouse(
+            pane,
+            MouseEventKind::Up(MouseButton::Left)
+        ));
+        assert!(!should_forward_pane_mouse(
+            pane,
+            MouseEventKind::Drag(MouseButton::Left)
+        ));
+        assert!(!should_forward_pane_mouse(pane, MouseEventKind::Moved));
+    }
+
+    #[test]
+    fn right_click_is_forwarded_only_when_passthrough_is_enabled() {
+        let mut snapshot = snapshot_with_mouse_pane();
+        let pane = &mut snapshot.panes[0];
+        let right_click = MouseEventKind::Down(MouseButton::Right);
+        assert!(!should_forward_pane_mouse(pane, right_click));
+        pane.right_click_passthrough = true;
+        assert!(should_forward_pane_mouse(pane, right_click));
+    }
+
+    #[test]
+    fn captured_terminal_drag_stays_with_its_pane_outside_the_pane_bounds() {
+        let snapshot = snapshot_with_mouse_pane();
+        let area = Rect::new(0, 0, 120, 40);
+        let pane_rect = renderer::pane_rectangles(
+            &snapshot,
+            renderer::pane_content_area_with_sidebar(area, false),
+        )[0]
+        .rect;
+        let capture = Some(PaneMouseCapture {
+            pane_id: "pane-1".into(),
+            rect: pane_rect,
+            button: MouseButton::Left,
+        });
+        for kind in [
+            MouseEventKind::Drag(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            assert_eq!(
+                pane_mouse_target(&snapshot, area, mouse_event(kind, 0, 0), &capture, false,),
+                Some(("pane-1".into(), pane_rect))
+            );
+        }
+        assert_eq!(
+            pane_mouse_target(
+                &snapshot,
+                area,
+                mouse_event(MouseEventKind::Up(MouseButton::Right), 0, 0),
+                &capture,
+                false,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn terminal_mouse_hit_region_excludes_pane_borders_and_right_edge() {
+        let snapshot = snapshot_with_mouse_pane();
+        let area = Rect::new(0, 0, 120, 40);
+        let pane_rect = renderer::pane_rectangles(
+            &snapshot,
+            renderer::pane_content_area_with_sidebar(area, false),
+        )[0]
+        .rect;
+        let inner = Rect::new(
+            pane_rect.x + 1,
+            pane_rect.y + 1,
+            pane_rect.width - 2,
+            pane_rect.height - 2,
+        );
+        let capture = None;
+        assert!(pane_mouse_target(
+            &snapshot,
+            area,
+            mouse_event(MouseEventKind::Down(MouseButton::Left), inner.x, inner.y),
+            &capture,
+            false,
+        )
+        .is_some());
+        assert!(pane_mouse_target(
+            &snapshot,
+            area,
+            mouse_event(
+                MouseEventKind::Down(MouseButton::Left),
+                inner.right(),
+                inner.y,
+            ),
+            &capture,
+            false,
+        )
+        .is_none());
+        assert!(pane_mouse_target(
+            &snapshot,
+            area,
+            mouse_event(
+                MouseEventKind::Down(MouseButton::Left),
+                pane_rect.x,
+                pane_rect.y,
+            ),
+            &capture,
+            false,
+        )
+        .is_none());
     }
 
     #[test]

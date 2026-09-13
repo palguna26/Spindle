@@ -148,7 +148,10 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [ ] Add OSC 8 hyperlink metadata and Herdr-style plugin link handlers; the
   current `vt100` screen snapshot exposes visible text only.
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
-  passthrough behavior; manually verify in Windows Terminal and PowerShell.
+  passthrough behavior. Tests now cover pane edge hits, captured drags outside
+  pane bounds, event-mode routing, and right-click passthrough; existing tests
+  cover menu items and split-drag limits. Manual Windows Terminal verification
+  remains.
 
 Reference: Herdr `src/client/shell/mouse.rs`, `copy_mode.rs`, `context_menu.rs`,
 `selection.rs`, `src/api/schema/panes.rs` (`PaneCopyMotion`, `PaneCopySearch`),
