@@ -281,6 +281,7 @@ impl Session {
         match load_versioned::<SessionSnapshot>(&path) {
             Ok(mut snapshot) => {
                 load_history(&path, &mut snapshot)?;
+                normalize_workspace_ids(&mut snapshot);
                 for pane in &mut snapshot.panes {
                     pane.agent = None;
                     pane.agent_state = None;
@@ -619,19 +620,20 @@ impl Session {
         repository_path: Option<String>,
         branch: Option<String>,
     ) -> Result<Value, String> {
+        let workspace_id = next_numbered_id(
+            "workspace",
+            self.snapshot
+                .spaces
+                .iter()
+                .flat_map(|space| space.workspaces.iter())
+                .map(|workspace| workspace.workspace_id.clone()),
+        );
         let space = self
             .snapshot
             .spaces
             .iter_mut()
             .find(|space| space.space_id == self.snapshot.active_space_id)
             .ok_or_else(|| "active space does not exist".to_string())?;
-        let workspace_id = next_numbered_id(
-            "workspace",
-            space
-                .workspaces
-                .iter()
-                .map(|workspace| workspace.workspace_id.clone()),
-        );
         let tab_id = format!("tab-{}-1", workspace_id);
         space.workspaces.push(WorkspaceView {
             workspace_id: workspace_id.clone(),
@@ -1453,6 +1455,44 @@ fn next_numbered_id(prefix: &str, ids: impl IntoIterator<Item = String>) -> Stri
     }
 }
 
+fn normalize_workspace_ids(snapshot: &mut SessionSnapshot) {
+    let mut used_ids: std::collections::BTreeSet<String> = snapshot
+        .spaces
+        .iter()
+        .flat_map(|space| space.workspaces.iter())
+        .map(|workspace| workspace.workspace_id.clone())
+        .collect();
+    let mut seen_ids = std::collections::BTreeSet::new();
+
+    for space in &mut snapshot.spaces {
+        for workspace in &mut space.workspaces {
+            let old_id = workspace.workspace_id.clone();
+            if seen_ids.insert(old_id.clone()) {
+                continue;
+            }
+
+            let new_id = next_numbered_id("workspace", used_ids.iter().cloned());
+            used_ids.insert(new_id.clone());
+            workspace.workspace_id = new_id.clone();
+            if space.active_workspace_id.as_deref() == Some(old_id.as_str()) {
+                space.active_workspace_id = Some(new_id.clone());
+            }
+
+            let old_tab_prefix = format!("tab-{old_id}-");
+            let new_tab_prefix = format!("tab-{new_id}-");
+            for tab in &mut workspace.tabs {
+                if let Some(suffix) = tab.tab_id.strip_prefix(&old_tab_prefix).map(str::to_owned) {
+                    let old_tab_id =
+                        std::mem::replace(&mut tab.tab_id, format!("{new_tab_prefix}{suffix}"));
+                    if workspace.active_tab_id == old_tab_id {
+                        workspace.active_tab_id = tab.tab_id.clone();
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl Session {
     pub fn refresh_snapshot(&mut self) {
         for pane in &mut self.snapshot.panes {
@@ -1868,6 +1908,59 @@ mod tests {
         let active_space = session.snapshot.active_space_id.clone();
         assert!(session.focus_workspace("missing-workspace").is_err());
         assert_eq!(session.snapshot.active_space_id, active_space);
+    }
+
+    #[test]
+    fn workspace_ids_are_unique_across_spaces_and_focus_targets_the_created_workspace() {
+        let mut session = Session::default();
+        session.create_space("Other project".into()).unwrap();
+        let created = session.create_workspace("Feature".into()).unwrap();
+        let workspace_id = created["workspace_id"].as_str().unwrap();
+
+        assert_ne!(workspace_id, "workspace-1");
+        assert_eq!(
+            session.focus_workspace(workspace_id).unwrap()["workspace_id"],
+            workspace_id
+        );
+        assert_eq!(session.snapshot.active_space_id, "space-2");
+    }
+
+    #[test]
+    fn loading_duplicate_workspace_ids_repairs_the_later_id_and_selection() {
+        let directory = std::env::temp_dir().join(format!(
+            "spindle-duplicate-workspace-ids-{}",
+            std::process::id()
+        ));
+        let path = directory.join("session.json");
+        let mut session = Session::load_or_default(&path).unwrap();
+        session.create_space("Other project".into()).unwrap();
+        session.snapshot.spaces[1].workspaces[0].workspace_id = "workspace-1".into();
+        session.snapshot.spaces[1].workspaces[0].tabs[0].tab_id = "tab-workspace-1-1".into();
+        session.snapshot.spaces[1].workspaces[0].active_tab_id = "tab-workspace-1-1".into();
+        session.snapshot.spaces[1].active_workspace_id = Some("workspace-1".into());
+        session.save().unwrap();
+
+        let mut restored = Session::load_or_default(&path).unwrap();
+        let repaired_id = restored.snapshot.spaces[1].workspaces[0]
+            .workspace_id
+            .clone();
+        let repaired_tab_id = restored.snapshot.spaces[1].workspaces[0].tabs[0]
+            .tab_id
+            .clone();
+        assert_ne!(repaired_id, "workspace-1");
+        assert_eq!(
+            restored.snapshot.spaces[1].active_workspace_id.as_deref(),
+            Some(repaired_id.as_str())
+        );
+        assert_eq!(
+            restored.snapshot.spaces[1].workspaces[0].active_tab_id,
+            repaired_tab_id
+        );
+        assert!(repaired_tab_id.starts_with(&format!("tab-{repaired_id}-")));
+        restored.focus_workspace(&repaired_id).unwrap();
+        assert_eq!(restored.snapshot.active_space_id, "space-2");
+
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
