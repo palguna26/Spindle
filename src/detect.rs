@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 
 #[path = "detect/agents/mod.rs"]
 mod agents;
-use agents::{cline_permission_required, qodercli_is_working, qodercli_permission_required};
+use agents::{
+    cline_permission_required, kimi_is_working, kimi_permission_required, qodercli_is_working,
+    qodercli_permission_required,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -14,6 +17,7 @@ pub enum AgentKind {
     Droid,
     Kiro,
     Cline,
+    Kimi,
     Claude,
     Codex,
     Gemini,
@@ -96,6 +100,7 @@ impl AgentKind {
             Self::Droid => "Droid",
             Self::Kiro => "Kiro",
             Self::Cline => "Cline",
+            Self::Kimi => "Kimi",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -133,6 +138,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Droid => droid_permission_required(&recent, &bottom_eight),
         AgentKind::Kiro => kiro_permission_required(&recent),
         AgentKind::Cline => cline_permission_required(&recent),
+        AgentKind::Kimi => kimi_permission_required(&recent),
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -157,6 +163,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Droid => recent.contains("esc to stop"),
         AgentKind::Kiro => kiro_is_working(&recent),
         AgentKind::Cline => !recent.is_empty(),
+        AgentKind::Kimi => kimi_is_working(&recent, &bottom_three),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -213,6 +220,7 @@ pub(crate) fn has_visible_idle_signal(
                 && !screen.contains("esc to cancel")
         }
         AgentKind::Cline => false,
+        AgentKind::Kimi => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -564,6 +572,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "droid" => Some(AgentKind::Droid),
         "kiro" | "kiro-cli" => Some(AgentKind::Kiro),
         "cline" => Some(AgentKind::Cline),
+        "kimi" | "kimi-code" | "kimi code" => Some(AgentKind::Kimi),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -941,6 +950,8 @@ mod tests {
         assert_eq!(identify_process("kiro.exe"), Some(AgentKind::Kiro));
         assert_eq!(identify_process("kiro-cli.cmd"), Some(AgentKind::Kiro));
         assert_eq!(identify_process("cline.cmd"), Some(AgentKind::Cline));
+        assert_eq!(identify_process("kimi.exe"), Some(AgentKind::Kimi));
+        assert_eq!(identify_process("kimi-code.cmd"), Some(AgentKind::Kimi));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -956,6 +967,7 @@ mod tests {
         assert_eq!(AgentKind::Droid.label(), "Droid");
         assert_eq!(AgentKind::Kiro.label(), "Kiro");
         assert_eq!(AgentKind::Cline.label(), "Cline");
+        assert_eq!(AgentKind::Kimi.label(), "Kimi");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1177,6 +1189,53 @@ mod tests {
             AgentState::Working
         );
         assert_eq!(detect_state(AgentKind::Cline, "", ""), AgentState::Unknown);
+    }
+
+    #[test]
+    fn follows_herdr_kimi_blocked_and_working_signals() {
+        assert_eq!(
+            detect_state(
+                AgentKind::Kimi,
+                "Run this command?\n↵ confirm · choose\nApprove · Reject · Revise",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Kimi,
+                "Question\n? Which option?\n↑↓ select · esc cancel\n↵ choose",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Kimi,
+                "Requesting approval\nApprove once · Reject\n1/2/3/4 choose",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Kimi, "Approve this change?", ""),
+            AgentState::Unknown,
+            "an approval question without manifest controls is not a blocker"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Kimi, "kimi-pro thinking [2 agents running]", ""),
+            AgentState::Working
+        );
+        assert_eq!(detect_state(AgentKind::Kimi, "🌔", ""), AgentState::Working);
+        assert_eq!(
+            detect_state(AgentKind::Kimi, "⠋ using tools", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Kimi, "⠋ searching", ""),
+            AgentState::Unknown,
+            "unlisted spinner text is not a Kimi working cue"
+        );
     }
 
     #[test]
