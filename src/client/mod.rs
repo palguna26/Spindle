@@ -5,6 +5,7 @@ mod control;
 mod copy_mode;
 pub mod input;
 mod links;
+mod navigator;
 pub mod palette;
 mod preferences;
 pub mod prompt;

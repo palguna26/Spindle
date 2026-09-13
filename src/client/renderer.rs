@@ -1,5 +1,6 @@
 mod layout;
 mod navigation;
+mod navigator;
 
 use super::context_menu::ContextMenu;
 use super::copy_mode::{CopyMode, SelectionKind};
@@ -18,6 +19,7 @@ pub use navigation::{
     sidebar_scroll_region, sidebar_scroll_thumb_grab_offset,
     sidebar_scroll_thumb_grab_offset_with_sort, ClickTarget,
 };
+pub use navigator::{hit_test_navigator, render_navigator, Hit as NavigatorHit};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -443,7 +445,7 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "Keyboard (press Ctrl-b, then the key)",
         "c: new tab; n / p: next / previous tab",
         "x / Shift+x: close pane / tab; s / r: stop / restart",
-        "b: compact sidebar; w: choose workspace",
+        "b: compact sidebar; w: choose workspace; g: session navigator",
         "h/j/k/l focus; o / O cycle; picker: arrows/Enter/Esc",
         "v / -: split vertical / horizontal; z: zoom pane",
         "?: help; colon: palette; q / d: detach; [: copy mode",

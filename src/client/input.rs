@@ -15,6 +15,7 @@ pub enum Action {
     PreviousSpace,
     NextWorkspace,
     WorkspacePicker,
+    SessionNavigator,
     SwitchWorkspaceByName,
     StopFocusedPane,
     RestartFocusedPane,
@@ -60,6 +61,7 @@ pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
             KeyCode::Char('}') => Action::NextSpace,
             KeyCode::Char('{') => Action::PreviousSpace,
             KeyCode::Char('w') => Action::WorkspacePicker,
+            KeyCode::Char('g') => Action::SessionNavigator,
             KeyCode::Char('s') => Action::StopFocusedPane,
             KeyCode::Char('r') => Action::RestartFocusedPane,
             KeyCode::Char('o') => Action::FocusNext,
@@ -127,6 +129,10 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE)),
             Action::WorkspacePicker
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
+            Action::SessionNavigator
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE)),

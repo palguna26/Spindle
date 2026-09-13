@@ -1,6 +1,7 @@
 use super::context_menu::{ContextMenu, ContextMenuAction, ContextMenuTarget};
 use super::copy_mode::{CopyMode, KeyResult};
 use super::input::{action, is_prefix, Action};
+use super::navigator::{Navigator, Outcome as NavigatorOutcome, Target as NavigatorTarget};
 use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
 use super::renderer;
@@ -180,6 +181,7 @@ fn event_loop(
     let mut prefix_active = false;
     let mut palette_selected = 0;
     let mut palette_open = false;
+    let mut navigator: Option<Navigator> = None;
     let mut rename_prompt: Option<RenamePrompt> = None;
     let mut context_menu: Option<ContextMenu> = None;
     let mut help_open = false;
@@ -282,6 +284,7 @@ fn event_loop(
             && !focused_pane_scrolled
             && mouse_state.selection.is_none()
             && !palette_open
+            && navigator.is_none()
             && !help_open
             && rename_prompt.is_none()
             && context_menu.is_none()
@@ -320,6 +323,9 @@ fn event_loop(
                 if palette_open {
                     renderer::render_palette(frame, palette_selected);
                 }
+                if let Some(navigator) = &navigator {
+                    renderer::render_navigator(frame, &snapshot, navigator);
+                }
                 if help_open {
                     renderer::render_help(frame);
                 }
@@ -353,6 +359,63 @@ fn event_loop(
         let input = event::read().map_err(ClientError::Io)?;
         let key = match input {
             Event::Mouse(mouse) => {
+                if let Some(open_navigator) = navigator.as_mut() {
+                    let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
+                    let mut activate = None;
+                    let mut close = false;
+                    match mouse.kind {
+                        MouseEventKind::Moved => {
+                            if let renderer::NavigatorHit::Row { target, .. } =
+                                renderer::hit_test_navigator(
+                                    &snapshot,
+                                    open_navigator,
+                                    area,
+                                    mouse.column,
+                                    mouse.row,
+                                )
+                            {
+                                open_navigator.select(target);
+                            }
+                        }
+                        MouseEventKind::ScrollUp => open_navigator.move_selection(&snapshot, -3),
+                        MouseEventKind::ScrollDown => open_navigator.move_selection(&snapshot, 3),
+                        MouseEventKind::Down(MouseButton::Left) => {
+                            match renderer::hit_test_navigator(
+                                &snapshot,
+                                open_navigator,
+                                area,
+                                mouse.column,
+                                mouse.row,
+                            ) {
+                                renderer::NavigatorHit::Search => open_navigator.focus_search(),
+                                renderer::NavigatorHit::Row { target, expand } => {
+                                    open_navigator.select(target.clone());
+                                    if expand {
+                                        open_navigator.toggle_selected(&snapshot);
+                                    } else {
+                                        activate = Some(target);
+                                    }
+                                }
+                                renderer::NavigatorHit::Outside => close = true,
+                                renderer::NavigatorHit::Inside => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                    // Mouse events are owned by the modal navigator, never the pane beneath it.
+                    if let Some(target) = activate {
+                        let result =
+                            switch_navigator_target(client, &snapshot, target, terminal_size);
+                        if result.is_ok() {
+                            navigator = None;
+                        }
+                        record_action_error(&mut action_error, "open navigator target", result);
+                    }
+                    if close {
+                        navigator = None;
+                    }
+                    continue;
+                }
                 if rename_prompt.is_some() {
                     continue;
                 }
@@ -474,6 +537,26 @@ fn event_loop(
                         "run command palette action",
                         Err(error),
                     ),
+                }
+            }
+            continue;
+        }
+        if let Some(open_navigator) = navigator.as_mut() {
+            match open_navigator.handle_key(key, &snapshot) {
+                NavigatorOutcome::Continue => {}
+                NavigatorOutcome::Close => navigator = None,
+                NavigatorOutcome::Activate => {
+                    let target = open_navigator.selected(&snapshot);
+                    if let Some(target) = target {
+                        let result =
+                            switch_navigator_target(client, &snapshot, target, terminal_size);
+                        if result.is_ok() {
+                            navigator = None;
+                        }
+                        record_action_error(&mut action_error, "open navigator target", result);
+                    } else {
+                        navigator = None;
+                    }
                 }
             }
             continue;
@@ -602,6 +685,11 @@ fn event_loop(
                     agent_priority_sort: mouse_state.agent_priority_sort,
                 },
             );
+            prefix_active = false;
+            continue;
+        }
+        if pressed == Action::SessionNavigator {
+            navigator = Some(Navigator::new(&snapshot));
             prefix_active = false;
             continue;
         }
@@ -762,6 +850,7 @@ fn event_loop(
                         .map(|workspace_id| (space.space_id.clone(), workspace_id))
                 });
             }
+            Action::SessionNavigator => {}
             Action::StopFocusedPane => {
                 if let Some(ref pane_id) = snapshot.focused_pane_id {
                     record_action_error(
@@ -2500,6 +2589,73 @@ fn request_action<T: serde::Serialize>(
 ) -> Result<(), ClientError> {
     let response = client.request(request_id, operation, payload)?;
     require_server_success(&response, action_name)
+}
+
+fn switch_navigator_target(
+    client: &ControlClient,
+    snapshot: &SessionSnapshot,
+    target: NavigatorTarget,
+    terminal_size: (u16, u16),
+) -> Result<(), ClientError> {
+    let (space_id, workspace_id, tab_id, pane_id) = match target {
+        NavigatorTarget::Space(space_id) => (space_id, None, None, None),
+        NavigatorTarget::Workspace { space_id, id } => (space_id, Some(id), None, None),
+        NavigatorTarget::Tab {
+            space_id,
+            workspace_id,
+            id,
+        } => (space_id, Some(workspace_id), Some(id), None),
+        NavigatorTarget::Pane {
+            space_id,
+            workspace_id,
+            tab_id,
+            id,
+        } => (space_id, Some(workspace_id), Some(tab_id), Some(id)),
+    };
+    if !snapshot
+        .spaces
+        .iter()
+        .any(|space| space.space_id == space_id)
+    {
+        return Err(ClientError::Server(
+            "navigator target no longer exists".into(),
+        ));
+    }
+    request_action(
+        client,
+        "navigator-space",
+        "switch_space",
+        json!({ "id": space_id }),
+        "switch space",
+    )?;
+    if let Some(workspace_id) = workspace_id {
+        request_action(
+            client,
+            "navigator-workspace",
+            "switch_workspace",
+            json!({ "id": workspace_id }),
+            "switch workspace",
+        )?;
+    }
+    if let Some(tab_id) = tab_id {
+        request_action(
+            client,
+            "navigator-tab",
+            "switch_tab",
+            json!({ "id": tab_id }),
+            "switch tab",
+        )?;
+    }
+    if let Some(pane_id) = pane_id {
+        request_action(
+            client,
+            "navigator-pane",
+            "focus_pane",
+            json!({ "pane_id": pane_id }),
+            "focus pane",
+        )?;
+    }
+    ensure_active_default_pane(client, terminal_size)
 }
 
 fn record_action_error(
