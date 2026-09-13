@@ -8,6 +8,7 @@ pub enum AgentKind {
     Pi,
     QoderCli,
     Droid,
+    Kiro,
     Claude,
     Codex,
     Gemini,
@@ -88,6 +89,7 @@ impl AgentKind {
             Self::Pi => "Pi",
             Self::QoderCli => "Qoder CLI",
             Self::Droid => "Droid",
+            Self::Kiro => "Kiro",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -123,6 +125,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Pi => false,
         AgentKind::QoderCli => qodercli_permission_required(&recent),
         AgentKind::Droid => droid_permission_required(&recent, &bottom_eight),
+        AgentKind::Kiro => kiro_permission_required(&recent),
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -145,6 +148,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Pi => recent.contains("working..."),
         AgentKind::QoderCli => qodercli_is_working(&recent),
         AgentKind::Droid => recent.contains("esc to stop"),
+        AgentKind::Kiro => kiro_is_working(&recent),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -177,7 +181,7 @@ pub(crate) fn detect_state_with_osc(
         return AgentState::Working;
     }
 
-    if has_visible_idle_signal(agent, &bottom_three, title, osc_progress) {
+    if has_visible_idle_signal(agent, &bottom_five, title, osc_progress) {
         AgentState::Idle
     } else {
         AgentState::Unknown
@@ -194,6 +198,12 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Pi => false,
         AgentKind::QoderCli => false,
         AgentKind::Droid => false,
+        AgentKind::Kiro => {
+            screen.contains("ask a question or describe a task")
+                && screen.contains("/copy to clipboard")
+                && !screen.contains("kiro is working")
+                && !screen.contains("esc to cancel")
+        }
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -270,6 +280,46 @@ fn droid_permission_required(recent: &str, bottom_eight: &str) -> bool {
             .iter()
             .any(|signal| bottom_eight.contains(signal));
     execute_selection || selection_menu
+}
+
+fn kiro_permission_required(recent: &str) -> bool {
+    (recent.contains("requires approval")
+        && [
+            "yes, single permission",
+            "trust, always allow",
+            "no (tab to edit)",
+            "esc to close",
+        ]
+        .iter()
+        .any(|signal| recent.contains(signal)))
+        || (recent.contains("pending from subagents")
+            && ["tool approval", "tool approvals"]
+                .iter()
+                .any(|signal| recent.contains(signal))
+            && [
+                "approve all pending",
+                "configure individually",
+                "exit (cancel subagents)",
+            ]
+            .iter()
+            .any(|signal| recent.contains(signal)))
+}
+
+fn kiro_is_working(recent: &str) -> bool {
+    recent.contains("kiro is working")
+        || (recent.contains("esc to cancel")
+            && recent.lines().any(|line| {
+                let line = line.trim_start();
+                let Some(spinner) = line.chars().next() else {
+                    return false;
+                };
+                matches!(spinner, '◔' | '◑' | '◕' | '●')
+                    && line[spinner.len_utf8()..]
+                        .trim_start()
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_alphabetic)
+            }))
 }
 
 fn is_braille_spinner(character: char) -> bool {
@@ -587,6 +637,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "pi" => Some(AgentKind::Pi),
         "qodercli" | "qoderclicn" | "qoder" | "qodercn" => Some(AgentKind::QoderCli),
         "droid" => Some(AgentKind::Droid),
+        "kiro" | "kiro-cli" => Some(AgentKind::Kiro),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -961,6 +1012,8 @@ mod tests {
         assert_eq!(identify_process("qoder.cmd"), Some(AgentKind::QoderCli));
         assert_eq!(identify_process("qodercn"), Some(AgentKind::QoderCli));
         assert_eq!(identify_process("droid.exe"), Some(AgentKind::Droid));
+        assert_eq!(identify_process("kiro.exe"), Some(AgentKind::Kiro));
+        assert_eq!(identify_process("kiro-cli.cmd"), Some(AgentKind::Kiro));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -974,6 +1027,7 @@ mod tests {
         assert_eq!(AgentKind::Pi.label(), "Pi");
         assert_eq!(AgentKind::QoderCli.label(), "Qoder CLI");
         assert_eq!(AgentKind::Droid.label(), "Droid");
+        assert_eq!(AgentKind::Kiro.label(), "Kiro");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1115,6 +1169,58 @@ mod tests {
         assert_eq!(
             detect_state(AgentKind::Droid, "Working", ""),
             AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_kiro_blocked_working_and_idle_signals() {
+        for prompt in [
+            "Tool requires approval\nYes, single permission",
+            "Tool requires approval\nTrust, always allow",
+            "Tool requires approval\nNo (Tab to edit)",
+            "Pending from subagents: 2 tool approvals\nApprove all pending",
+            "Pending from subagents: tool approval\nExit (cancel subagents)",
+        ] {
+            assert_eq!(
+                detect_state(AgentKind::Kiro, prompt, ""),
+                AgentState::Blocked,
+                "expected blocker for {prompt:?}"
+            );
+        }
+        assert_eq!(
+            detect_state(AgentKind::Kiro, "Requires approval", ""),
+            AgentState::Unknown,
+            "approval text without a visible choice is not a blocker"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Kiro, "Kiro is working", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Kiro, "Esc to cancel\n◑ Searching", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Kiro, "Esc to cancel\n◑ 123", ""),
+            AgentState::Unknown,
+            "the spinner hint requires alphabetic status text"
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Kiro,
+                "Ask a question or describe a task\n/copy to clipboard",
+                ""
+            ),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Kiro,
+                "Ask a question or describe a task\n/copy to clipboard\nKiro is working",
+                ""
+            ),
+            AgentState::Working,
+            "the working marker suppresses the idle prompt"
         );
     }
 
