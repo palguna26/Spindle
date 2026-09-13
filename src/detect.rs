@@ -8,8 +8,9 @@ use agents::{
     amp_is_idle, amp_is_working, amp_permission_required, antigravity_is_working,
     antigravity_permission_required, cline_permission_required, cursor_agent_node_argv,
     cursor_is_working, cursor_permission_required, devin_is_idle, devin_is_working,
-    devin_permission_required, kilo_permission_required, kimi_is_working, kimi_permission_required,
-    kiro_is_idle, qodercli_is_working, qodercli_permission_required,
+    devin_permission_required, hermes_is_idle, hermes_is_priority_working, hermes_is_working,
+    hermes_permission_required, hermes_title_blocked, kilo_permission_required, kimi_is_working,
+    kimi_permission_required, kiro_is_idle, qodercli_is_working, qodercli_permission_required,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +27,7 @@ pub enum AgentKind {
     Amp,
     Kilo,
     Antigravity,
+    Hermes,
     Claude,
     Codex,
     Gemini,
@@ -114,6 +116,7 @@ impl AgentKind {
             Self::Amp => "Amp",
             Self::Kilo => "Kilo",
             Self::Antigravity => "Antigravity",
+            Self::Hermes => "Hermes",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -141,6 +144,7 @@ pub(crate) fn detect_state_with_osc(
     let title_lower = title.to_ascii_lowercase();
     let combined = format!("{title_lower}\n{screen_lower}");
     let recent = recent_nonempty_lines(screen, 20).to_ascii_lowercase();
+    let bottom_fourteen = recent_nonempty_lines(screen, 14).to_ascii_lowercase();
     let bottom_three = recent_nonempty_lines(screen, 3).to_ascii_lowercase();
     let bottom_twelve = recent_nonempty_lines(screen, 12).to_ascii_lowercase();
     let bottom_five = recent_nonempty_lines(screen, 5).to_ascii_lowercase();
@@ -158,6 +162,9 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Amp => amp_permission_required(&recent, &title_lower),
         AgentKind::Kilo => kilo_permission_required(&recent),
         AgentKind::Antigravity => antigravity_permission_required(&recent),
+        AgentKind::Hermes => {
+            hermes_title_blocked(&title_lower) || hermes_permission_required(&bottom_fourteen)
+        }
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -172,6 +179,12 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Gemini => gemini_permission_required(&recent),
         AgentKind::GithubCopilot => copilot_permission_required(&recent),
     };
+    if agent == AgentKind::Hermes && hermes_title_blocked(&title_lower) {
+        return AgentState::Blocked;
+    }
+    if agent == AgentKind::Hermes && hermes_is_priority_working(&bottom_five, &title_lower) {
+        return AgentState::Working;
+    }
     if blocked {
         return AgentState::Blocked;
     }
@@ -188,6 +201,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Amp => amp_is_working(&recent, &bottom_five, &title_lower),
         AgentKind::Kilo => recent.contains("esc interrupt"),
         AgentKind::Antigravity => antigravity_is_working(&recent, &bottom_five),
+        AgentKind::Hermes => hermes_is_working(&bottom_five),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -245,6 +259,7 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Amp => amp_is_idle(&title.to_ascii_lowercase()),
         AgentKind::Kilo => false,
         AgentKind::Antigravity => false,
+        AgentKind::Hermes => hermes_is_idle(&title.to_ascii_lowercase()),
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -602,6 +617,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "amp" | "amp-local" => Some(AgentKind::Amp),
         "kilo" | "kilo-code" | "kilo code" => Some(AgentKind::Kilo),
         "agy" | "antigravity" | "antigravity-cli" => Some(AgentKind::Antigravity),
+        "hermes" | "hermes-agent" => Some(AgentKind::Hermes),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -998,6 +1014,11 @@ mod tests {
             identify_process("antigravity-cli.cmd"),
             Some(AgentKind::Antigravity)
         );
+        assert_eq!(identify_process("hermes.exe"), Some(AgentKind::Hermes));
+        assert_eq!(
+            identify_process("hermes-agent.cmd"),
+            Some(AgentKind::Hermes)
+        );
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -1019,6 +1040,7 @@ mod tests {
         assert_eq!(AgentKind::Amp.label(), "Amp");
         assert_eq!(AgentKind::Kilo.label(), "Kilo");
         assert_eq!(AgentKind::Antigravity.label(), "Antigravity");
+        assert_eq!(AgentKind::Hermes.label(), "Hermes");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1501,6 +1523,60 @@ mod tests {
         );
         assert_eq!(
             detect_state(AgentKind::Antigravity, "ordinary output", ""),
+            AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_hermes_priority_permission_working_and_idle_signals() {
+        for prompt in [
+            "Dangerous command\nEnter confirm",
+            "Approval needed\nShow full command",
+            "Allow once or deny\n↑/↓ to select",
+            "> 1. Allow\nEnter to confirm",
+            "Hermes needs your input\nEnter send",
+            "Ask name\nPress enter",
+            "Type your answer\nOther (type your own)",
+            "Sudo password required",
+            "Skill setup required",
+            "🔑 credential for account",
+            "Approve once or cancel\nType 1/2/3",
+            "Start a new session or keep going\ny/n quick",
+        ] {
+            assert_eq!(
+                detect_state(AgentKind::Hermes, prompt, ""),
+                AgentState::Blocked,
+                "expected blocker for {prompt:?}"
+            );
+        }
+        assert_eq!(
+            detect_state(AgentKind::Hermes, "Dangerous command", ""),
+            AgentState::Unknown,
+            "dangerous text without a confirmation cue is not blocked"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Hermes, "Approval\nEnter confirm", "⏳ Working"),
+            AgentState::Working,
+            "higher-priority OSC working state wins over a screen blocker"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Hermes, "Ctrl+C to interrupt", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Hermes, "Ctrl+C cancel", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Hermes, "ordinary output", "⚠ Permission needed"),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Hermes, "ordinary output", "✓ Ready"),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(AgentKind::Hermes, "ordinary output", ""),
             AgentState::Unknown
         );
     }
