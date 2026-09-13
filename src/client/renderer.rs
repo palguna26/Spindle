@@ -276,20 +276,81 @@ pub(crate) fn render_copy_mode(
             }
         }
     }
+    let mode_style = Style::default().fg(Color::Black).bg(Color::Yellow);
+    let key_style = Style::default().fg(Color::Cyan);
+    let base_style = Style::default().fg(Color::White);
     let hint = if mode.search_prompt {
-        format!(
-            " COPY SEARCH: {}_  Enter search · Esc cancel ",
-            mode.search_query
-        )
-    } else if mode.selection.is_some() {
-        " COPY SELECT  v char · V line · y copy · Esc clear ".to_owned()
+        Line::from(vec![
+            Span::styled(" COPY ", mode_style),
+            Span::styled(mode.search_marker().to_string(), key_style),
+            Span::raw(mode.search_query.clone()),
+            Span::styled("█", key_style),
+            Span::styled("  enter search  esc cancel", base_style),
+        ])
     } else {
-        " COPY  hjkl move · / search · v select · y copy · q exit ".to_owned()
+        let searching = !mode.search_query.is_empty();
+        let exit = if searching || mode.selection.is_some() {
+            ("esc", " clear  q exit")
+        } else {
+            ("q/esc", " exit")
+        };
+        if frame.area().width < 112 {
+            let hint = Line::from(vec![
+                Span::styled(" COPY ", mode_style),
+                Span::styled("hjkl", key_style),
+                Span::raw(" "),
+                Span::styled("w/b/e W/B/E", key_style),
+                Span::raw(" "),
+                Span::styled("{ }", key_style),
+                Span::raw(" "),
+                Span::styled("/ ?", key_style),
+                Span::raw(" "),
+                Span::styled("n/N", key_style),
+                Span::raw(" "),
+                Span::styled("v/space V", key_style),
+                Span::raw(" "),
+                Span::styled("y/enter", key_style),
+                Span::raw(" "),
+                Span::styled(exit.0, key_style),
+                Span::styled(exit.1, base_style),
+            ]);
+            frame.render_widget(Paragraph::new(hint), footer_area(frame.area()));
+            return;
+        }
+        let match_status = mode
+            .search_index
+            .map(|index| format!(" {}/{}", index + 1, mode.search_matches.len()))
+            .or_else(|| searching.then(|| " 0/0".to_owned()))
+            .unwrap_or_default();
+        Line::from(vec![
+            Span::styled(" COPY ", mode_style),
+            Span::raw(" "),
+            Span::styled("h/j/k/l", key_style),
+            Span::styled(" move  ", base_style),
+            Span::styled("w/b/e W/B/E", key_style),
+            Span::styled(" words  ", base_style),
+            Span::styled("{ }", key_style),
+            Span::styled(" paragraphs  ", base_style),
+            Span::styled("/ ?", key_style),
+            Span::styled(" search  ", base_style),
+            Span::styled("n/N", key_style),
+            Span::styled(format!(" repeat{match_status}  "), base_style),
+            Span::styled("v/space", key_style),
+            Span::styled(
+                if mode.selection.is_some() {
+                    " selecting  "
+                } else {
+                    " select  "
+                },
+                base_style,
+            ),
+            Span::styled("y/enter", key_style),
+            Span::styled(" copy  ", base_style),
+            Span::styled(exit.0, key_style),
+            Span::styled(exit.1, base_style),
+        ])
     };
-    frame.render_widget(
-        Paragraph::new(hint).style(Style::default().fg(Color::Black).bg(Color::Yellow)),
-        footer_area(frame.area()),
-    );
+    frame.render_widget(Paragraph::new(hint), footer_area(frame.area()));
 }
 
 fn footer_area(area: Rect) -> Rect {
@@ -533,6 +594,7 @@ pub fn status_color(status: &PaneStatus) -> Color {
 
 #[cfg(test)]
 mod tests {
+    use super::super::copy_mode::{CopyMode, CopySelection, Point, SelectionKind};
     use super::super::selection::TextSelection;
     use super::{
         active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, render,
@@ -793,6 +855,32 @@ mod tests {
             buffer.cell((inner.x + 3, inner.y)).unwrap().bg,
             Color::Reset
         );
+
+        let mut copy_mode =
+            CopyMode::new("pane-1".into(), b"hello", 24, 80, inner.height, 0, (1, 0));
+        copy_mode.cursor = Point { row: 0, col: 1 };
+        copy_mode.selection = Some(CopySelection {
+            anchor: Point { row: 0, col: 0 },
+            kind: SelectionKind::Line,
+        });
+        terminal
+            .draw(|frame| {
+                render_with_connection(frame, &snapshot, true);
+                super::render_copy_mode(frame, &snapshot, &copy_mode, false);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(
+            buffer.cell((inner.x + 1, inner.y)).unwrap().bg,
+            Color::Yellow
+        );
+        assert_eq!(buffer.cell((inner.x + 8, inner.y)).unwrap().bg, Color::Cyan);
+        let content: String = buffer.content().iter().map(|cell| cell.symbol()).collect();
+        assert!(content.contains("w/b/e W/B/E"));
+        assert!(content.contains("n/N"));
+        assert!(content.contains("v/space V"));
+        assert!(content.contains("y/enter"));
+        assert!(content.contains("esc clear  q exit"));
     }
 
     #[test]

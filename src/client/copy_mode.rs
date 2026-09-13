@@ -349,6 +349,14 @@ impl CopyMode {
         text.trim_end().to_owned()
     }
 
+    pub(crate) fn search_marker(&self) -> char {
+        if self.search_reverse {
+            '?'
+        } else {
+            '/'
+        }
+    }
+
     fn after_move(&mut self) {
         self.clamp_cursor();
         self.reveal_cursor();
