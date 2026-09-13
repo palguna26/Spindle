@@ -7,8 +7,8 @@ mod agents;
 use agents::{
     amp_is_idle, amp_is_working, amp_permission_required, cline_permission_required,
     cursor_agent_node_argv, cursor_is_working, cursor_permission_required, devin_is_idle,
-    devin_is_working, devin_permission_required, kimi_is_working, kimi_permission_required,
-    kiro_is_idle, qodercli_is_working, qodercli_permission_required,
+    devin_is_working, devin_permission_required, kilo_permission_required, kimi_is_working,
+    kimi_permission_required, kiro_is_idle, qodercli_is_working, qodercli_permission_required,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,6 +23,7 @@ pub enum AgentKind {
     Devin,
     Cursor,
     Amp,
+    Kilo,
     Claude,
     Codex,
     Gemini,
@@ -109,6 +110,7 @@ impl AgentKind {
             Self::Devin => "Devin",
             Self::Cursor => "Cursor",
             Self::Amp => "Amp",
+            Self::Kilo => "Kilo",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -151,6 +153,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Devin => devin_permission_required(&bottom_eight),
         AgentKind::Cursor => cursor_permission_required(&recent, &bottom_eight),
         AgentKind::Amp => amp_permission_required(&recent, &title_lower),
+        AgentKind::Kilo => kilo_permission_required(&recent),
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -179,6 +182,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Devin => devin_is_working(&bottom_eight),
         AgentKind::Cursor => cursor_is_working(&bottom_six, &bottom_five, &bottom_eight),
         AgentKind::Amp => amp_is_working(&recent, &bottom_five, &title_lower),
+        AgentKind::Kilo => recent.contains("esc interrupt"),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -234,6 +238,7 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Devin => devin_is_idle(screen),
         AgentKind::Cursor => false,
         AgentKind::Amp => amp_is_idle(&title.to_ascii_lowercase()),
+        AgentKind::Kilo => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -589,6 +594,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "devin" | "devin-cli" | "devin cli" => Some(AgentKind::Devin),
         "cursor" | "cursor-agent" => Some(AgentKind::Cursor),
         "amp" | "amp-local" => Some(AgentKind::Amp),
+        "kilo" | "kilo-code" | "kilo code" => Some(AgentKind::Kilo),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -978,6 +984,8 @@ mod tests {
         );
         assert_eq!(identify_process("amp.exe"), Some(AgentKind::Amp));
         assert_eq!(identify_process("amp-local.cmd"), Some(AgentKind::Amp));
+        assert_eq!(identify_process("kilo.exe"), Some(AgentKind::Kilo));
+        assert_eq!(identify_process("kilo-code.cmd"), Some(AgentKind::Kilo));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -997,6 +1005,7 @@ mod tests {
         assert_eq!(AgentKind::Devin.label(), "Devin");
         assert_eq!(AgentKind::Cursor.label(), "Cursor");
         assert_eq!(AgentKind::Amp.label(), "Amp");
+        assert_eq!(AgentKind::Kilo.label(), "Kilo");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1412,6 +1421,35 @@ mod tests {
         );
         assert_eq!(
             detect_state(AgentKind::Amp, "ordinary output", ""),
+            AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_kilo_permission_and_working_signals() {
+        assert_eq!(
+            detect_state(AgentKind::Kilo, "△ Permission required", ""),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Kilo, "Esc dismiss\nEnter confirm\n↑↓ select", ""),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Kilo, "Esc dismiss\nEnter submit\n⇆ Tab", ""),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Kilo, "Esc dismiss\nEnter confirm", ""),
+            AgentState::Unknown,
+            "a menu without navigation hints is not a blocker"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Kilo, "Esc interrupt", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Kilo, "ordinary output", ""),
             AgentState::Unknown
         );
     }
