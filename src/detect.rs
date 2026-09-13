@@ -8,10 +8,10 @@ use agents::{
     amp_is_idle, amp_is_working, amp_permission_required, antigravity_is_working,
     antigravity_permission_required, cline_permission_required, cursor_agent_node_argv,
     cursor_is_working, cursor_permission_required, devin_is_idle, devin_is_working,
-    devin_permission_required, hermes_is_idle, hermes_is_priority_working, hermes_is_working,
-    hermes_permission_required, hermes_title_blocked, kilo_permission_required, kimi_is_working,
-    kimi_permission_required, kiro_is_idle, qodercli_is_working, qodercli_permission_required,
-    qwen_state,
+    devin_permission_required, grok_state, hermes_is_idle, hermes_is_priority_working,
+    hermes_is_working, hermes_permission_required, hermes_title_blocked, kilo_permission_required,
+    kimi_is_working, kimi_permission_required, kiro_is_idle, qodercli_is_working,
+    qodercli_permission_required, qwen_state,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +30,7 @@ pub enum AgentKind {
     Antigravity,
     Hermes,
     Qwen,
+    Grok,
     Claude,
     Codex,
     Gemini,
@@ -120,6 +121,7 @@ impl AgentKind {
             Self::Antigravity => "Antigravity",
             Self::Hermes => "Hermes",
             Self::Qwen => "Qwen",
+            Self::Grok => "Grok",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -156,6 +158,9 @@ pub(crate) fn detect_state_with_osc(
     if agent == AgentKind::Qwen {
         return qwen_state(screen, title, osc_progress).unwrap_or(AgentState::Unknown);
     }
+    if agent == AgentKind::Grok {
+        return grok_state(screen, title, osc_progress);
+    }
     let blocked = match agent {
         AgentKind::Pi => false,
         AgentKind::QoderCli => qodercli_permission_required(&recent),
@@ -172,6 +177,7 @@ pub(crate) fn detect_state_with_osc(
             hermes_title_blocked(&title_lower) || hermes_permission_required(&bottom_fourteen)
         }
         AgentKind::Qwen => false,
+        AgentKind::Grok => false,
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -210,6 +216,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Antigravity => antigravity_is_working(&recent, &bottom_five),
         AgentKind::Hermes => hermes_is_working(&bottom_five),
         AgentKind::Qwen => false,
+        AgentKind::Grok => false,
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -269,6 +276,7 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Antigravity => false,
         AgentKind::Hermes => hermes_is_idle(&title.to_ascii_lowercase()),
         AgentKind::Qwen => false,
+        AgentKind::Grok => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -628,6 +636,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "agy" | "antigravity" | "antigravity-cli" => Some(AgentKind::Antigravity),
         "hermes" | "hermes-agent" => Some(AgentKind::Hermes),
         "qwen" | "qwen-code" | "qwen code" => Some(AgentKind::Qwen),
+        "grok" | "grok-build" => Some(AgentKind::Grok),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -1031,6 +1040,8 @@ mod tests {
         );
         assert_eq!(identify_process("qwen.exe"), Some(AgentKind::Qwen));
         assert_eq!(identify_process("qwen-code.cmd"), Some(AgentKind::Qwen));
+        assert_eq!(identify_process("grok.exe"), Some(AgentKind::Grok));
+        assert_eq!(identify_process("grok-build.cmd"), Some(AgentKind::Grok));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -1054,6 +1065,7 @@ mod tests {
         assert_eq!(AgentKind::Antigravity.label(), "Antigravity");
         assert_eq!(AgentKind::Hermes.label(), "Hermes");
         assert_eq!(AgentKind::Qwen.label(), "Qwen");
+        assert_eq!(AgentKind::Grok.label(), "Grok");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1656,6 +1668,79 @@ mod tests {
         );
         assert_eq!(
             detect_state(AgentKind::Qwen, "ordinary output", ""),
+            AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_grok_blocked_working_idle_priority() {
+        assert_eq!(
+            detect_state(AgentKind::Grok, "", "⚠ Action Required"),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Grok, "┃ 2 (○) Yes, proceed", ""),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Grok,
+                "1/3:select │ Ctrl+o:yolo │ Ctrl+c:cancel",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Grok,
+                "Esc:unselect │ Tab:scrollback │ Shift+x:dismiss",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Grok, "Yes, proceed\nNo, reject\n←/→:scope", ""),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Grok, "⋅ 2 │ background tasks", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state_with_osc(AgentKind::Grok, "", "", "4;1;-1"),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Grok, "⠧ Waiting on subagent [stop]", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Grok, "Esc:cancel │ Ctrl+.:shortcuts", ""),
+            AgentState::Working
+        );
+        assert_eq!(detect_state(AgentKind::Grok, "", "grok"), AgentState::Idle);
+        assert_eq!(
+            detect_state(AgentKind::Grok, "Ctrl+.:shortcuts", ""),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state_with_osc(AgentKind::Grok, "", "", "4;0;0"),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(AgentKind::Grok, "", "session - grok"),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(AgentKind::Grok, "", "session - grok ⠋"),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Grok, "", "session title"),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Grok, "ordinary output", ""),
             AgentState::Unknown
         );
     }

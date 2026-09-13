@@ -4,6 +4,7 @@ mod cline;
 mod cursor;
 mod devin;
 mod droid;
+mod grok;
 mod hermes;
 mod kilo;
 mod kimi;
@@ -17,6 +18,7 @@ pub(super) use cline::cline_permission_required;
 pub(super) use cursor::{cursor_agent_node_argv, cursor_is_working, cursor_permission_required};
 pub(super) use devin::{devin_is_idle, devin_is_working, devin_permission_required};
 pub(super) use droid::droid_permission_required;
+pub(super) use grok::grok_state;
 pub(super) use hermes::{
     hermes_is_idle, hermes_is_priority_working, hermes_is_working, hermes_permission_required,
     hermes_title_blocked,
