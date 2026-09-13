@@ -233,6 +233,8 @@ approved design changes it.
 
 - [ ] Extend the parity matrix across CLI, configuration/keybindings/themes,
   notifications, session recovery, integrations, remote sessions, and plugins.
+- [x] Add a read-only `spindle workspace list` CLI command, matching Herdr's
+  workspace-list entry point and showing active state across spaces.
 - [ ] Port each behavior that fits Spindle's Windows-first/local-first purpose
   in a separately tested commit.
 - [ ] For behavior not included, record the concrete reason and an equivalent

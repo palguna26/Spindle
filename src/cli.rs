@@ -11,6 +11,8 @@ use serde_json::Value;
 
 const APP_DIR: &str = "Spindle";
 
+mod workspace;
+
 pub fn run() -> io::Result<()> {
     let command = env::args().nth(1).unwrap_or_else(|| "attach".into());
     if command == "run-server" {
@@ -80,6 +82,9 @@ pub fn run() -> io::Result<()> {
             }
             wait_for_server_stop(&project)?;
             println!("server stopped");
+        }
+        "workspace" => {
+            workspace::run_workspace_command(&project, &env::args().skip(2).collect::<Vec<_>>())?
         }
         other => {
             print_help();
@@ -173,7 +178,7 @@ fn send_command(project: &Project, operation: &str) -> io::Result<Response<Value
 fn print_help() {
     println!("Spindle - persistent parallel coding-agent sessions");
     println!();
-    println!("Usage: spindle [start|attach|stop|list|doctor|help]");
+    println!("Usage: spindle [start|attach|stop|list|doctor|workspace|help]");
     println!();
     println!("Commands:");
     println!("  start    start a server for the current project");
@@ -181,6 +186,7 @@ fn print_help() {
     println!("  stop     stop the current project's server");
     println!("  list     show the current project identity and state path");
     println!("  doctor   check local Spindle state");
+    println!("  workspace list  list workspaces in the current project session");
     println!("Options:");
     println!("  --help, -h       show this help");
     println!("  --version, -V    print the version");

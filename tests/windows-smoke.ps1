@@ -24,6 +24,11 @@ try {
     Invoke-Spindle @("help")
     Invoke-Spindle @("start")
     Invoke-Spindle @("start")
+    $workspaces = (& $Binary workspace list) -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw "spindle workspace list failed" }
+    if ($workspaces -notmatch '(?m)^\*\s+\S+\s+Current project\s+\[Default\]$') {
+        throw "workspace list did not mark the active workspace: $workspaces"
+    }
     Invoke-Spindle @("list")
     $doctor = (& $Binary doctor) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw "spindle doctor failed" }

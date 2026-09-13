@@ -35,6 +35,7 @@ spindle          attach (and start when needed)
 spindle start    start the server
 spindle stop     stop the server
 spindle doctor   show server health and state paths
+spindle workspace list  list workspaces in the current project session
 spindle list     show project identity and state path
 spindle --help   show commands
 spindle --version  show the build version
