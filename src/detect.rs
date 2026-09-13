@@ -5,10 +5,11 @@ use serde::{Deserialize, Serialize};
 #[path = "detect/agents/mod.rs"]
 mod agents;
 use agents::{
-    amp_is_idle, amp_is_working, amp_permission_required, cline_permission_required,
-    cursor_agent_node_argv, cursor_is_working, cursor_permission_required, devin_is_idle,
-    devin_is_working, devin_permission_required, kilo_permission_required, kimi_is_working,
-    kimi_permission_required, kiro_is_idle, qodercli_is_working, qodercli_permission_required,
+    amp_is_idle, amp_is_working, amp_permission_required, antigravity_is_working,
+    antigravity_permission_required, cline_permission_required, cursor_agent_node_argv,
+    cursor_is_working, cursor_permission_required, devin_is_idle, devin_is_working,
+    devin_permission_required, kilo_permission_required, kimi_is_working, kimi_permission_required,
+    kiro_is_idle, qodercli_is_working, qodercli_permission_required,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,6 +25,7 @@ pub enum AgentKind {
     Cursor,
     Amp,
     Kilo,
+    Antigravity,
     Claude,
     Codex,
     Gemini,
@@ -111,6 +113,7 @@ impl AgentKind {
             Self::Cursor => "Cursor",
             Self::Amp => "Amp",
             Self::Kilo => "Kilo",
+            Self::Antigravity => "Antigravity",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -154,6 +157,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Cursor => cursor_permission_required(&recent, &bottom_eight),
         AgentKind::Amp => amp_permission_required(&recent, &title_lower),
         AgentKind::Kilo => kilo_permission_required(&recent),
+        AgentKind::Antigravity => antigravity_permission_required(&recent),
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -183,6 +187,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Cursor => cursor_is_working(&bottom_six, &bottom_five, &bottom_eight),
         AgentKind::Amp => amp_is_working(&recent, &bottom_five, &title_lower),
         AgentKind::Kilo => recent.contains("esc interrupt"),
+        AgentKind::Antigravity => antigravity_is_working(&recent, &bottom_five),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -239,6 +244,7 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Cursor => false,
         AgentKind::Amp => amp_is_idle(&title.to_ascii_lowercase()),
         AgentKind::Kilo => false,
+        AgentKind::Antigravity => false,
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -595,6 +601,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "cursor" | "cursor-agent" => Some(AgentKind::Cursor),
         "amp" | "amp-local" => Some(AgentKind::Amp),
         "kilo" | "kilo-code" | "kilo code" => Some(AgentKind::Kilo),
+        "agy" | "antigravity" | "antigravity-cli" => Some(AgentKind::Antigravity),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -986,6 +993,11 @@ mod tests {
         assert_eq!(identify_process("amp-local.cmd"), Some(AgentKind::Amp));
         assert_eq!(identify_process("kilo.exe"), Some(AgentKind::Kilo));
         assert_eq!(identify_process("kilo-code.cmd"), Some(AgentKind::Kilo));
+        assert_eq!(identify_process("agy.exe"), Some(AgentKind::Antigravity));
+        assert_eq!(
+            identify_process("antigravity-cli.cmd"),
+            Some(AgentKind::Antigravity)
+        );
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -1006,6 +1018,7 @@ mod tests {
         assert_eq!(AgentKind::Cursor.label(), "Cursor");
         assert_eq!(AgentKind::Amp.label(), "Amp");
         assert_eq!(AgentKind::Kilo.label(), "Kilo");
+        assert_eq!(AgentKind::Antigravity.label(), "Antigravity");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1450,6 +1463,44 @@ mod tests {
         );
         assert_eq!(
             detect_state(AgentKind::Kilo, "ordinary output", ""),
+            AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_antigravity_permission_and_working_signals() {
+        for prompt in [
+            "Requesting permission for: command\nDo you want to proceed?",
+            "Requesting permission for: command\nTab amend\nEdit command",
+        ] {
+            assert_eq!(
+                detect_state(AgentKind::Antigravity, prompt, ""),
+                AgentState::Blocked
+            );
+        }
+        assert_eq!(
+            detect_state(
+                AgentKind::Antigravity,
+                "Requesting permission for: command",
+                ""
+            ),
+            AgentState::Unknown,
+            "permission text without a manifest confirmation prompt is not blocked"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Antigravity, "⠋ Thinking", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Antigravity, "· 2 task", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Antigravity, "· 0 task", ""),
+            AgentState::Unknown
+        );
+        assert_eq!(
+            detect_state(AgentKind::Antigravity, "ordinary output", ""),
             AgentState::Unknown
         );
     }
