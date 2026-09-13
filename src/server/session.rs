@@ -1529,6 +1529,86 @@ mod tests {
     }
 
     #[test]
+    fn agent_states_stay_with_their_panes_when_switching_tabs_and_workspaces() {
+        let mut session = Session::default();
+        let pane = |pane_id: &str, agent: &str, state: &str| {
+            serde_json::from_value::<PaneView>(serde_json::json!({
+                "pane_id": pane_id,
+                "command": "powershell.exe",
+                "args": [],
+                "cwd": "C:/",
+                "status": "Running",
+                "scrollback_bytes": 0,
+                "agent": agent,
+                "agent_state": state
+            }))
+            .unwrap()
+        };
+        session.snapshot.panes = vec![
+            pane("pane-1", "claude", "blocked"),
+            pane("pane-2", "codex", "working"),
+            pane("pane-3", "gemini", "idle"),
+        ];
+
+        let first_tab = &mut session.snapshot.spaces[0].workspaces[0].tabs[0];
+        first_tab.layout = Some(LayoutNode::pane("pane-1"));
+        first_tab.focused_pane_id = Some("pane-1".into());
+        session.snapshot.focused_pane_id = Some("pane-1".into());
+
+        let second_tab_id = session.create_tab("Second tab".into()).unwrap()["tab_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let second_tab = &mut session.snapshot.spaces[0].workspaces[0].tabs[1];
+        second_tab.layout = Some(LayoutNode::pane("pane-2"));
+        second_tab.focused_pane_id = Some("pane-2".into());
+
+        let second_workspace_id = session.create_workspace("Build".into()).unwrap()["workspace_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let workspace_tab = &mut session.snapshot.spaces[0].workspaces[1].tabs[0];
+        workspace_tab.layout = Some(LayoutNode::pane("pane-3"));
+        workspace_tab.focused_pane_id = Some("pane-3".into());
+
+        session.switch_workspace("workspace-1").unwrap();
+        session.switch_tab("tab-1").unwrap();
+        assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("pane-1"));
+        session.switch_tab(&second_tab_id).unwrap();
+        assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("pane-2"));
+        session.switch_workspace(&second_workspace_id).unwrap();
+        assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("pane-3"));
+
+        session.refresh_snapshot();
+        for (pane_id, agent, state) in [
+            (
+                "pane-1",
+                crate::detect::AgentKind::Claude,
+                crate::detect::AgentState::Blocked,
+            ),
+            (
+                "pane-2",
+                crate::detect::AgentKind::Codex,
+                crate::detect::AgentState::Working,
+            ),
+            (
+                "pane-3",
+                crate::detect::AgentKind::Gemini,
+                crate::detect::AgentState::Idle,
+            ),
+        ] {
+            let pane = session
+                .snapshot
+                .panes
+                .iter()
+                .find(|pane| pane.pane_id == pane_id)
+                .unwrap();
+            assert_eq!(pane.agent, Some(agent));
+            assert_eq!(pane.agent_state, Some(state));
+        }
+    }
+
+    #[test]
     fn pane_requests_accept_runtime_environment() {
         let request: CreatePaneRequest = serde_json::from_value(serde_json::json!({
             "command": "powershell.exe",

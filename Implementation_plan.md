@@ -194,7 +194,9 @@ Terminal verification is still pending.
   saved per client. Richer
   lifecycle transitions remain.
 - [ ] Keep state associated with the correct pane, tab, and workspace through
-  switches, restarts, and recovery.
+  switches, restarts, and recovery. A session test now verifies status remains
+  attached to its pane across tab and workspace switches; restart/recovery
+  status behavior still needs explicit verification.
 - [ ] Make detection optional/fault-tolerant so normal shell use is unaffected.
 - [ ] Test detection fixtures and status transitions; verify Codex and OpenCode
   side-by-side on Windows.
