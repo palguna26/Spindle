@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 #[path = "detect/agents/mod.rs"]
 mod agents;
 use agents::{
-    cline_permission_required, cursor_agent_node_argv, cursor_is_working,
-    cursor_permission_required, devin_is_idle, devin_is_working, devin_permission_required,
-    kimi_is_working, kimi_permission_required, kiro_is_idle, qodercli_is_working,
-    qodercli_permission_required,
+    amp_is_idle, amp_is_working, amp_permission_required, cline_permission_required,
+    cursor_agent_node_argv, cursor_is_working, cursor_permission_required, devin_is_idle,
+    devin_is_working, devin_permission_required, kimi_is_working, kimi_permission_required,
+    kiro_is_idle, qodercli_is_working, qodercli_permission_required,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,6 +22,7 @@ pub enum AgentKind {
     Kimi,
     Devin,
     Cursor,
+    Amp,
     Claude,
     Codex,
     Gemini,
@@ -107,6 +108,7 @@ impl AgentKind {
             Self::Kimi => "Kimi",
             Self::Devin => "Devin",
             Self::Cursor => "Cursor",
+            Self::Amp => "Amp",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -148,6 +150,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Kimi => kimi_permission_required(&recent),
         AgentKind::Devin => devin_permission_required(&bottom_eight),
         AgentKind::Cursor => cursor_permission_required(&recent, &bottom_eight),
+        AgentKind::Amp => amp_permission_required(&recent, &title_lower),
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -175,6 +178,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Kimi => kimi_is_working(&recent, &bottom_three),
         AgentKind::Devin => devin_is_working(&bottom_eight),
         AgentKind::Cursor => cursor_is_working(&bottom_six, &bottom_five, &bottom_eight),
+        AgentKind::Amp => amp_is_working(&recent, &bottom_five, &title_lower),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -229,6 +233,7 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Kimi => false,
         AgentKind::Devin => devin_is_idle(screen),
         AgentKind::Cursor => false,
+        AgentKind::Amp => amp_is_idle(&title.to_ascii_lowercase()),
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -583,6 +588,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "kimi" | "kimi-code" | "kimi code" => Some(AgentKind::Kimi),
         "devin" | "devin-cli" | "devin cli" => Some(AgentKind::Devin),
         "cursor" | "cursor-agent" => Some(AgentKind::Cursor),
+        "amp" | "amp-local" => Some(AgentKind::Amp),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -970,6 +976,8 @@ mod tests {
             identify_process("cursor-agent.cmd"),
             Some(AgentKind::Cursor)
         );
+        assert_eq!(identify_process("amp.exe"), Some(AgentKind::Amp));
+        assert_eq!(identify_process("amp-local.cmd"), Some(AgentKind::Amp));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -988,6 +996,7 @@ mod tests {
         assert_eq!(AgentKind::Kimi.label(), "Kimi");
         assert_eq!(AgentKind::Devin.label(), "Devin");
         assert_eq!(AgentKind::Cursor.label(), "Cursor");
+        assert_eq!(AgentKind::Amp.label(), "Amp");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1350,6 +1359,59 @@ mod tests {
         );
         assert_eq!(
             detect_state(AgentKind::Cursor, "ordinary Cursor output", ""),
+            AgentState::Unknown
+        );
+    }
+
+    #[test]
+    fn follows_herdr_amp_blocked_working_and_idle_signals() {
+        for prompt in [
+            "Waiting for approval",
+            "Invoke tool",
+            "Run this command?",
+            "Allow editing file: src/main.rs",
+            "Allow creating file: new.rs",
+            "Confirm tool call",
+            "Approve this action\nAllow all for this session",
+        ] {
+            assert_eq!(
+                detect_state(AgentKind::Amp, prompt, ""),
+                AgentState::Blocked,
+                "expected blocker for {prompt:?}"
+            );
+        }
+        assert_eq!(
+            detect_state(AgentKind::Amp, "Approve this action", ""),
+            AgentState::Unknown,
+            "approval text without a manifest choice is not blocked"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Amp, "Esc to cancel", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Amp, "╰ main thinking ─", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Amp, "", "⠋ amp - project"),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Amp, "", "project - amp - workspace"),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Amp,
+                "",
+                "Plugin confirmation needed - amp - workspace"
+            ),
+            AgentState::Blocked,
+            "plugin confirmation in the title outranks title-idle"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Amp, "ordinary output", ""),
             AgentState::Unknown
         );
     }
