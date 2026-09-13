@@ -421,6 +421,7 @@ pub(super) fn render_sidebar_with_scroll(
     render_sidebar_with_scroll_and_sort(frame, snapshot, area, collapsed, scroll, false);
 }
 
+#[cfg(test)]
 pub(super) fn render_sidebar_with_scroll_and_sort(
     frame: &mut Frame<'_>,
     snapshot: &SessionSnapshot,
@@ -428,6 +429,26 @@ pub(super) fn render_sidebar_with_scroll_and_sort(
     collapsed: bool,
     scroll: usize,
     agent_priority_sort: bool,
+) {
+    render_sidebar_with_scroll_sort_and_navigation(
+        frame,
+        snapshot,
+        area,
+        collapsed,
+        scroll,
+        agent_priority_sort,
+        None,
+    );
+}
+
+pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    scroll: usize,
+    agent_priority_sort: bool,
+    navigation_workspace: Option<(&str, &str)>,
 ) {
     let rows = sidebar_rows(snapshot, agent_priority_sort);
     let body = sidebar_body(area);
@@ -460,6 +481,10 @@ pub(super) fn render_sidebar_with_scroll_and_sort(
                 workspace_id,
                 name,
             } => {
+                let previewed =
+                    navigation_workspace.is_some_and(|(selected_space, selected_workspace)| {
+                        selected_space == *space_id && selected_workspace == *workspace_id
+                    });
                 let space = snapshot
                     .spaces
                     .iter()
@@ -469,22 +494,45 @@ pub(super) fn render_sidebar_with_scroll_and_sort(
                         space.active_workspace_id.as_deref() == Some(*workspace_id)
                     });
                 if collapsed {
-                    return Line::from(if active { "W " } else { "w " });
+                    let line = if active { "W " } else { "w " };
+                    return if previewed {
+                        Line::styled(line, Style::default().fg(Color::Black).bg(Color::Cyan))
+                    } else {
+                        Line::from(line)
+                    };
                 }
+                let preview_style = Style::default().fg(Color::White).bg(Color::DarkGray);
                 let mut spans = vec![
-                    Span::raw("  "),
+                    Span::styled(
+                        "  ",
+                        if previewed {
+                            preview_style
+                        } else {
+                            Style::default()
+                        },
+                    ),
                     Span::styled(
                         if active { "● " } else { "○ " },
-                        Style::default().fg(if active {
-                            Color::Green
-                        } else {
-                            Color::DarkGray
-                        }),
+                        Style::default()
+                            .fg(if active {
+                                Color::Green
+                            } else {
+                                Color::DarkGray
+                            })
+                            .bg(if previewed {
+                                Color::DarkGray
+                            } else {
+                                Color::Reset
+                            }),
                     ),
                 ];
                 spans.push(Span::styled(
                     (*name).to_owned(),
-                    Style::default().fg(if active { Color::White } else { Color::Gray }),
+                    if previewed {
+                        preview_style.add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(if active { Color::White } else { Color::Gray })
+                    },
                 ));
                 Line::from(spans)
             }
@@ -546,11 +594,16 @@ pub(super) fn render_sidebar_with_scroll_and_sort(
             ratatui::widgets::Block::default()
                 .borders(ratatui::widgets::Borders::ALL)
                 .title(format!(
-                    "Spaces · agents {}",
+                    "Spaces · agents {}{}",
                     if agent_priority_sort {
                         "priority"
                     } else {
                         "grouped"
+                    },
+                    if navigation_workspace.is_some() {
+                        " · ↑/↓ choose · Enter open · Esc cancel"
+                    } else {
+                        ""
                     }
                 )),
         ),
@@ -776,6 +829,42 @@ mod tests {
             focused_pane_id: Some("pane-2".into()),
             event_sequence: 0,
         }
+    }
+
+    #[test]
+    fn workspace_picker_highlight_is_distinct_from_the_active_workspace() {
+        let snapshot = sample_snapshot();
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let sidebar = main_areas(Rect::new(0, 0, 100, 30)).sidebar;
+        terminal
+            .draw(|frame| {
+                super::render_sidebar_with_scroll_sort_and_navigation(
+                    frame,
+                    &snapshot,
+                    sidebar,
+                    false,
+                    0,
+                    false,
+                    Some(("space-1", "workspace-1")),
+                );
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        assert_eq!(
+            buffer.cell((sidebar.x + 5, sidebar.y + 2)).unwrap().bg,
+            ratatui::style::Color::DarkGray
+        );
+        assert_ne!(
+            buffer.cell((sidebar.x + 5, sidebar.y + 3)).unwrap().bg,
+            ratatui::style::Color::DarkGray
+        );
+        assert_eq!(
+            snapshot.spaces[0].active_workspace_id.as_deref(),
+            Some("workspace-2"),
+            "previewing a workspace must not switch it"
+        );
     }
 
     fn click(x: u16, y: u16) -> MouseEvent {

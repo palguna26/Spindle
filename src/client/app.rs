@@ -9,8 +9,8 @@ use super::{ClientError, ControlClient};
 use crate::model::layout::Direction as SplitDirection;
 use crate::server::session::SessionSnapshot;
 use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
-    MouseEvent, MouseEventKind,
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
+    MouseButton, MouseEvent, MouseEventKind,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -72,6 +72,7 @@ struct MouseState {
     scroll_offsets: HashMap<String, usize>,
     scrollback_views: HashMap<String, CachedScrollbackView>,
     copy_mode: Option<CopyMode>,
+    navigation_workspace: Option<(String, String)>,
 }
 
 struct PaneClick {
@@ -287,7 +288,7 @@ fn event_loop(
             && startup_error.is_none();
         terminal
             .draw(|frame| {
-                renderer::render_with_sidebar_scroll_and_cursor_and_agent_sort(
+                renderer::render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
                     frame,
                     &snapshot,
                     connected,
@@ -295,6 +296,10 @@ fn event_loop(
                     mouse_state.sidebar_scroll,
                     show_host_cursor,
                     mouse_state.agent_priority_sort,
+                    mouse_state
+                        .navigation_workspace
+                        .as_ref()
+                        .map(|(space, workspace)| (space.as_str(), workspace.as_str())),
                 );
                 if let Some(selection) = &mouse_state.selection {
                     renderer::render_selection_with_sidebar(
@@ -362,6 +367,9 @@ fn event_loop(
                     mouse_state
                         .scroll_offsets
                         .insert(mode.pane_id, mode.saved_offset);
+                }
+                if matches!(mouse.kind, MouseEventKind::Down(_)) {
+                    mouse_state.navigation_workspace = None;
                 }
                 if let Err(error) = handle_mouse(
                     client,
@@ -467,6 +475,38 @@ fn event_loop(
                         Err(error),
                     ),
                 }
+            }
+            continue;
+        }
+        if mouse_state.navigation_workspace.is_some() {
+            match workspace_picker_key(key) {
+                WorkspacePickerKey::Cancel => mouse_state.navigation_workspace = None,
+                WorkspacePickerKey::Move(forward) => {
+                    mouse_state.navigation_workspace = move_workspace_selection(
+                        &snapshot,
+                        mouse_state.navigation_workspace.as_ref(),
+                        forward,
+                    );
+                }
+                WorkspacePickerKey::Confirm => {
+                    if let Some((space_id, workspace_id)) =
+                        mouse_state.navigation_workspace.as_ref()
+                    {
+                        if space_id == &snapshot.active_space_id {
+                            let result = request_action(
+                                client,
+                                "navigate-workspace",
+                                "switch_workspace",
+                                json!({ "id": workspace_id }),
+                                "switch workspace",
+                            )
+                            .and_then(|()| ensure_active_default_pane(client, terminal_size));
+                            record_action_error(&mut action_error, "switch workspace", result);
+                        }
+                    }
+                    mouse_state.navigation_workspace = None;
+                }
+                WorkspacePickerKey::Ignore => {}
             }
             continue;
         }
@@ -696,6 +736,31 @@ fn event_loop(
                     .and_then(|()| ensure_active_default_pane(client, terminal_size));
                     record_action_error(&mut action_error, "switch workspace", result);
                 }
+            }
+            Action::WorkspacePicker => {
+                let active_space = snapshot
+                    .spaces
+                    .iter()
+                    .find(|space| space.space_id == snapshot.active_space_id);
+                mouse_state.navigation_workspace = active_space.and_then(|space| {
+                    space
+                        .active_workspace_id
+                        .as_ref()
+                        .filter(|workspace_id| {
+                            space
+                                .workspaces
+                                .iter()
+                                .any(|workspace| &workspace.workspace_id == *workspace_id)
+                        })
+                        .cloned()
+                        .or_else(|| {
+                            space
+                                .workspaces
+                                .first()
+                                .map(|workspace| workspace.workspace_id.clone())
+                        })
+                        .map(|workspace_id| (space.space_id.clone(), workspace_id))
+                });
             }
             Action::StopFocusedPane => {
                 if let Some(ref pane_id) = snapshot.focused_pane_id {
@@ -2030,6 +2095,67 @@ fn adjacent_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
     )
 }
 
+fn move_workspace_selection(
+    snapshot: &SessionSnapshot,
+    selected: Option<&(String, String)>,
+    forward: bool,
+) -> Option<(String, String)> {
+    let space = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)?;
+    if space.workspaces.is_empty() {
+        return None;
+    }
+    let current_id = selected
+        .filter(|(space_id, _)| space_id == &space.space_id)
+        .map(|(_, workspace_id)| workspace_id.as_str())
+        .or(space.active_workspace_id.as_deref());
+    let index = current_id
+        .and_then(|current| {
+            space
+                .workspaces
+                .iter()
+                .position(|workspace| workspace.workspace_id == current)
+        })
+        .unwrap_or(if forward {
+            space.workspaces.len() - 1
+        } else {
+            0
+        });
+    let next = if forward {
+        (index + 1) % space.workspaces.len()
+    } else {
+        (index + space.workspaces.len() - 1) % space.workspaces.len()
+    };
+    Some((
+        space.space_id.clone(),
+        space.workspaces[next].workspace_id.clone(),
+    ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkspacePickerKey {
+    Cancel,
+    Move(bool),
+    Confirm,
+    Ignore,
+}
+
+fn workspace_picker_key(key: KeyEvent) -> WorkspacePickerKey {
+    if key.code == KeyCode::Esc || is_prefix(key) {
+        WorkspacePickerKey::Cancel
+    } else if key.modifiers.is_empty() && key.code == KeyCode::Up {
+        WorkspacePickerKey::Move(false)
+    } else if key.modifiers.is_empty() && key.code == KeyCode::Down {
+        WorkspacePickerKey::Move(true)
+    } else if key.modifiers.is_empty() && key.code == KeyCode::Enter {
+        WorkspacePickerKey::Confirm
+    } else {
+        WorkspacePickerKey::Ignore
+    }
+}
+
 fn focus_direction_name(action: Action) -> &'static str {
     match action {
         Action::FocusLeft => "left",
@@ -2495,15 +2621,18 @@ mod tests {
     use super::{
         active_tab_id, active_workspace, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
         adjust_scrollback_offset, apply_scrollback_views, current_snapshot,
-        ensure_active_default_pane, key_code_bytes, page_key_bytes, pane_size,
-        reconnect_requires_reattach, record_action_error, renderer, require_server_success,
-        snapshot_has_focused_pane, startup_error_action, visible_web_url_at_point,
-        workspace_id_by_name, CachedScrollbackView, ControlClient, PaneClick, SplitDirection,
-        SplitDrag, StartupErrorAction,
+        ensure_active_default_pane, key_code_bytes, move_workspace_selection, page_key_bytes,
+        pane_size, reconnect_requires_reattach, record_action_error, renderer,
+        require_server_success, snapshot_has_focused_pane, startup_error_action,
+        visible_web_url_at_point, workspace_id_by_name, workspace_picker_key, CachedScrollbackView,
+        ControlClient, PaneClick, SplitDirection, SplitDrag, StartupErrorAction,
+        WorkspacePickerKey,
     };
     use crate::protocol::{ProtocolError, Response, PROTOCOL_VERSION};
     use crate::server::session::Session;
-    use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
     use ratatui::layout::Rect;
     use std::time::{Duration, Instant};
 
@@ -2796,6 +2925,65 @@ mod tests {
             Some(id)
         );
         assert_eq!(workspace_id_by_name(session.snapshot(), "Missing"), None);
+    }
+
+    #[test]
+    fn workspace_picker_moves_around_the_active_spaces_workspaces() {
+        let mut session = Session::default();
+        let first = active_workspace(session.snapshot())
+            .unwrap()
+            .workspace_id
+            .clone();
+        let second = session.create_workspace("Build".into()).unwrap()["workspace_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let third = session.create_workspace("Review".into()).unwrap()["workspace_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let snapshot = session.snapshot();
+        let selected = (snapshot.active_space_id.clone(), first.clone());
+
+        assert_eq!(
+            move_workspace_selection(snapshot, Some(&selected), true),
+            Some((snapshot.active_space_id.clone(), second.clone()))
+        );
+        assert_eq!(
+            move_workspace_selection(
+                snapshot,
+                Some(&(snapshot.active_space_id.clone(), second.clone())),
+                true,
+            ),
+            Some((snapshot.active_space_id.clone(), third))
+        );
+        assert_eq!(
+            move_workspace_selection(
+                snapshot,
+                Some(&(snapshot.active_space_id.clone(), second.clone())),
+                false,
+            ),
+            Some((snapshot.active_space_id.clone(), first))
+        );
+    }
+
+    #[test]
+    fn workspace_picker_keys_match_herdr_navigation_controls() {
+        for (key, expected) in [
+            (KeyCode::Up, WorkspacePickerKey::Move(false)),
+            (KeyCode::Down, WorkspacePickerKey::Move(true)),
+            (KeyCode::Enter, WorkspacePickerKey::Confirm),
+            (KeyCode::Esc, WorkspacePickerKey::Cancel),
+        ] {
+            assert_eq!(
+                workspace_picker_key(KeyEvent::new(key, KeyModifiers::NONE)),
+                expected
+            );
+        }
+        assert_eq!(
+            workspace_picker_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL,)),
+            WorkspacePickerKey::Cancel
+        );
     }
 
     #[test]

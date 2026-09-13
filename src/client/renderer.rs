@@ -86,14 +86,38 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort(
     show_host_cursor: bool,
     agent_priority_sort: bool,
 ) {
+    render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
+        frame,
+        snapshot,
+        connected,
+        sidebar_collapsed,
+        sidebar_scroll,
+        show_host_cursor,
+        agent_priority_sort,
+        None,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    connected: bool,
+    sidebar_collapsed: bool,
+    sidebar_scroll: usize,
+    show_host_cursor: bool,
+    agent_priority_sort: bool,
+    navigation_workspace: Option<(&str, &str)>,
+) {
     let main = layout::main_areas_with_sidebar(frame.area(), sidebar_collapsed);
-    navigation::render_sidebar_with_scroll_and_sort(
+    navigation::render_sidebar_with_scroll_sort_and_navigation(
         frame,
         snapshot,
         main.sidebar,
         sidebar_collapsed,
         sidebar_scroll,
         agent_priority_sort,
+        navigation_workspace,
     );
     render_tabs(frame, snapshot, main.tabs);
     let panes = pane_rectangles(snapshot, main.panes);
@@ -152,21 +176,43 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort(
         }
     }
     let focused = snapshot.focused_pane_id.as_deref().unwrap_or("none");
-    let chrome = Line::from(vec![
-        Span::styled(" Spindle ", Style::default().fg(Color::Cyan)),
-        Span::styled(
-            if connected {
-                "connected"
-            } else {
-                "connection lost — retrying"
-            },
-            Style::default().fg(if connected { Color::Green } else { Color::Red }),
-        ),
-        Span::raw("  "),
-        Span::raw(format!("focused: {focused}")),
-        Span::raw(format!("  panes: {}", snapshot.panes.len())),
-        Span::raw(format!("  {}", active_title(snapshot))),
-    ]);
+    let chrome = if let Some((space_id, workspace_id)) = navigation_workspace {
+        let name = snapshot
+            .spaces
+            .iter()
+            .find(|space| space.space_id == space_id)
+            .and_then(|space| {
+                space
+                    .workspaces
+                    .iter()
+                    .find(|workspace| workspace.workspace_id == workspace_id)
+            })
+            .map(|workspace| workspace.name.as_str())
+            .unwrap_or("workspace");
+        Line::from(vec![
+            Span::styled(
+                " NAVIGATE ",
+                Style::default().fg(Color::Black).bg(Color::Cyan),
+            ),
+            Span::raw(format!("  {name}  ↑/↓ choose  Enter open  Esc cancel")),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(" Spindle ", Style::default().fg(Color::Cyan)),
+            Span::styled(
+                if connected {
+                    "connected"
+                } else {
+                    "connection lost — retrying"
+                },
+                Style::default().fg(if connected { Color::Green } else { Color::Red }),
+            ),
+            Span::raw("  "),
+            Span::raw(format!("focused: {focused}")),
+            Span::raw(format!("  panes: {}", snapshot.panes.len())),
+            Span::raw(format!("  {}", active_title(snapshot))),
+        ])
+    };
     frame.render_widget(Paragraph::new(chrome), footer_area(frame.area()));
 }
 
@@ -397,8 +443,8 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "Keyboard (press Ctrl-b, then the key)",
         "c: new tab; n / p: next / previous tab",
         "x / Shift+x: close pane / tab; s / r: stop / restart",
-        "b: toggle compact sidebar",
-        "h/j/k/l or arrows: focus direction; o / O: cycle panes",
+        "b: compact sidebar; w: choose workspace",
+        "h/j/k/l focus; o / O cycle; picker: arrows/Enter/Esc",
         "v / -: split vertical / horizontal; z: zoom pane",
         "?: help; colon: palette; q / d: detach; [: copy mode",
         "",

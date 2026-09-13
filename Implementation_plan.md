@@ -125,9 +125,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Bind focused-pane zoom to `Ctrl-b z`, matching Herdr's default.
 - [x] Align tab creation, pane/tab close, tab navigation, split, and pane-focus
   shortcuts with Herdr's default bindings.
-- [ ] Match Herdr's workspace navigation bindings: `Ctrl-b w` opens the
-  workspace picker and `Ctrl-b g` opens the session goto picker. Spindle
-  currently uses `Ctrl-b w` to cycle to the next workspace.
+- [ ] Match Herdr's workspace navigation bindings: `Ctrl-b w` now previews
+  workspaces in the sidebar; Up/Down moves, Enter switches, and Esc cancels.
+  `Ctrl-b g` still needs the session goto navigator.
 - [x] Support drag-select/copy and terminal mouse passthrough without stealing
   input from applications that request it. Wheel and mode-aware PageUp/PageDown
   now browse recent PTY history, which the same selection/copy path can read;
