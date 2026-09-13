@@ -22,6 +22,17 @@ pub fn run() -> io::Result<()> {
         })?;
         return crate::server::run(Path::new(&state_dir));
     }
+    match command.as_str() {
+        "help" | "--help" | "-h" => {
+            print_help();
+            return Ok(());
+        }
+        "--version" | "-V" => {
+            println!("spindle {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        _ => {}
+    }
     let project = Project::from_current_dir()?;
 
     match command.as_str() {
@@ -60,7 +71,6 @@ pub fn run() -> io::Result<()> {
             wait_for_server_stop(&project)?;
             println!("server stopped");
         }
-        "help" | "--help" | "-h" => print_help(),
         other => {
             print_help();
             return Err(io::Error::new(
@@ -143,7 +153,7 @@ fn send_command(project: &Project, operation: &str) -> io::Result<Response<Value
 fn print_help() {
     println!("Spindle - persistent parallel coding-agent sessions");
     println!();
-    println!("Usage: spindle [start|attach|stop|list|doctor]");
+    println!("Usage: spindle [start|attach|stop|list|doctor|help]");
     println!();
     println!("Commands:");
     println!("  start    start a server for the current project");
@@ -151,6 +161,9 @@ fn print_help() {
     println!("  stop     stop the current project's server");
     println!("  list     show the current project identity and state path");
     println!("  doctor   check local Spindle state");
+    println!("Options:");
+    println!("  --help, -h       show this help");
+    println!("  --version, -V    print the version");
 }
 
 struct Project {
