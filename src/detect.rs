@@ -6,13 +6,14 @@ use serde::{Deserialize, Serialize};
 mod agents;
 use agents::{
     amp_is_idle, amp_is_working, amp_permission_required, antigravity_is_working,
-    antigravity_permission_required, claude_should_skip_state_update, cline_permission_required,
-    codex_should_skip_state_update, cursor_agent_node_argv, cursor_is_working,
-    cursor_permission_required, devin_is_idle, devin_is_working, devin_permission_required,
-    grok_state, hermes_is_idle, hermes_is_priority_working, hermes_is_working,
-    hermes_permission_required, hermes_title_blocked, kilo_permission_required, kimi_is_working,
-    kimi_permission_required, kiro_is_idle, maki_state, muse_should_skip_state_update, muse_state,
-    qodercli_is_working, qodercli_permission_required, qwen_state,
+    antigravity_permission_required, claude_mcp_elicitation_prompt,
+    claude_should_skip_state_update, cline_permission_required, codex_should_skip_state_update,
+    cursor_agent_node_argv, cursor_is_working, cursor_permission_required, devin_is_idle,
+    devin_is_working, devin_permission_required, grok_state, hermes_is_idle,
+    hermes_is_priority_working, hermes_is_working, hermes_permission_required,
+    hermes_title_blocked, kilo_permission_required, kimi_is_working, kimi_permission_required,
+    kiro_is_idle, maki_state, muse_should_skip_state_update, muse_state, qodercli_is_working,
+    qodercli_permission_required, qwen_state,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -318,7 +319,8 @@ pub(crate) fn should_skip_state_update(agent: AgentKind, screen: &str) -> bool {
 }
 
 fn claude_permission_required(recent: &str) -> bool {
-    recent.contains("waiting for permission")
+    claude_mcp_elicitation_prompt(recent)
+        || recent.contains("waiting for permission")
         || recent.contains("do you want to allow this connection?")
         || recent.contains("review your answers")
         || (recent.contains("esc to cancel")
@@ -1188,6 +1190,27 @@ mod tests {
         assert_eq!(
             detect_state(AgentKind::Claude, "Ready\n❯ ", ""),
             AgentState::Idle
+        );
+    }
+
+    #[test]
+    fn follows_herdr_claude_mcp_elicitation_prompt() {
+        assert_eq!(
+            detect_state(
+                AgentKind::Claude,
+                "MCP server \"docs\" requests your input\n❯ Accept\nDecline\nEsc to cancel",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Claude,
+                "MCP server \"docs\" requests your input\nEnter to continue\nEsc to cancel",
+                ""
+            ),
+            AgentState::Unknown,
+            "the MCP blocker requires an Accept or Decline choice"
         );
     }
 
