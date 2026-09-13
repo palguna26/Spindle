@@ -37,3 +37,11 @@ pub(in crate::detect) fn kiro_is_working(recent: &str) -> bool {
                         .is_some_and(char::is_alphabetic)
             }))
 }
+
+pub(in crate::detect) fn kiro_is_idle(screen: &str) -> bool {
+    let bottom_five = crate::detect::recent_nonempty_lines(screen, 5).to_ascii_lowercase();
+    bottom_five.contains("ask a question or describe a task")
+        && bottom_five.contains("/copy to clipboard")
+        && !bottom_five.contains("kiro is working")
+        && !bottom_five.contains("esc to cancel")
+}

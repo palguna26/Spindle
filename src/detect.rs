@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 #[path = "detect/agents/mod.rs"]
 mod agents;
 use agents::{
-    cline_permission_required, kimi_is_working, kimi_permission_required, qodercli_is_working,
+    cline_permission_required, devin_is_idle, devin_is_working, devin_permission_required,
+    kimi_is_working, kimi_permission_required, kiro_is_idle, qodercli_is_working,
     qodercli_permission_required,
 };
 
@@ -18,6 +19,7 @@ pub enum AgentKind {
     Kiro,
     Cline,
     Kimi,
+    Devin,
     Claude,
     Codex,
     Gemini,
@@ -101,6 +103,7 @@ impl AgentKind {
             Self::Kiro => "Kiro",
             Self::Cline => "Cline",
             Self::Kimi => "Kimi",
+            Self::Devin => "Devin",
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
@@ -139,6 +142,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Kiro => kiro_permission_required(&recent),
         AgentKind::Cline => cline_permission_required(&recent),
         AgentKind::Kimi => kimi_permission_required(&recent),
+        AgentKind::Devin => devin_permission_required(&bottom_eight),
         AgentKind::Codex => {
             combined.contains("action required")
                 || codex_trust_directory_prompt(
@@ -164,6 +168,7 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Kiro => kiro_is_working(&recent),
         AgentKind::Cline => !recent.is_empty(),
         AgentKind::Kimi => kimi_is_working(&recent, &bottom_three),
+        AgentKind::Devin => devin_is_working(&bottom_eight),
         AgentKind::Codex => {
             title.chars().any(is_codex_spinner)
                 || (!bottom_three.contains("conversation interrupted")
@@ -196,7 +201,7 @@ pub(crate) fn detect_state_with_osc(
         return AgentState::Working;
     }
 
-    if has_visible_idle_signal(agent, &bottom_five, title, osc_progress) {
+    if has_visible_idle_signal(agent, screen, title, osc_progress) {
         AgentState::Idle
     } else {
         AgentState::Unknown
@@ -213,14 +218,10 @@ pub(crate) fn has_visible_idle_signal(
         AgentKind::Pi => false,
         AgentKind::QoderCli => false,
         AgentKind::Droid => false,
-        AgentKind::Kiro => {
-            screen.contains("ask a question or describe a task")
-                && screen.contains("/copy to clipboard")
-                && !screen.contains("kiro is working")
-                && !screen.contains("esc to cancel")
-        }
+        AgentKind::Kiro => kiro_is_idle(screen),
         AgentKind::Cline => false,
         AgentKind::Kimi => false,
+        AgentKind::Devin => devin_is_idle(screen),
         AgentKind::Codex => !title.trim().is_empty(),
         AgentKind::Claude => {
             title.starts_with("\u{2733} ")
@@ -573,6 +574,7 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         "kiro" | "kiro-cli" => Some(AgentKind::Kiro),
         "cline" => Some(AgentKind::Cline),
         "kimi" | "kimi-code" | "kimi code" => Some(AgentKind::Kimi),
+        "devin" | "devin-cli" | "devin cli" => Some(AgentKind::Devin),
         "codex" => Some(AgentKind::Codex),
         "gemini" => Some(AgentKind::Gemini),
         "opencode" | "opencode2" | "open-code" => Some(AgentKind::OpenCode),
@@ -952,6 +954,8 @@ mod tests {
         assert_eq!(identify_process("cline.cmd"), Some(AgentKind::Cline));
         assert_eq!(identify_process("kimi.exe"), Some(AgentKind::Kimi));
         assert_eq!(identify_process("kimi-code.cmd"), Some(AgentKind::Kimi));
+        assert_eq!(identify_process("devin.exe"), Some(AgentKind::Devin));
+        assert_eq!(identify_process("devin-cli.cmd"), Some(AgentKind::Devin));
         assert_eq!(identify_process("claude.exe"), Some(AgentKind::Claude));
         assert_eq!(identify_process("claude-code.cmd"), Some(AgentKind::Claude));
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
@@ -968,6 +972,7 @@ mod tests {
         assert_eq!(AgentKind::Kiro.label(), "Kiro");
         assert_eq!(AgentKind::Cline.label(), "Cline");
         assert_eq!(AgentKind::Kimi.label(), "Kimi");
+        assert_eq!(AgentKind::Devin.label(), "Devin");
         assert_eq!(AgentKind::GithubCopilot.label(), "GitHub Copilot");
         assert_eq!(
             identify_process("C:\\tools\\open-code.exe"),
@@ -1162,6 +1167,15 @@ mod tests {
             AgentState::Working,
             "the working marker suppresses the idle prompt"
         );
+        assert_eq!(
+            detect_state(
+                AgentKind::Kiro,
+                "Ask a question or describe a task\n/copy to clipboard\n1\n2\n3\n4\n5",
+                ""
+            ),
+            AgentState::Unknown,
+            "the idle prompt must remain in the manifest's bottom five lines"
+        );
     }
 
     #[test]
@@ -1235,6 +1249,59 @@ mod tests {
             detect_state(AgentKind::Kimi, "⠋ searching", ""),
             AgentState::Unknown,
             "unlisted spinner text is not a Kimi working cue"
+        );
+    }
+
+    #[test]
+    fn follows_herdr_devin_blocked_working_and_idle_signals() {
+        assert_eq!(
+            detect_state(
+                AgentKind::Devin,
+                "Do you trust the authors of this directory?\nWith untrusted content.\nYes, trust this workspace",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Devin,
+                "Approve once · Select · Confirm · Esc cancel",
+                ""
+            ),
+            AgentState::Blocked
+        );
+        assert_eq!(
+            detect_state(AgentKind::Devin, "Running tools · Esc to interrupt", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::Devin, "Guide Devin while it works", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Devin,
+                "Ask Devin to build\nFeatures, fix bugs\nYour code\n❭ Ask Devin to build",
+                ""
+            ),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(AgentKind::Devin, "context: repository\n❭ ", ""),
+            AgentState::Idle
+        );
+        assert_eq!(
+            detect_state(
+                AgentKind::Devin,
+                "context: repository\n❭ \nRunning tools · Esc to interrupt",
+                ""
+            ),
+            AgentState::Working,
+            "active work suppresses the prompt idle state"
+        );
+        assert_eq!(
+            detect_state(AgentKind::Devin, "ordinary terminal output", ""),
+            AgentState::Unknown
         );
     }
 
