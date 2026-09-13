@@ -251,6 +251,25 @@ impl Navigator {
             .clone()
             .filter(|selected| rows.iter().any(|row| &row.target == selected))
             .or_else(|| {
+                let query = self.query.trim().to_lowercase();
+                if query.is_empty() {
+                    return None;
+                }
+                rows.iter()
+                    .find(|row| contains(&[&row.label, &row.detail], &query))
+                    .map(|row| row.target.clone())
+            })
+            .or_else(|| {
+                self.filter
+                    .is_some()
+                    .then(|| {
+                        rows.iter()
+                            .find(|row| matches!(row.target, Target::Pane { .. }))
+                            .map(|row| row.target.clone())
+                    })
+                    .flatten()
+            })
+            .or_else(|| {
                 rows.iter()
                     .find(|row| row.current)
                     .map(|row| row.target.clone())
@@ -505,6 +524,10 @@ mod tests {
             .rows(&snapshot)
             .iter()
             .any(|row| matches!(row.target, Target::Pane { .. })));
+        assert!(matches!(
+            navigator.selected(&snapshot),
+            Some(Target::Pane { .. })
+        ));
         navigator.handle_key(
             KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
             &snapshot,
@@ -525,6 +548,33 @@ mod tests {
             .rows(&snapshot)
             .iter()
             .any(|row| matches!(row.target, Target::Pane { .. })));
+    }
+
+    #[test]
+    fn searching_workspace_name_selects_that_workspace_not_its_space_group() {
+        let mut session = Session::default();
+        let created = session.create_workspace("Review".into()).unwrap();
+        let workspace_id = created["workspace_id"].as_str().unwrap().to_string();
+        let snapshot = session.snapshot().clone();
+        let mut navigator = Navigator::new(&snapshot);
+        navigator.handle_key(
+            KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE),
+            &snapshot,
+        );
+        for character in "Review".chars() {
+            navigator.handle_key(
+                KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE),
+                &snapshot,
+            );
+        }
+
+        assert_eq!(
+            navigator.selected(&snapshot),
+            Some(Target::Workspace {
+                space_id: "space-1".into(),
+                id: workspace_id,
+            })
+        );
     }
 
     #[test]
