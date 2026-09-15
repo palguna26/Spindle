@@ -95,7 +95,7 @@ Tabs can also be automated with `spindle tab list`, `create [label]`,
 `get <id>`, `focus <id>`, `rename <id> <label>`, and `close <id>`.
 
 Panes can be automated with `spindle pane list [--workspace <id>]`, `current [<id>]`, `get <id>`,
-`focus <id>` or `focus --direction left|right|up|down`, `rename <id> <label>`, `stop <id>`, `restart <id>`, `zoom <id>`,
+`focus <id>` or `focus --direction left|right|up|down`, `rename <id> <label>`, `stop <id>`, `restart <id>`, `zoom [<id>] [--toggle|--on|--off]`,
 `close <id>`, `send-text <id> <text>`, `send-keys <id> <key>...`,
 `run <id> <command>`, `read <id> [--source visible|recent] [--lines N]`, `swap <source> <target>`,
 `wait-output <id> --match TEXT [--timeout MS] [--lines N]`,
