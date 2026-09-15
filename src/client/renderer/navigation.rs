@@ -11,6 +11,7 @@ use super::layout::{pane_rectangles, split_handles};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickTarget {
     GlobalMenu,
+    NewWorkspace,
     SidebarToggle,
     ToggleAgentSort,
     SidebarScroll(usize),
@@ -79,6 +80,9 @@ pub fn hit_test_with_sidebar_scroll_and_sort(
     let main = super::layout::main_areas_with_sidebar(area, sidebar_collapsed);
     if contains(main.sidebar, x, y) {
         if y == main.sidebar.bottom().saturating_sub(1) {
+            if !sidebar_collapsed && x > main.sidebar.x && x < main.sidebar.x.saturating_add(6) {
+                return Some(ClickTarget::NewWorkspace);
+            }
             if !sidebar_collapsed
                 && x >= main.sidebar.right().saturating_sub(7)
                 && x < main.sidebar.right().saturating_sub(2)
@@ -624,6 +628,16 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
             cell.set_fg(Color::Cyan);
         }
         if !collapsed && area.width >= 9 {
+            let label_x = area.x.saturating_add(1);
+            for (offset, character) in "new".chars().enumerate() {
+                if let Some(cell) = frame
+                    .buffer_mut()
+                    .cell_mut((label_x.saturating_add(offset as u16), y))
+                {
+                    cell.set_symbol(&character.to_string());
+                    cell.set_fg(Color::DarkGray);
+                }
+            }
             let label_x = area.right().saturating_sub(7);
             for (offset, character) in "menu".chars().enumerate() {
                 if let Some(cell) = frame
@@ -1347,6 +1361,22 @@ mod tests {
                 right_click(main.panes.x + 2, main.panes.y + 2)
             ),
             Some(ClickTarget::Pane("pane-1".into()))
+        );
+    }
+
+    #[test]
+    fn sidebar_footer_targets_new_workspace_and_global_menu() {
+        let snapshot = sample_snapshot();
+        let area = Rect::new(0, 0, 100, 30);
+        let sidebar = main_areas(area).sidebar;
+        let footer_y = sidebar.bottom() - 1;
+        assert_eq!(
+            hit_test(&snapshot, area, click(sidebar.x + 1, footer_y)),
+            Some(ClickTarget::NewWorkspace)
+        );
+        assert_eq!(
+            hit_test(&snapshot, area, click(sidebar.right() - 4, footer_y)),
+            Some(ClickTarget::GlobalMenu)
         );
     }
 

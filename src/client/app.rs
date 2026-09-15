@@ -1539,6 +1539,9 @@ fn handle_mouse(
     };
     match target {
         renderer::ClickTarget::GlobalMenu => {}
+        renderer::ClickTarget::NewWorkspace => {
+            create_workspace_from_current_directory(client, terminal_size)?;
+        }
         renderer::ClickTarget::SidebarToggle => {
             mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
             mouse_state.selection = None;

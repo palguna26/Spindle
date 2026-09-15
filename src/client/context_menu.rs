@@ -50,6 +50,7 @@ impl ContextMenu {
             ClickTarget::Pane(id) => ContextMenuTarget::Pane(id),
             ClickTarget::SidebarToggle
             | ClickTarget::GlobalMenu
+            | ClickTarget::NewWorkspace
             | ClickTarget::ToggleAgentSort
             | ClickTarget::SidebarScroll(_)
             | ClickTarget::Space(_)

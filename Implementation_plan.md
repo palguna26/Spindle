@@ -161,6 +161,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Add in-app help that explains both keyboard shortcuts and mouse controls.
 - [x] Add Herdr's sidebar `menu` launcher with a modal menu for help, the
   command palette, config reload, and detach actions.
+- [x] Add Herdr's clickable sidebar `new` control for creating and focusing a
+  workspace from the current project directory.
 - [x] Ctrl-click visible `http://` and `https://` URLs in panes to open them;
   use terminal display columns for hit testing and trim sentence punctuation.
 - [ ] Add the full Herdr plugin system. OSC 8 hyperlink metadata is now tracked
