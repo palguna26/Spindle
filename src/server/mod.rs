@@ -102,6 +102,27 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     #[cfg(windows)]
     let accept_next = || transport::accept(&address);
     let startup_hooks_started = Arc::new(AtomicBool::new(false));
+    let event_session = Arc::clone(&session);
+    let event_stopping = Arc::clone(&stopping);
+    let event_endpoint = address.clone();
+    thread::spawn(move || {
+        let mut sequence = 0;
+        while !event_stopping.load(Ordering::Acquire) {
+            let (events, snapshot, latest) = {
+                let mut session = event_session.lock().expect("session lock poisoned");
+                (
+                    session.events_since(sequence),
+                    session.snapshot().clone(),
+                    session.snapshot().event_sequence,
+                )
+            };
+            for event in events {
+                plugins::run_event_hook(&event, &snapshot, &event_endpoint);
+            }
+            sequence = latest;
+            thread::sleep(std::time::Duration::from_millis(100));
+        }
+    });
 
     while !stopping.load(Ordering::Acquire) {
         let stream = accept_next()?;

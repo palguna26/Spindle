@@ -3,6 +3,7 @@ use std::path::Path;
 use std::process::Stdio;
 
 use crate::plugin::{self, Manifest};
+use crate::protocol::Event;
 use crate::server::session::SessionSnapshot;
 
 pub(super) fn run_startup_hooks(snapshot: &SessionSnapshot, endpoint: &str) {
@@ -35,6 +36,94 @@ pub(super) fn run_startup_hooks(snapshot: &SessionSnapshot, endpoint: &str) {
             }
         }
     }
+}
+
+pub(super) fn run_event_hook(
+    event: &Event<serde_json::Value>,
+    snapshot: &SessionSnapshot,
+    endpoint: &str,
+) {
+    if event.event != "pane_status"
+        || event
+            .payload
+            .get("status")
+            .and_then(|status| status.get("Running"))
+            .is_some()
+    {
+        return;
+    }
+    let Ok(plugins) = plugin::installed() else {
+        return;
+    };
+    for (registration, manifest) in plugins {
+        if !registration.enabled
+            || !manifest.enabled
+            || !plugin::supports_windows(manifest.platforms.as_deref())
+        {
+            continue;
+        }
+        for (index, hook) in manifest.events.iter().enumerate() {
+            if hook.on != "pane.exited" || !plugin::supports_windows(hook.platforms.as_deref()) {
+                continue;
+            }
+            if let Err(error) = launch_event(
+                &manifest,
+                &registration.path,
+                hook.command.as_slice(),
+                event,
+                snapshot,
+                endpoint,
+            ) {
+                eprintln!(
+                    "Spindle plugin event hook {}.{} failed: {error}",
+                    manifest.id,
+                    index + 1
+                );
+            }
+        }
+    }
+}
+
+fn launch_event(
+    manifest: &Manifest,
+    root: &Path,
+    argv: &[String],
+    event: &Event<serde_json::Value>,
+    snapshot: &SessionSnapshot,
+    endpoint: &str,
+) -> std::io::Result<()> {
+    let Some(program) = argv.first() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "plugin event command is empty",
+        ));
+    };
+    let (config_dir, state_dir) = plugin::ensure_user_dirs(&manifest.id)?;
+    let mut context =
+        serde_json::from_str::<serde_json::Value>(&startup_context(&manifest.id, snapshot)?)
+            .map_err(std::io::Error::other)?;
+    context["source"] = serde_json::json!("event");
+    context["event"] = serde_json::json!(event.event);
+    context["event_payload"] = event.payload.clone();
+    let context = context.to_string();
+    let args = argv.iter().skip(1).cloned().collect::<Vec<_>>();
+    let child = crate::plugin_command::command_for_argv_in_dir(program, &args, root)
+        .envs(startup_environment(
+            &manifest.id,
+            root,
+            &config_dir,
+            &state_dir,
+            &context,
+            endpoint,
+        ))
+        .env("SPINDLE_PLUGIN_EVENT", "pane.exited")
+        .env("HERDR_PLUGIN_EVENT", "pane.exited")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let _ = plugin::record_launch(&manifest.id, "event", "pane.exited", child.id());
+    Ok(())
 }
 
 fn launch_startup(
