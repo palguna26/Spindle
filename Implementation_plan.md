@@ -184,6 +184,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   best-effort enriches plugin context from the active server snapshot with
   workspace, tab, and focused-pane identity/cwd, and exports Herdr-compatible
   context environment variables;
+- [x] Route keyboard input to an open plugin popup before the background pane,
+  and make the normal close-pane binding close that popup first, matching
+  Herdr's popup input ownership.
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior. Tests now cover pane edge hits, captured drags outside
   pane bounds, event-mode routing, and right-click passthrough; existing tests

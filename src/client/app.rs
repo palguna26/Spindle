@@ -777,7 +777,7 @@ fn event_loop(
             && key.modifiers.is_empty()
             && matches!(key.code, KeyCode::PageUp | KeyCode::PageDown)
         {
-            if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+            if let Some(pane_id) = input_pane_id(&snapshot) {
                 if let Some(pane) = snapshot.panes.iter().find(|pane| pane.pane_id == pane_id) {
                     if pane.plain_page_keys_use_host_scrollback() {
                         let lines = usize::from(pane.rows.saturating_sub(1).max(1));
@@ -894,7 +894,19 @@ fn event_loop(
                 );
             }
             Action::ClosePane => {
-                if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+                if let Some(pane_id) = snapshot.popup_pane_id.as_deref() {
+                    record_action_error(
+                        &mut action_error,
+                        "close popup",
+                        request_action(
+                            client,
+                            "keyboard-close-popup",
+                            "close_popup",
+                            json!({ "pane_id": pane_id }),
+                            "close popup",
+                        ),
+                    );
+                } else if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
                     let result = request_action(
                         client,
                         "keyboard-close-pane",
@@ -1187,7 +1199,7 @@ fn event_loop(
                 }
             }
             Action::Send(code) => {
-                if let Some(ref pane_id) = snapshot.focused_pane_id {
+                if let Some(pane_id) = input_pane_id(&snapshot) {
                     if let Some(bytes) = key_code_bytes(code) {
                         let _ = client.interactive_request(
                             "input",
@@ -2971,6 +2983,13 @@ fn create_workspace_from_current_directory(
     ensure_active_default_pane(client, terminal_size)
 }
 
+fn input_pane_id(snapshot: &SessionSnapshot) -> Option<&str> {
+    snapshot
+        .popup_pane_id
+        .as_deref()
+        .or(snapshot.focused_pane_id.as_deref())
+}
+
 fn startup_error_message(error: ClientError) -> String {
     match error {
         ClientError::Io(error) => error.to_string(),
@@ -3117,7 +3136,7 @@ mod tests {
     use super::{
         active_tab_id, active_workspace, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
         adjust_scrollback_offset, apply_scrollback_views, current_snapshot,
-        ensure_active_default_pane, indexed_workspace_selection, key_code_bytes,
+        ensure_active_default_pane, indexed_workspace_selection, input_pane_id, key_code_bytes,
         move_workspace_selection, page_key_bytes, pane_mouse_target, pane_size,
         reconnect_requires_reattach, record_action_error, renderer, require_server_success,
         should_forward_pane_mouse, snapshot_has_focused_pane, startup_error_action,
@@ -3198,6 +3217,16 @@ mod tests {
         assert_eq!(page_key_bytes(KeyCode::PageDown), Some(b"\x1b[6~".to_vec()));
         assert_eq!(pane_size((120, 40)), (90, 36));
         assert_eq!(pane_size((0, 0)), (1, 1));
+    }
+
+    #[test]
+    fn popup_gets_keyboard_input_before_background_focus() {
+        let mut snapshot = Session::default().snapshot().clone();
+        snapshot.focused_pane_id = Some("background".into());
+        snapshot.popup_pane_id = Some("popup".into());
+        assert_eq!(input_pane_id(&snapshot), Some("popup"));
+        snapshot.popup_pane_id = None;
+        assert_eq!(input_pane_id(&snapshot), Some("background"));
     }
 
     #[test]
