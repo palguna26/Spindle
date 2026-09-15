@@ -81,8 +81,9 @@ Tabs can also be automated with `spindle tab list`, `create [label]`,
 
 Panes can be automated with `spindle pane list`, `current`, `get <id>`,
 `focus <id>`, `rename <id> <label>`, `stop <id>`, `restart <id>`, `zoom <id>`,
-and `close <id>`. Pane listing is scoped to the active tab, matching the
-server's current focus scope.
+`close <id>`, `send-text <id> <text>`, `send-keys <id> <key>...`,
+`split <horizontal|vertical>`, and `resize <id> <delta>`. Pane listing and
+mutations use the active tab's current server focus scope.
 
 ## Keybindings
 

@@ -15,6 +15,24 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         [command, id] if command == "restart" => pane_mutation(project, "restart_pane", id),
         [command, id] if command == "zoom" => pane_mutation(project, "toggle_pane_zoom", id),
         [command, id] if command == "close" => pane_mutation(project, "close_pane", id),
+        [command, id, text @ ..] if command == "send-text" && !text.is_empty() => {
+            let text = text.join(" ");
+            pane_send_input(project, id, text.as_bytes())
+        }
+        [command, id, keys @ ..] if command == "send-keys" && !keys.is_empty() => pane_send_input(
+            project,
+            id,
+            &keys
+                .iter()
+                .map(|key| key_bytes(key))
+                .collect::<io::Result<Vec<_>>>()?
+                .concat(),
+        ),
+        [command, direction] if command == "split" => pane_split(project, direction, None),
+        [command, direction, command_args @ ..] if command == "split" => {
+            pane_split(project, direction, Some(command_args))
+        }
+        [command, id, delta] if command == "resize" => pane_resize(project, id, delta),
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -23,7 +41,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close>",
+                "usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|split|resize>",
             ))
         }
     }
@@ -176,8 +194,100 @@ fn pane_mutation_with_payload(
     Ok(())
 }
 
+fn pane_send_input(project: &Project, id: &str, bytes: &[u8]) -> io::Result<()> {
+    pane_mutation_with_payload(
+        project,
+        "send_input",
+        serde_json::json!({ "pane_id": id, "bytes": bytes }),
+    )
+}
+
+fn key_bytes(key: &str) -> io::Result<Vec<u8>> {
+    let bytes = match key.to_ascii_lowercase().as_str() {
+        "enter" | "return" => vec![b'\r'],
+        "tab" => vec![b'\t'],
+        "backspace" | "bs" => vec![8],
+        "escape" | "esc" => vec![27],
+        "left" => b"\x1b[D".to_vec(),
+        "right" => b"\x1b[C".to_vec(),
+        "up" => b"\x1b[A".to_vec(),
+        "down" => b"\x1b[B".to_vec(),
+        value if value.starts_with("ctrl-") && value.len() == 6 => {
+            let byte = value.as_bytes()[5];
+            if !byte.is_ascii_lowercase() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("invalid key: {key}"),
+                ));
+            }
+            vec![byte - b'a' + 1]
+        }
+        value if value.chars().count() == 1 => value.as_bytes().to_vec(),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unsupported key: {key}"),
+            ))
+        }
+    };
+    Ok(bytes)
+}
+
+fn pane_split(
+    project: &Project,
+    direction: &str,
+    command_args: Option<&[String]>,
+) -> io::Result<()> {
+    if !matches!(direction, "horizontal" | "vertical") {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "split direction must be horizontal or vertical",
+        ));
+    }
+    let (command, args) = match command_args {
+        Some(args) if !args.is_empty() => (args[0].clone(), args[1..].to_vec()),
+        _ => (
+            "powershell.exe".into(),
+            vec!["-NoLogo".into(), "-NoProfile".into()],
+        ),
+    };
+    let cwd = std::env::current_dir()?.to_string_lossy().into_owned();
+    pane_mutation_with_payload(
+        project,
+        "split_pane",
+        serde_json::json!({
+            "direction": direction,
+            "command": command,
+            "args": args,
+            "cwd": cwd,
+            "cols": 80,
+            "rows": 24
+        }),
+    )
+}
+
+fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
+    let delta = raw_delta.parse::<f32>().map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid resize amount: {raw_delta}"),
+        )
+    })?;
+    if !delta.is_finite() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "resize amount must be finite",
+        ));
+    }
+    pane_mutation_with_payload(
+        project,
+        "resize_pane",
+        serde_json::json!({ "pane_id": id, "delta": delta }),
+    )
+}
+
 fn print_help() {
-    println!("Usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close>");
+    println!("Usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|split|resize>");
     println!("  list             list panes in the active tab");
     println!("  current          show the focused pane");
     println!("  get <id>         show a pane as JSON");
@@ -187,6 +297,10 @@ fn print_help() {
     println!("  restart <id>     restart a pane process");
     println!("  zoom <id>        toggle pane zoom");
     println!("  close <id>       close a pane");
+    println!("  send-text <id> <text>  send text to a pane");
+    println!("  send-keys <id> <key>...  send keys (Enter, arrows, ctrl-x)");
+    println!("  split <direction> [command args...]  split with a new pane");
+    println!("  resize <id> <delta>  resize the pane layout by a ratio delta");
 }
 
 #[cfg(test)]
