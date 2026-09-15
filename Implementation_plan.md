@@ -162,7 +162,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   `plugin action list/invoke`, `plugin config-dir`, local manifest pane opening
   (`split`, `tab`, `zoomed`), and plugin pane focus/close are now available,
   with plugin config/state/context variables; shallow GitHub install is now
-  available, with bounded plugin launch logs; popup panes remain.
+  available, with bounded plugin launch logs and Windows platform filtering;
+  popup panes remain.
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior. Tests now cover pane edge hits, captured drags outside
   pane bounds, event-mode routing, and right-click passthrough; existing tests

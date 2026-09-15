@@ -155,6 +155,8 @@ a trusted local plugin directory (or its manifest) with:
 
 The directory must contain a `herdr-plugin.toml` manifest with an `id`,
 `[[actions]]`, and `[[link_handlers]]`. The link is global for the current user.
+Use `platforms = ["windows"]` on the manifest, action, pane, or link handler
+to restrict it to Windows; unsupported entries are skipped.
 The matching action command runs without a shell, from the plugin directory,
 with plugin id/root and clicked-URL environment variables set. Use
 `spindle plugin list [--plugin ID] [--json]`, `enable`, `disable`, or `unlink` to manage it. `unlink`
