@@ -80,12 +80,12 @@ impl Keymap {
             let Some(action) = action_name(name) else {
                 continue;
             };
-            keymap.bindings.retain(|binding| binding.action != action);
             let parsed: Vec<_> = values
                 .iter()
                 .filter_map(|value| parse_binding(value))
                 .collect();
             if !parsed.is_empty() {
+                keymap.bindings.retain(|binding| binding.action != action);
                 keymap
                     .bindings
                     .extend(parsed.into_iter().map(|(code, modifiers, prefix)| Binding {
@@ -499,6 +499,21 @@ mod tests {
         );
         assert_eq!(
             keymap.action(true, KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE)),
+            Action::NewTab
+        );
+    }
+
+    #[test]
+    fn invalid_configured_binding_keeps_the_default() {
+        let keymap = Keymap::from_config(&Config {
+            bindings: BTreeMap::from([(
+                String::from("new_tab"),
+                vec![String::from("prefix+not-a-key")],
+            )]),
+            ..Config::default()
+        });
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
             Action::NewTab
         );
     }
