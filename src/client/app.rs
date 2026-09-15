@@ -3060,6 +3060,9 @@ fn scrollback_text(pane: &crate::server::session::PaneView) -> String {
 
 fn key_code_bytes(key: KeyEvent) -> Option<Vec<u8>> {
     let modifiers = key.modifiers;
+    if let Some(bytes) = modified_special_key_bytes(key.code, modifiers) {
+        return Some(bytes);
+    }
     if modifiers.contains(KeyModifiers::CONTROL) {
         if let KeyCode::Char(character) = key.code {
             let character = character.to_ascii_lowercase();
@@ -3076,12 +3079,6 @@ fn key_code_bytes(key: KeyEvent) -> Option<Vec<u8>> {
             return Some(vec![byte]);
         }
     }
-    let modified =
-        modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT | KeyModifiers::CONTROL);
-    let modifier = 1
-        + u8::from(modifiers.contains(KeyModifiers::SHIFT))
-        + 2 * u8::from(modifiers.contains(KeyModifiers::ALT))
-        + 4 * u8::from(modifiers.contains(KeyModifiers::CONTROL));
     match key.code {
         KeyCode::Char(character) => {
             let mut bytes = Vec::new();
@@ -3097,39 +3094,81 @@ fn key_code_bytes(key: KeyEvent) -> Option<Vec<u8>> {
             Some(bytes)
         }
         KeyCode::Enter => Some(vec![b'\r']),
-        KeyCode::Backspace => Some(vec![if modifiers.contains(KeyModifiers::ALT) {
-            27
+        KeyCode::Backspace => Some(if modifiers.contains(KeyModifiers::ALT) {
+            vec![27, 127]
         } else {
-            8
-        }]),
+            vec![127]
+        }),
         KeyCode::Tab => Some(if modifiers.contains(KeyModifiers::SHIFT) {
             b"\x1b[Z".to_vec()
         } else {
             vec![b'\t']
         }),
+        KeyCode::BackTab => Some(b"\x1b[Z".to_vec()),
         KeyCode::Esc => Some(vec![27]),
-        KeyCode::Left => Some(if modified {
-            format!("\x1b[1;{modifier}D").into_bytes()
-        } else {
-            b"\x1b[D".to_vec()
-        }),
-        KeyCode::Right => Some(if modified {
-            format!("\x1b[1;{modifier}C").into_bytes()
-        } else {
-            b"\x1b[C".to_vec()
-        }),
-        KeyCode::Up => Some(if modified {
-            format!("\x1b[1;{modifier}A").into_bytes()
-        } else {
-            b"\x1b[A".to_vec()
-        }),
-        KeyCode::Down => Some(if modified {
-            format!("\x1b[1;{modifier}B").into_bytes()
-        } else {
-            b"\x1b[B".to_vec()
-        }),
+        KeyCode::Left => Some(b"\x1b[D".to_vec()),
+        KeyCode::Right => Some(b"\x1b[C".to_vec()),
+        KeyCode::Up => Some(b"\x1b[A".to_vec()),
+        KeyCode::Down => Some(b"\x1b[B".to_vec()),
+        KeyCode::Home => Some(b"\x1b[H".to_vec()),
+        KeyCode::End => Some(b"\x1b[F".to_vec()),
+        KeyCode::Insert => Some(b"\x1b[2~".to_vec()),
+        KeyCode::Delete => Some(b"\x1b[3~".to_vec()),
+        KeyCode::PageUp => Some(b"\x1b[5~".to_vec()),
+        KeyCode::PageDown => Some(b"\x1b[6~".to_vec()),
+        KeyCode::F(n @ 1..=12) => Some(plain_function_key_bytes(n)),
         _ => None,
     }
+}
+
+fn plain_function_key_bytes(n: u8) -> Vec<u8> {
+    match n {
+        1 => b"\x1bOP".to_vec(),
+        2 => b"\x1bOQ".to_vec(),
+        3 => b"\x1bOR".to_vec(),
+        4 => b"\x1bOS".to_vec(),
+        5 => b"\x1b[15~".to_vec(),
+        6 => b"\x1b[17~".to_vec(),
+        7 => b"\x1b[18~".to_vec(),
+        8 => b"\x1b[19~".to_vec(),
+        9 => b"\x1b[20~".to_vec(),
+        10 => b"\x1b[21~".to_vec(),
+        11 => b"\x1b[23~".to_vec(),
+        12 => b"\x1b[24~".to_vec(),
+        _ => Vec::new(),
+    }
+}
+
+fn modified_special_key_bytes(code: KeyCode, modifiers: KeyModifiers) -> Option<Vec<u8>> {
+    if !modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT | KeyModifiers::CONTROL) {
+        return None;
+    }
+    let modifier = 1
+        + u8::from(modifiers.contains(KeyModifiers::SHIFT))
+        + 2 * u8::from(modifiers.contains(KeyModifiers::ALT))
+        + 4 * u8::from(modifiers.contains(KeyModifiers::CONTROL));
+    let bytes = match code {
+        KeyCode::Up => format!("\x1b[1;{modifier}A").into_bytes(),
+        KeyCode::Down => format!("\x1b[1;{modifier}B").into_bytes(),
+        KeyCode::Right => format!("\x1b[1;{modifier}C").into_bytes(),
+        KeyCode::Left => format!("\x1b[1;{modifier}D").into_bytes(),
+        KeyCode::Home => format!("\x1b[1;{modifier}H").into_bytes(),
+        KeyCode::End => format!("\x1b[1;{modifier}F").into_bytes(),
+        KeyCode::Insert => format!("\x1b[2;{modifier}~").into_bytes(),
+        KeyCode::Delete => format!("\x1b[3;{modifier}~").into_bytes(),
+        KeyCode::PageUp => format!("\x1b[5;{modifier}~").into_bytes(),
+        KeyCode::PageDown => format!("\x1b[6;{modifier}~").into_bytes(),
+        KeyCode::F(1) => format!("\x1b[1;{modifier}P").into_bytes(),
+        KeyCode::F(2) => format!("\x1b[1;{modifier}Q").into_bytes(),
+        KeyCode::F(3) => format!("\x1b[1;{modifier}R").into_bytes(),
+        KeyCode::F(4) => format!("\x1b[1;{modifier}S").into_bytes(),
+        KeyCode::F(n @ 5..=12) => {
+            let code = [0, 0, 0, 0, 0, 15, 17, 18, 19, 20, 21, 23, 24][n as usize];
+            format!("\x1b[{code};{modifier}~").into_bytes()
+        }
+        _ => return None,
+    };
+    Some(bytes)
 }
 
 fn page_key_bytes(code: KeyCode) -> Option<Vec<u8>> {
@@ -3291,6 +3330,14 @@ mod tests {
         assert_eq!(
             key_code_bytes(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL)),
             Some(b"\x1b[1;5D".to_vec())
+        );
+        assert_eq!(
+            key_code_bytes(KeyEvent::new(KeyCode::Home, KeyModifiers::SHIFT)),
+            Some(b"\x1b[1;2H".to_vec())
+        );
+        assert_eq!(
+            key_code_bytes(KeyEvent::new(KeyCode::F(5), KeyModifiers::ALT)),
+            Some(b"\x1b[15;3~".to_vec())
         );
         assert_eq!(page_key_bytes(KeyCode::PageUp), Some(b"\x1b[5~".to_vec()));
         assert_eq!(page_key_bytes(KeyCode::PageDown), Some(b"\x1b[6~".to_vec()));

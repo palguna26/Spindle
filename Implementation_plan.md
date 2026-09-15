@@ -279,6 +279,8 @@ approved design changes it.
 - [x] Preserve terminal key modifiers in fallback input. Ctrl-C and modified
   cursor keys now reach the PTY as control/CSI sequences instead of losing
   their modifiers.
+- [x] Extend fallback input encoding to Herdr's modified Home/End, Insert/
+  Delete, Page, and function-key CSI sequences, plus plain special keys.
 - [x] Keep client orchestration categorized like Herdr's shell modules; startup
   failure actions now live in `src/client/startup.rs` instead of the main event
   loop module.
