@@ -45,16 +45,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
             pane_split(project, direction, Some(command_args))
         }
         [command, id, delta] if command == "resize" => pane_resize(project, id, delta),
-        [command, id] if command == "read" => pane_read(project, id, None),
-        [command, id, flag, lines] if command == "read" && flag == "--lines" => {
-            let lines = lines.parse::<usize>().map_err(|_| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("invalid line count: {lines}"),
-                )
-            })?;
-            pane_read(project, id, Some(lines))
-        }
+        [command, args @ ..] if command == "read" => pane_read_command(project, args),
         [command, source, target] if command == "swap" => pane_mutation_with_payload(
             project,
             "swap_panes",
@@ -208,7 +199,63 @@ fn pane_get(project: &Project, id: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn pane_read(project: &Project, id: &str, lines: Option<usize>) -> io::Result<()> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadSource {
+    Visible,
+    Recent,
+}
+
+struct ReadOptions {
+    source: ReadSource,
+    lines: Option<usize>,
+}
+
+fn pane_read_command(project: &Project, args: &[String]) -> io::Result<()> {
+    let Some(id) = args.first() else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: spindle pane read <id> [--source visible|recent] [--lines N]",
+        ));
+    };
+    let options = parse_read_options(&args[1..]).map_err(io::Error::other)?;
+    pane_read(project, id, options)
+}
+
+fn parse_read_options(args: &[String]) -> Result<ReadOptions, String> {
+    let mut source = ReadSource::Visible;
+    let mut lines = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--source" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --source".into());
+                };
+                source = match value.as_str() {
+                    "visible" => ReadSource::Visible,
+                    "recent" => ReadSource::Recent,
+                    _ => return Err(format!("invalid read source: {value}")),
+                };
+                index += 2;
+            }
+            "--lines" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --lines".into());
+                };
+                lines = Some(
+                    value
+                        .parse::<usize>()
+                        .map_err(|_| format!("invalid line count: {value}"))?,
+                );
+                index += 2;
+            }
+            other => return Err(format!("unknown option: {other}")),
+        }
+    }
+    Ok(ReadOptions { source, lines })
+}
+
+fn pane_read(project: &Project, id: &str, options: ReadOptions) -> io::Result<()> {
     let snapshot = get_snapshot(project)?;
     let pane = snapshot
         .panes
@@ -220,13 +267,18 @@ fn pane_read(project: &Project, id: &str, lines: Option<usize>) -> io::Result<()
                 format!("pane '{id}' does not exist"),
             )
         })?;
-    if let Some(lines) = lines {
-        let content: Vec<_> = pane.screen.lines().collect();
+    let output = match options.source {
+        ReadSource::Visible => pane.screen.clone(),
+        ReadSource::Recent if pane.scrollback.is_empty() => pane.screen.clone(),
+        ReadSource::Recent => String::from_utf8_lossy(&pane.scrollback).into_owned(),
+    };
+    if let Some(lines) = options.lines {
+        let content: Vec<_> = output.lines().collect();
         let start = content.len().saturating_sub(lines);
         println!("{}", content[start..].join("\n"));
     } else {
-        print!("{}", pane.screen);
-        if !pane.screen.ends_with('\n') {
+        print!("{output}");
+        if !output.ends_with('\n') {
             println!();
         }
     }
@@ -470,7 +522,7 @@ fn print_help() {
     println!("  send-text <id> <text>  send text to a pane");
     println!("  send-keys <id> <key>...  send keys (Enter, arrows, ctrl-x)");
     println!("  run <id> <command>  send a command followed by Enter");
-    println!("  read <id> [--lines N]  read visible pane output");
+    println!("  read <id> [--source visible|recent] [--lines N]  read pane output");
     println!("  swap <source> <target>  swap two panes");
     println!("  wait-output <id> --match TEXT [--timeout MS] [--lines N]  wait for output");
     println!("  split <direction> [command args...]  split with a new pane");
@@ -479,7 +531,7 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_pane_list, parse_focus_direction};
+    use super::{format_pane_list, parse_focus_direction, parse_read_options, ReadSource};
     use crate::server::session::Session;
     use std::time::Duration;
 
@@ -513,5 +565,19 @@ mod tests {
         assert_eq!(parse_focus_direction(&args), Ok("right"));
         let invalid = vec!["--direction".into(), "diagonal".into()];
         assert!(parse_focus_direction(&invalid).is_err());
+    }
+
+    #[test]
+    fn read_options_support_herdr_visible_and_recent_sources() {
+        let args = vec![
+            "--source".into(),
+            "recent".into(),
+            "--lines".into(),
+            "4".into(),
+        ];
+        let options = parse_read_options(&args).unwrap();
+        assert_eq!(options.source, ReadSource::Recent);
+        assert_eq!(options.lines, Some(4));
+        assert!(parse_read_options(&["--source".into(), "detection".into()]).is_err());
     }
 }
