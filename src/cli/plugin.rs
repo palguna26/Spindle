@@ -543,17 +543,16 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     if super::ping_server(&project).is_err() {
         super::start_server(&project)?;
     }
-    let previous_focus = if no_focus {
-        let snapshot = super::send_command(&project, "get_snapshot")?;
-        snapshot
-            .payload
-            .as_ref()
-            .and_then(|payload| payload.get("focused_pane_id"))
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned)
-    } else {
-        None
-    };
+    let snapshot = super::send_command(&project, "get_snapshot")?
+        .payload
+        .and_then(|payload| serde_json::from_value::<SessionSnapshot>(payload).ok());
+    let previous_focus = no_focus
+        .then(|| {
+            snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.focused_pane_id.clone())
+        })
+        .flatten();
     if placement == "tab" {
         super::send_command_with_payload(
             &project,
@@ -562,7 +561,16 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         )?;
     }
     let (config_dir, state_dir) = crate::plugin::ensure_user_dirs(&manifest.id)?;
-    let context = serde_json::json!({ "source": "pane", "plugin_id": manifest.id, "entrypoint_id": pane.id, "placement": placement }).to_string();
+    let mut context = serde_json::json!({
+        "source": "pane",
+        "plugin_id": manifest.id,
+        "entrypoint_id": pane.id,
+        "placement": placement,
+    });
+    if let Some(snapshot) = snapshot.as_ref() {
+        add_session_context(&mut context, snapshot);
+    }
+    let context = context.to_string();
     let mut env = serde_json::Map::new();
     for value in caller_env {
         let Some((key, value)) = value.split_once('=') else {
@@ -592,12 +600,35 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         ("SPINDLE_PLUGIN_STATE_DIR", state_dir.display().to_string()),
         ("SPINDLE_PLUGIN_ENTRYPOINT_ID", pane.id.clone()),
         ("SPINDLE_PLUGIN_CONTEXT_JSON", context.clone()),
+        (
+            "SPINDLE_PANE_ID",
+            context_field(&context, "focused_pane_id"),
+        ),
+        (
+            "SPINDLE_WORKSPACE_ID",
+            context_field(&context, "workspace_id"),
+        ),
+        ("SPINDLE_TAB_ID", context_field(&context, "tab_id")),
+        (
+            "SPINDLE_PLUGIN_CWD",
+            context_field(&context, "focused_pane_cwd"),
+        ),
         ("HERDR_PLUGIN_ID", manifest.id.clone()),
         ("HERDR_PLUGIN_ROOT", registration.path.display().to_string()),
         ("HERDR_PLUGIN_CONFIG_DIR", config_dir.display().to_string()),
         ("HERDR_PLUGIN_STATE_DIR", state_dir.display().to_string()),
         ("HERDR_PLUGIN_ENTRYPOINT_ID", pane.id.clone()),
-        ("HERDR_PLUGIN_CONTEXT_JSON", context),
+        ("HERDR_PLUGIN_CONTEXT_JSON", context.clone()),
+        ("HERDR_PANE_ID", context_field(&context, "focused_pane_id")),
+        (
+            "HERDR_WORKSPACE_ID",
+            context_field(&context, "workspace_id"),
+        ),
+        ("HERDR_TAB_ID", context_field(&context, "tab_id")),
+        (
+            "HERDR_PLUGIN_CWD",
+            context_field(&context, "focused_pane_cwd"),
+        ),
     ] {
         env.insert(key.into(), value.into());
     }
