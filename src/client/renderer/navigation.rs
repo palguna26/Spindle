@@ -827,6 +827,9 @@ mod tests {
             active_space_id: "space-1".into(),
             panes: Vec::new(),
             focused_pane_id: Some("pane-2".into()),
+            popup_pane_id: None,
+            popup_width: 0,
+            popup_height: 0,
             event_sequence: 0,
         }
     }
