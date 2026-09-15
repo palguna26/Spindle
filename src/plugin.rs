@@ -49,6 +49,10 @@ pub(crate) struct Registration {
     pub(crate) id: String,
     pub(crate) path: PathBuf,
     pub(crate) enabled: bool,
+    #[serde(default)]
+    pub(crate) managed: bool,
+    #[serde(default)]
+    pub(crate) source: Option<String>,
 }
 
 fn default_enabled() -> bool {

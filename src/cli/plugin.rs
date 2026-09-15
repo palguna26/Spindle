@@ -5,6 +5,7 @@ use std::process::Command;
 pub(crate) fn run(args: &[String]) -> io::Result<()> {
     match args.first().map(String::as_str) {
         Some("install") => install(&args[1..]),
+        Some("uninstall") => uninstall(&args[1..]),
         Some("link") => link(&args[1..]),
         Some("unlink") => unlink(&args[1..]),
         Some("list") => list(&args[1..]),
@@ -131,6 +132,8 @@ fn install(args: &[String]) -> io::Result<()> {
         id: manifest.id.clone(),
         path,
         enabled: true,
+        managed: true,
+        source: Some(source.clone()),
     });
     if let Err(error) = crate::plugin::write_registry(&registrations) {
         let _ = std::fs::remove_dir_all(&checkout);
@@ -160,9 +163,49 @@ fn link(args: &[String]) -> io::Result<()> {
         id: manifest.id.clone(),
         path,
         enabled: args.get(1).is_none(),
+        managed: false,
+        source: None,
     });
     crate::plugin::write_registry(&registrations)?;
     println!("linked plugin {}", manifest.id);
+    Ok(())
+}
+
+fn uninstall(args: &[String]) -> io::Result<()> {
+    let Some(target) = args.first() else {
+        return usage("usage: spindle plugin uninstall <plugin_id|owner/repo[/subdir]>");
+    };
+    if args.len() != 1 {
+        return usage("usage: spindle plugin uninstall <plugin_id|owner/repo[/subdir]>");
+    }
+    let mut registrations = crate::plugin::read_registry()?;
+    let Some(index) = registrations.iter().position(|registration| {
+        registration.managed
+            && (registration.id == *target || registration.source.as_deref() == Some(target))
+    }) else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("managed plugin '{target}' is not installed"),
+        ));
+    };
+    let registration = registrations[index].clone();
+    let source = registration
+        .source
+        .as_deref()
+        .ok_or_else(|| io::Error::other("managed plugin has no source"))?;
+    let checkout = crate::plugin::managed_path(source)?;
+    let managed_root = crate::plugin::root()?.join("github").canonicalize()?;
+    let checkout_absolute = checkout.canonicalize()?;
+    if checkout_absolute.parent() != Some(managed_root.as_path()) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "refusing to remove a path outside managed plugin storage",
+        ));
+    }
+    std::fs::remove_dir_all(&checkout_absolute)?;
+    registrations.remove(index);
+    crate::plugin::write_registry(&registrations)?;
+    println!("uninstalled plugin {}", registration.id);
     Ok(())
 }
 
@@ -569,9 +612,10 @@ fn usage(message: &str) -> io::Result<()> {
 
 fn help() {
     println!(
-        "Usage: spindle plugin <install|link|unlink|list|enable|disable|config-dir|action|pane>"
+        "Usage: spindle plugin <install|uninstall|link|unlink|list|enable|disable|config-dir|action|pane>"
     );
     println!("  install owner/repo[/subdir] [--ref REF] --yes  install from GitHub");
+    println!("  uninstall <id|owner/repo[/subdir]>            remove a managed plugin");
     println!("  link <path> [--disabled]  register a local Herdr manifest");
     println!("  list                      list linked plugins");
     println!("  unlink <plugin_id>        unregister a plugin, leaving files alone");
