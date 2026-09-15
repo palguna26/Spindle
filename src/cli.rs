@@ -215,7 +215,7 @@ fn print_help() {
         "  completion <shell>  generate shell completions (bash, elvish, fish, powershell, zsh)"
     );
     println!("  api schema [--json|--output PATH]  inspect the control API schema");
-    println!("  plugin link/list/unlink/enable/disable/action  manage local plugins");
+    println!("  plugin link/list/unlink/enable/disable/action/pane  manage local plugins");
     println!("  workspace list  list workspaces in the current project session");
     println!("  workspace get <id>  show a workspace by ID");
     println!("  workspace focus <id>  focus a workspace by ID");
