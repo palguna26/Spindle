@@ -722,6 +722,10 @@ impl Session {
         });
         space.active_workspace_id = Some(workspace_id.clone());
         self.sync_focus_to_active_tab()?;
+        self.record_event(
+            "workspace_created",
+            serde_json::json!({ "workspace_id": workspace_id }),
+        );
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
@@ -2474,6 +2478,7 @@ mod tests {
     fn workspace_ids_are_unique_across_spaces_and_focus_targets_the_created_workspace() {
         let mut session = Session::default();
         session.create_space("Other project".into()).unwrap();
+        let sequence = session.snapshot.event_sequence;
         let created = session.create_workspace("Feature".into()).unwrap();
         let workspace_id = created["workspace_id"].as_str().unwrap();
 
@@ -2483,6 +2488,9 @@ mod tests {
             workspace_id
         );
         assert_eq!(session.snapshot.active_space_id, "space-2");
+        assert!(session.events_since(sequence).iter().any(|event| {
+            event.event == "workspace_created" && event.payload["workspace_id"] == workspace_id
+        }));
     }
 
     #[test]

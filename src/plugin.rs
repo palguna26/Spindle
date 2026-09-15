@@ -254,7 +254,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
             root.join("herdr-plugin.toml"),
-            "id = \"example.build\"\nname = \"Build\"\nversion = \"1\"\n[[build]]\ncommand = [\"tool\", \"run\"]\nplatforms = [\"windows\"]\n[[startup]]\ncommand = [\"tool\", \"start\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"pane.exited\"\ncommand = [\"tool\", \"exited\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"pane.focused\"\ncommand = [\"tool\", \"focused\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"pane.closed\"\ncommand = [\"tool\", \"closed\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"tab.created\"\ncommand = [\"tool\", \"tab-created\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"tab.focused\"\ncommand = [\"tool\", \"tab-focused\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"tab.closed\"\ncommand = [\"tool\", \"tab-closed\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"workspace.focused\"\ncommand = [\"tool\", \"workspace-focused\"]\nplatforms = [\"windows\"]\n",
+            "id = \"example.build\"\nname = \"Build\"\nversion = \"1\"\n[[build]]\ncommand = [\"tool\", \"run\"]\nplatforms = [\"windows\"]\n[[startup]]\ncommand = [\"tool\", \"start\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"pane.exited\"\ncommand = [\"tool\", \"exited\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"pane.focused\"\ncommand = [\"tool\", \"focused\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"pane.closed\"\ncommand = [\"tool\", \"closed\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"tab.created\"\ncommand = [\"tool\", \"tab-created\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"tab.focused\"\ncommand = [\"tool\", \"tab-focused\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"tab.closed\"\ncommand = [\"tool\", \"tab-closed\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"workspace.focused\"\ncommand = [\"tool\", \"workspace-focused\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"workspace.created\"\ncommand = [\"tool\", \"workspace-created\"]\nplatforms = [\"windows\"]\n",
         )
         .unwrap();
         let manifest = load(&root).unwrap();
@@ -270,6 +270,7 @@ mod tests {
         assert_eq!(manifest.events[4].on, "tab.focused");
         assert_eq!(manifest.events[5].on, "tab.closed");
         assert_eq!(manifest.events[6].on, "workspace.focused");
+        assert_eq!(manifest.events[7].on, "workspace.created");
         let _ = std::fs::remove_dir_all(root);
     }
 }
