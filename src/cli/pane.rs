@@ -522,14 +522,64 @@ struct ReadOptions {
 }
 
 fn pane_read_command(project: &Project, args: &[String]) -> io::Result<()> {
-    let Some(id) = args.first() else {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "usage: spindle pane read <id> [--source visible|recent] [--lines N]",
-        ));
-    };
-    let options = parse_read_options(&args[1..]).map_err(io::Error::other)?;
-    pane_read(project, id, options)
+    let env_pane_id = std::env::var("SPINDLE_PANE_ID")
+        .ok()
+        .or_else(|| std::env::var("HERDR_PANE_ID").ok());
+    let (requested_id, options) =
+        parse_read_target(args, env_pane_id.as_deref()).map_err(io::Error::other)?;
+    let snapshot = get_snapshot(project)?;
+    let id = requested_id
+        .or_else(|| snapshot.focused_pane_id.clone())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no focused pane"))?;
+    pane_read(project, &id, options)
+}
+
+fn parse_read_target(
+    args: &[String],
+    env_pane_id: Option<&str>,
+) -> Result<(Option<String>, ReadOptions), String> {
+    let mut pane_id = None;
+    let mut options = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--pane" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --pane".into());
+                };
+                pane_id = Some(value.clone());
+                index += 2;
+            }
+            "--current" => {
+                pane_id = Some(
+                    env_pane_id
+                        .map(str::to_owned)
+                        .ok_or("--current requires SPINDLE_PANE_ID or HERDR_PANE_ID")?,
+                );
+                index += 1;
+            }
+            value if !value.starts_with('-') && pane_id.is_none() => {
+                pane_id = Some(value.to_owned());
+                index += 1;
+            }
+            value if !value.starts_with('-') => {
+                return Err(format!("unexpected argument: {value}"));
+            }
+            _ => {
+                options.push(args[index].clone());
+                if matches!(args[index].as_str(), "--source" | "--lines") {
+                    let Some(value) = args.get(index + 1) else {
+                        return Err(format!("missing value for {}", args[index]));
+                    };
+                    options.push(value.clone());
+                    index += 2;
+                } else {
+                    return Err(format!("unknown option: {}", args[index]));
+                }
+            }
+        }
+    }
+    Ok((pane_id, parse_read_options(&options)?))
 }
 
 fn parse_read_options(args: &[String]) -> Result<ReadOptions, String> {
@@ -849,8 +899,8 @@ fn print_help() {
 mod tests {
     use super::{
         format_pane_list, parse_current_pane, parse_focus_direction, parse_list_workspace,
-        parse_move_options, parse_read_options, parse_swap_options, parse_zoom_options,
-        MoveOptions, ReadSource, SwapOptions, ZoomMode,
+        parse_move_options, parse_read_options, parse_read_target, parse_swap_options,
+        parse_zoom_options, MoveOptions, ReadSource, SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -921,6 +971,28 @@ mod tests {
             Ok(Some("pane-1".into()))
         );
         assert!(parse_current_pane(&["pane-2".into()], None).is_err());
+    }
+
+    #[test]
+    fn read_accepts_herdr_selector_forms() {
+        let (pane_id, options) = parse_read_target(
+            &[
+                "--source".into(),
+                "recent".into(),
+                "--pane".into(),
+                "pane-2".into(),
+            ],
+            Some("pane-1"),
+        )
+        .unwrap();
+        assert_eq!(pane_id, Some("pane-2".into()));
+        assert_eq!(options.source, ReadSource::Recent);
+        assert_eq!(
+            parse_read_target(&["--current".into()], Some("pane-1"))
+                .unwrap()
+                .0,
+            Some("pane-1".into())
+        );
     }
 
     #[test]

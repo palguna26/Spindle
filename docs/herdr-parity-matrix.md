@@ -4,6 +4,7 @@ Reference: `C:\Users\Palguna\.opensrc\repos\github.com\herdrdev\herdr\master`.
 
 CLI parity now includes Herdr's `pane current --pane ID` and `--current`
 selector forms, with `SPINDLE_PANE_ID`/`HERDR_PANE_ID` environment fallback.
+The same selectors now work with `spindle pane read`.
 
 Latest CLI parity: `spindle pane move <id>` preserves the live pane process
 while moving it to a new tab or an existing tab in the active workspace. The
