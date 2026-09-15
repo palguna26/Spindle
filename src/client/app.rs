@@ -935,6 +935,15 @@ fn event_loop(
                     );
                 }
             }
+            Action::EditScrollback => {
+                let result = snapshot
+                    .focused_pane_id
+                    .as_deref()
+                    .and_then(|pane_id| snapshot.panes.iter().find(|pane| pane.pane_id == pane_id))
+                    .ok_or_else(|| ClientError::Server("no focused pane".into()))
+                    .and_then(open_scrollback_in_editor);
+                record_action_error(&mut action_error, "edit scrollback", result);
+            }
             Action::FocusNext => {
                 record_action_error(
                     &mut action_error,
@@ -2546,6 +2555,15 @@ fn execute_action(
             }
             Ok(false)
         }
+        Action::EditScrollback => {
+            let pane = snapshot
+                .focused_pane_id
+                .as_deref()
+                .and_then(|pane_id| snapshot.panes.iter().find(|pane| pane.pane_id == pane_id))
+                .ok_or_else(|| ClientError::Server("no focused pane".into()))?;
+            open_scrollback_in_editor(pane)?;
+            Ok(false)
+        }
         Action::FocusNext => {
             request_action(
                 client,
@@ -2879,6 +2897,59 @@ fn startup_error_message(error: ClientError) -> String {
         ClientError::Json(error) => error.to_string(),
         ClientError::Server(message) => message,
     }
+}
+
+fn open_scrollback_in_editor(pane: &crate::server::session::PaneView) -> Result<(), ClientError> {
+    let path = std::env::temp_dir().join(format!(
+        "spindle-{}-{}-scrollback.txt",
+        std::process::id(),
+        pane.pane_id
+    ));
+    std::fs::write(&path, scrollback_text(pane)).map_err(ClientError::Io)?;
+
+    let editor = std::env::var("VISUAL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var("EDITOR")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .unwrap_or_else(|| {
+            if cfg!(windows) {
+                "notepad.exe".into()
+            } else {
+                "vi".into()
+            }
+        });
+    let mut parts = editor.split_whitespace();
+    let command = parts.next().unwrap_or("notepad.exe");
+    let mut process = std::process::Command::new(command);
+    process.args(parts).arg(&path);
+    process.spawn().map(|_| ()).map_err(ClientError::Io)
+}
+
+fn scrollback_text(pane: &crate::server::session::PaneView) -> String {
+    if pane.scrollback.is_empty() {
+        return pane.screen.clone();
+    }
+
+    let mut parser = vt100::Parser::new(pane.rows.max(1), pane.cols.max(1), MAX_SCROLLBACK_ROWS);
+    parser.process(&pane.scrollback);
+    let screen = parser.screen_mut();
+    screen.set_scrollback(usize::MAX);
+    let history_rows = screen.scrollback();
+    let mut lines = Vec::with_capacity(history_rows + usize::from(pane.rows));
+
+    for offset in (1..=history_rows).rev() {
+        screen.set_scrollback(offset);
+        if let Some(line) = screen.rows(0, pane.cols.max(1)).next() {
+            lines.push(line);
+        }
+    }
+    screen.set_scrollback(0);
+    lines.extend(screen.rows(0, pane.cols.max(1)));
+    lines.join("\n")
 }
 
 fn key_code_bytes(code: KeyCode) -> Option<Vec<u8>> {

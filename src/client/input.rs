@@ -21,6 +21,7 @@ pub enum Action {
     SwitchWorkspaceByName,
     StopFocusedPane,
     RestartFocusedPane,
+    EditScrollback,
     RenameFocusedPane,
     ClearPaneName,
     RenameActiveTab,
@@ -172,6 +173,7 @@ fn default_bindings() -> Vec<Binding> {
         (Action::SessionNavigator, 'g', false),
         (Action::StopFocusedPane, 's', false),
         (Action::RestartFocusedPane, 'r', false),
+        (Action::EditScrollback, 'e', false),
         (Action::FocusNext, 'o', false),
         (Action::FocusPrevious, 'O', true),
         (Action::FocusLeft, 'h', false),
@@ -301,6 +303,7 @@ fn action_name(name: &str) -> Option<Action> {
         "session_navigator" => Action::SessionNavigator,
         "stop_pane" => Action::StopFocusedPane,
         "restart_pane" => Action::RestartFocusedPane,
+        "edit_scrollback" => Action::EditScrollback,
         "focus_next" => Action::FocusNext,
         "focus_previous" => Action::FocusPrevious,
         "focus_left" => Action::FocusLeft,
@@ -524,6 +527,10 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE)),
             Action::RestartFocusedPane
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE)),
+            Action::EditScrollback
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE)),
