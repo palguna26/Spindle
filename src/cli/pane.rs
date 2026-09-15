@@ -46,11 +46,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         }
         [command, id, delta] if command == "resize" => pane_resize(project, id, delta),
         [command, args @ ..] if command == "read" => pane_read_command(project, args),
-        [command, source, target] if command == "swap" => pane_mutation_with_payload(
-            project,
-            "swap_panes",
-            serde_json::json!({ "source_pane_id": source, "target_pane_id": target }),
-        ),
+        [command, args @ ..] if command == "swap" => pane_swap_command(project, args),
         [command, id, options @ ..] if command == "wait-output" => {
             pane_wait_output(project, id, options)
         }
@@ -287,6 +283,78 @@ fn active_tab_zoomed(snapshot: &SessionSnapshot) -> bool {
                 .find(|tab| tab.tab_id == workspace.active_tab_id)
         })
         .is_some_and(|tab| tab.zoomed)
+}
+
+fn pane_swap_command(project: &Project, args: &[String]) -> io::Result<()> {
+    let options = parse_swap_options(args).map_err(io::Error::other)?;
+    let snapshot = get_snapshot(project)?;
+    let (source, target) = match options {
+        SwapOptions::Explicit { source, target } => (source, target),
+        SwapOptions::Direction(direction) => {
+            let source = snapshot
+                .focused_pane_id
+                .clone()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no focused pane"))?;
+            let target = active_layout(&snapshot)
+                .and_then(|layout| layout.directional_pane(&source, direction))
+                .map(str::to_owned)
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::NotFound, "no pane in that direction")
+                })?;
+            (source, target)
+        }
+    };
+    pane_mutation_with_payload(
+        project,
+        "swap_panes",
+        serde_json::json!({ "source_pane_id": source, "target_pane_id": target }),
+    )
+}
+
+enum SwapOptions {
+    Direction(crate::model::layout::FocusDirection),
+    Explicit { source: String, target: String },
+}
+
+fn parse_swap_options(args: &[String]) -> Result<SwapOptions, String> {
+    if args.len() == 2 && args[0] == "--direction" {
+        let direction = match args[1].as_str() {
+            "left" => crate::model::layout::FocusDirection::Left,
+            "right" => crate::model::layout::FocusDirection::Right,
+            "up" => crate::model::layout::FocusDirection::Up,
+            "down" => crate::model::layout::FocusDirection::Down,
+            value => return Err(format!("invalid swap direction: {value}")),
+        };
+        return Ok(SwapOptions::Direction(direction));
+    }
+    if args.len() == 4 && args[0] == "--source-pane" && args[2] == "--target-pane" {
+        if args[1].is_empty() || args[3].is_empty() {
+            return Err("pane IDs cannot be empty".into());
+        }
+        return Ok(SwapOptions::Explicit {
+            source: args[1].clone(),
+            target: args[3].clone(),
+        });
+    }
+    Err("usage: spindle pane swap --direction left|right|up|down | --source-pane ID --target-pane ID".into())
+}
+
+fn active_layout(snapshot: &SessionSnapshot) -> Option<&crate::model::layout::LayoutNode> {
+    let space = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)?;
+    let workspace_id = space.active_workspace_id.as_deref()?;
+    let workspace = space
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.workspace_id == workspace_id)?;
+    workspace
+        .tabs
+        .iter()
+        .find(|tab| tab.tab_id == workspace.active_tab_id)?
+        .layout
+        .as_ref()
 }
 
 fn parse_focus_direction(args: &[String]) -> Result<&str, String> {
@@ -642,7 +710,9 @@ fn print_help() {
     println!("  send-keys <id> <key>...  send keys (Enter, arrows, ctrl-x)");
     println!("  run <id> <command>  send a command followed by Enter");
     println!("  read <id> [--source visible|recent] [--lines N]  read pane output");
-    println!("  swap <source> <target>  swap two panes");
+    println!(
+        "  swap --direction left|right|up|down | --source-pane ID --target-pane ID  swap panes"
+    );
     println!("  wait-output <id> --match TEXT [--timeout MS] [--lines N]  wait for output");
     println!("  split <direction> [command args...]  split with a new pane");
     println!("  resize <id> <delta>  resize the pane layout by a ratio delta");
@@ -652,7 +722,7 @@ fn print_help() {
 mod tests {
     use super::{
         format_pane_list, parse_focus_direction, parse_list_workspace, parse_read_options,
-        parse_zoom_options, ReadSource, ZoomMode,
+        parse_swap_options, parse_zoom_options, ReadSource, SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -721,5 +791,24 @@ mod tests {
         );
         assert_eq!(parse_zoom_options(&[]), Ok((None, ZoomMode::Toggle)));
         assert!(parse_zoom_options(&["--on".into(), "--off".into()]).is_err());
+    }
+
+    #[test]
+    fn swap_options_support_directional_and_explicit_forms() {
+        assert!(matches!(
+            parse_swap_options(&["--direction".into(), "left".into()]),
+            Ok(SwapOptions::Direction(
+                crate::model::layout::FocusDirection::Left
+            ))
+        ));
+        assert!(matches!(
+            parse_swap_options(&[
+                "--source-pane".into(),
+                "pane-1".into(),
+                "--target-pane".into(),
+                "pane-2".into(),
+            ]),
+            Ok(SwapOptions::Explicit { .. })
+        ));
     }
 }
