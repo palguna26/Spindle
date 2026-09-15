@@ -14,6 +14,7 @@ const APP_DIR: &str = "Spindle";
 mod api;
 mod completion;
 mod pane;
+mod plugin;
 mod tab;
 mod workspace;
 
@@ -45,6 +46,9 @@ pub fn run() -> io::Result<()> {
         }
         "api" => {
             return api::run(&env::args().skip(2).collect::<Vec<_>>());
+        }
+        "plugin" => {
+            return plugin::run(&env::args().skip(2).collect::<Vec<_>>());
         }
         _ => {}
     }
@@ -211,6 +215,7 @@ fn print_help() {
         "  completion <shell>  generate shell completions (bash, elvish, fish, powershell, zsh)"
     );
     println!("  api schema [--json|--output PATH]  inspect the control API schema");
+    println!("  plugin link/list/unlink/enable/disable  manage local plugins");
     println!("  workspace list  list workspaces in the current project session");
     println!("  workspace get <id>  show a workspace by ID");
     println!("  workspace focus <id>  focus a workspace by ID");

@@ -6,6 +6,7 @@ pub mod logging;
 pub mod model;
 pub mod pane;
 pub mod persist;
+mod plugin;
 pub mod protocol;
 pub mod pty;
 pub mod server;
