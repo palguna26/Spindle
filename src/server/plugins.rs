@@ -43,31 +43,8 @@ pub(super) fn run_event_hook(
     snapshot: &SessionSnapshot,
     endpoint: &str,
 ) {
-    let hook_name = match event.event.as_str() {
-        "pane_created" => "pane.created",
-        "tab_created" => "tab.created",
-        "tab_closed" => "tab.closed",
-        "tab_focused" => "tab.focused",
-        "workspace_focused" => "workspace.focused",
-        "workspace_created" => "workspace.created",
-        "workspace_renamed" => "workspace.renamed",
-        "workspace_closed" => "workspace.closed",
-        "pane_focused" => "pane.focused",
-        "pane_moved" => "pane.moved",
-        "layout_updated" => "layout.updated",
-        "pane_agent_detected" => "pane.agent_detected",
-        "pane_agent_status_changed" => "pane.agent_status_changed",
-        "pane_closed" => "pane.closed",
-        "pane_status"
-            if event
-                .payload
-                .get("status")
-                .and_then(|status| status.get("Running"))
-                .is_none() =>
-        {
-            "pane.exited"
-        }
-        _ => return,
+    let Some(hook_name) = event_hook_name(event) else {
+        return;
     };
     let Ok(plugins) = plugin::installed() else {
         return;
@@ -100,6 +77,37 @@ pub(super) fn run_event_hook(
             }
         }
     }
+}
+
+fn event_hook_name(event: &Event<serde_json::Value>) -> Option<&'static str> {
+    match event.event.as_str() {
+        "pane_created" => "pane.created",
+        "tab_created" => "tab.created",
+        "tab_closed" => "tab.closed",
+        "tab_renamed" => "tab.renamed",
+        "tab_focused" => "tab.focused",
+        "workspace_focused" => "workspace.focused",
+        "workspace_created" => "workspace.created",
+        "workspace_renamed" => "workspace.renamed",
+        "workspace_closed" => "workspace.closed",
+        "pane_focused" => "pane.focused",
+        "pane_moved" => "pane.moved",
+        "layout_updated" => "layout.updated",
+        "pane_agent_detected" => "pane.agent_detected",
+        "pane_agent_status_changed" => "pane.agent_status_changed",
+        "pane_closed" => "pane.closed",
+        "pane_status"
+            if event
+                .payload
+                .get("status")
+                .and_then(|status| status.get("Running"))
+                .is_none() =>
+        {
+            "pane.exited"
+        }
+        _ => return None,
+    }
+    .into()
 }
 
 fn launch_event(
@@ -276,7 +284,8 @@ fn startup_context(plugin_id: &str, snapshot: &SessionSnapshot) -> std::io::Resu
 
 #[cfg(test)]
 mod tests {
-    use super::{startup_context, startup_environment};
+    use super::{event_hook_name, startup_context, startup_environment};
+    use crate::protocol::Event;
     use std::path::Path;
 
     #[test]
@@ -299,5 +308,16 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&context).unwrap()["source"],
             "startup"
         );
+    }
+
+    #[test]
+    fn tab_rename_events_use_herdr_hook_names() {
+        let event = Event {
+            version: crate::protocol::PROTOCOL_VERSION,
+            sequence: 1,
+            event: "tab_renamed".into(),
+            payload: serde_json::json!({ "tab_id": "tab-1" }),
+        };
+        assert_eq!(event_hook_name(&event), Some("tab.renamed"));
     }
 }
