@@ -13,6 +13,8 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         {
             pane_focus(project, options)
         }
+        [command, options @ ..] if command == "neighbor" => pane_neighbor(project, options),
+        [command, options @ ..] if command == "edges" => pane_edges(project, options),
         [command, id] if command == "focus" => pane_mutation(project, "focus_pane", id),
         [command, id, label @ ..] if command == "rename" && !label.is_empty() => {
             pane_rename(project, id, &label.join(" "))
@@ -213,6 +215,144 @@ fn pane_focus(project: &Project, args: &[String]) -> io::Result<()> {
         "focus_direction",
         serde_json::json!({ "direction": direction }),
     )
+}
+
+fn pane_neighbor(project: &Project, args: &[String]) -> io::Result<()> {
+    let (pane_id, direction) = parse_neighbor_options(args).map_err(io::Error::other)?;
+    let snapshot = get_snapshot(project)?;
+    let pane_id = pane_id
+        .or_else(|| snapshot.focused_pane_id.clone())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no focused pane"))?;
+    let layout = active_layout(&snapshot)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "active tab has no layout"))?;
+    if !layout.pane_ids().contains(&pane_id.as_str()) {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pane '{pane_id}' is not in the active tab"),
+        ));
+    }
+    let neighbor_pane_id = layout
+        .directional_pane(&pane_id, direction)
+        .map(str::to_owned);
+    println!(
+        "{}",
+        serde_json::json!({
+            "pane_id": pane_id,
+            "direction": direction_name(direction),
+            "neighbor_pane_id": neighbor_pane_id,
+        })
+    );
+    Ok(())
+}
+
+fn pane_edges(project: &Project, args: &[String]) -> io::Result<()> {
+    let pane_id = parse_optional_pane_selector(args).map_err(io::Error::other)?;
+    let snapshot = get_snapshot(project)?;
+    let pane_id = pane_id
+        .or_else(|| snapshot.focused_pane_id.clone())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no focused pane"))?;
+    let layout = active_layout(&snapshot)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "active tab has no layout"))?;
+    if !layout.pane_ids().contains(&pane_id.as_str()) {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pane '{pane_id}' is not in the active tab"),
+        ));
+    }
+    println!(
+        "{}",
+        serde_json::json!({
+            "pane_id": pane_id,
+            "left": layout.directional_pane(&pane_id, crate::model::layout::FocusDirection::Left).is_none(),
+            "right": layout.directional_pane(&pane_id, crate::model::layout::FocusDirection::Right).is_none(),
+            "up": layout.directional_pane(&pane_id, crate::model::layout::FocusDirection::Up).is_none(),
+            "down": layout.directional_pane(&pane_id, crate::model::layout::FocusDirection::Down).is_none(),
+        })
+    );
+    Ok(())
+}
+
+fn parse_neighbor_options(
+    args: &[String],
+) -> Result<(Option<String>, crate::model::layout::FocusDirection), String> {
+    let mut pane_id = None;
+    let mut direction = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--pane" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --pane".into());
+                };
+                if value.is_empty() {
+                    return Err("pane ID cannot be empty".into());
+                }
+                pane_id = Some(value.clone());
+                index += 2;
+            }
+            "--current" => {
+                pane_id = None;
+                index += 1;
+            }
+            "--direction" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --direction".into());
+                };
+                direction = Some(parse_layout_direction(value)?);
+                index += 2;
+            }
+            other => return Err(format!("unknown option: {other}")),
+        }
+    }
+    let direction = direction.ok_or(
+        "usage: spindle pane neighbor --direction left|right|up|down [--pane ID|--current]",
+    )?;
+    Ok((pane_id, direction))
+}
+
+fn parse_optional_pane_selector(args: &[String]) -> Result<Option<String>, String> {
+    let env_pane_id = std::env::var("SPINDLE_PANE_ID")
+        .ok()
+        .or_else(|| std::env::var("HERDR_PANE_ID").ok())
+        .filter(|value| !value.trim().is_empty());
+    let mut pane_id = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--pane" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --pane".into());
+                };
+                pane_id = Some(value.clone());
+                index += 2;
+            }
+            "--current" => {
+                pane_id = env_pane_id.clone();
+                index += 1;
+            }
+            other => return Err(format!("unknown option: {other}")),
+        }
+    }
+    Ok(pane_id.or(env_pane_id))
+}
+
+fn parse_layout_direction(value: &str) -> Result<crate::model::layout::FocusDirection, String> {
+    match value {
+        "left" => Ok(crate::model::layout::FocusDirection::Left),
+        "right" => Ok(crate::model::layout::FocusDirection::Right),
+        "up" => Ok(crate::model::layout::FocusDirection::Up),
+        "down" => Ok(crate::model::layout::FocusDirection::Down),
+        _ => Err(format!("invalid pane direction: {value}")),
+    }
+}
+
+fn direction_name(direction: crate::model::layout::FocusDirection) -> &'static str {
+    match direction {
+        crate::model::layout::FocusDirection::Left => "left",
+        crate::model::layout::FocusDirection::Right => "right",
+        crate::model::layout::FocusDirection::Up => "up",
+        crate::model::layout::FocusDirection::Down => "down",
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -928,12 +1068,14 @@ fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|wait-output|split|resize>");
+    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|wait-output|split|resize>");
     println!("  list [--workspace <id>]  list panes in a workspace");
     println!("  current [<id>]   show the focused or requested pane");
     println!("  get <id>         show a pane as JSON");
     println!("  focus <id>       focus a pane");
     println!("  focus --direction left|right|up|down  focus a neighboring pane");
+    println!("  neighbor --direction left|right|up|down [--pane ID|--current]  inspect a neighboring pane");
+    println!("  edges [--pane ID|--current]  inspect pane layout edges");
     println!("  rename <id> ...  rename a pane");
     println!("  stop <id>        stop a pane process");
     println!("  restart <id>     restart a pane process");
@@ -957,10 +1099,10 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        all_pane_ids, format_pane_list, parse_current_pane, parse_focus_direction,
-        parse_list_workspace, parse_move_options, parse_read_options, parse_read_target,
-        parse_swap_options, parse_zoom_options, strip_ansi, MoveOptions, ReadFormat, ReadSource,
-        SwapOptions, ZoomMode,
+        all_pane_ids, direction_name, format_pane_list, parse_current_pane, parse_focus_direction,
+        parse_layout_direction, parse_list_workspace, parse_move_options, parse_neighbor_options,
+        parse_read_options, parse_read_target, parse_swap_options, parse_zoom_options, strip_ansi,
+        MoveOptions, ReadFormat, ReadSource, SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -1014,6 +1156,24 @@ mod tests {
         assert_eq!(parse_focus_direction(&args), Ok("right"));
         let invalid = vec!["--direction".into(), "diagonal".into()];
         assert!(parse_focus_direction(&invalid).is_err());
+    }
+
+    #[test]
+    fn pane_neighbor_options_match_herdr_shape() {
+        let (pane_id, direction) = parse_neighbor_options(&[
+            "--direction".into(),
+            "right".into(),
+            "--pane".into(),
+            "pane-2".into(),
+        ])
+        .unwrap();
+        assert_eq!(pane_id, Some("pane-2".into()));
+        assert_eq!(direction_name(direction), "right");
+        assert!(parse_neighbor_options(&["--direction".into(), "diagonal".into()]).is_err());
+        assert_eq!(
+            parse_layout_direction("up"),
+            Ok(crate::model::layout::FocusDirection::Up)
+        );
     }
 
     #[test]

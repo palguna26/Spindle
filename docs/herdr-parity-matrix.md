@@ -10,6 +10,8 @@ narrows the result to one workspace.
 Pane reads default to Herdr's `recent` source and accept explicit `visible`
 or `recent` selection, plus the `recent-unwrapped`, `detection`, `--format`,
 `--ansi`, and `--raw` forms; text output strips terminal escape sequences.
+`pane neighbor` and `pane edges` now expose directional layout metadata with
+Herdr-style pane selectors.
 
 Latest CLI parity: `spindle pane move <id>` preserves the live pane process
 while moving it to a new tab or an existing tab in the active workspace. The
