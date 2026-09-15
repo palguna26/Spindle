@@ -82,35 +82,12 @@ fn get_snapshot(project: &Project) -> io::Result<SessionSnapshot> {
     .map_err(io::Error::other)
 }
 
-fn active_pane_ids(snapshot: &SessionSnapshot) -> Vec<String> {
-    let Some(space) = snapshot
-        .spaces
+fn all_pane_ids(snapshot: &SessionSnapshot) -> Vec<String> {
+    snapshot
+        .panes
         .iter()
-        .find(|space| space.space_id == snapshot.active_space_id)
-    else {
-        return Vec::new();
-    };
-    let Some(workspace_id) = space.active_workspace_id.as_deref() else {
-        return Vec::new();
-    };
-    let Some(workspace) = space
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.workspace_id == workspace_id)
-    else {
-        return Vec::new();
-    };
-    let Some(tab) = workspace
-        .tabs
-        .iter()
-        .find(|tab| tab.tab_id == workspace.active_tab_id)
-    else {
-        return Vec::new();
-    };
-    tab.layout
-        .as_ref()
-        .map(|layout| layout.pane_ids().into_iter().map(str::to_owned).collect())
-        .unwrap_or_default()
+        .map(|pane| pane.pane_id.clone())
+        .collect()
 }
 
 fn pane_list_command(project: &Project, args: &[String]) -> io::Result<()> {
@@ -119,7 +96,7 @@ fn pane_list_command(project: &Project, args: &[String]) -> io::Result<()> {
     let pane_ids = workspace_id
         .as_deref()
         .map(|id| workspace_pane_ids(&snapshot, id))
-        .unwrap_or_else(|| active_pane_ids(&snapshot));
+        .unwrap_or_else(|| all_pane_ids(&snapshot));
     print!(
         "{}",
         format_pane_list(
@@ -898,9 +875,9 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        format_pane_list, parse_current_pane, parse_focus_direction, parse_list_workspace,
-        parse_move_options, parse_read_options, parse_read_target, parse_swap_options,
-        parse_zoom_options, MoveOptions, ReadSource, SwapOptions, ZoomMode,
+        all_pane_ids, format_pane_list, parse_current_pane, parse_focus_direction,
+        parse_list_workspace, parse_move_options, parse_read_options, parse_read_target,
+        parse_swap_options, parse_zoom_options, MoveOptions, ReadSource, SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -911,6 +888,25 @@ mod tests {
         let snapshot = session.snapshot();
         let output = format_pane_list(&snapshot.panes, &[], snapshot.focused_pane_id.as_deref());
         assert_eq!(output, "No panes.\n");
+    }
+
+    #[test]
+    fn pane_list_defaults_to_all_session_panes() {
+        let session = Session::default();
+        let mut snapshot = session.snapshot().clone();
+        snapshot.panes.extend([
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-1", "command": "powershell.exe", "args": [], "cwd": "C:/",
+                "status": "Running", "scrollback_bytes": 0
+            }))
+            .unwrap(),
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-2", "command": "powershell.exe", "args": [], "cwd": "C:/",
+                "status": "Running", "scrollback_bytes": 0
+            }))
+            .unwrap(),
+        ]);
+        assert_eq!(all_pane_ids(&snapshot), vec!["pane-1", "pane-2"]);
     }
 
     #[test]
