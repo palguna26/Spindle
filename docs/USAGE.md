@@ -95,8 +95,11 @@ Set `[notifications] delivery = "terminal"` to emit Herdr-compatible terminal
 notifications, or `"system"` to use a native Windows desktop notification.
 Set it to `"off"` to disable notifications.
 
-Tabs can also be automated with `spindle tab list`, `create [label]`,
-`get <id>`, `focus <id>`, `rename <id> <label>`, and `close <id>`.
+Tabs can also be automated with `spindle tab list`,
+`create [label] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]`,
+`get <id>`, `focus <id>`, `rename <id> <label>`, and `close <id>`. Tab
+creation starts a PowerShell pane and leaves the current tab focused by
+default, matching Herdr.
 
 Panes can be automated with `spindle pane list [--workspace <id>]`, `current [<id>]`, `get <id>`,
 `focus <id>` or `focus --direction left|right|up|down`, `rename <id> <label>`, `stop <id>`, `restart <id>`, `zoom [<id>] [--toggle|--on|--off]`,

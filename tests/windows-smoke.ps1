@@ -33,6 +33,15 @@ try {
         throw "workspace create --no-focus changed the active workspace: $workspacesAfterCreate"
     }
     Invoke-Spindle @("workspace", "close", $createdWorkspace.workspace_id)
+    $createdTab = ((& $Binary tab create "No focus tab" --cwd $PWD --env SPINDLE_TAB_SMOKE=ok) -join "`n") | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($createdTab.tab_id)) {
+        throw "tab create did not return a tab ID: $createdTab"
+    }
+    $tabsAfterCreate = (& $Binary tab list) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $tabsAfterCreate -notmatch '(?m)^\*\s+\S+\s+Main') {
+        throw "tab create changed the active tab: $tabsAfterCreate"
+    }
+    Invoke-Spindle @("tab", "close", $createdTab.tab_id)
     $workspaces = (& $Binary workspace list) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw "spindle workspace list failed" }
     if ($workspaces -notmatch '(?m)^\*\s+\S+\s+Current project\s+\[Default\]$') {
@@ -47,7 +56,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or $renamedWorkspaces -notmatch '(?m)^\*\s+workspace-1\s+Smoke test\s+\[Default\]$') {
         throw "workspace rename did not update the workspace label: $renamedWorkspaces"
     }
-    $createdTab = ((& $Binary tab create Logs) -join "`n") | ConvertFrom-Json
+    $createdTab = ((& $Binary tab create Logs --focus) -join "`n") | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($createdTab.tab_id)) {
         throw "tab create did not return a tab ID: $createdTab"
     }

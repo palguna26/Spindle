@@ -1,12 +1,12 @@
 use super::Project;
 use crate::server::session::{SessionSnapshot, TabView};
+use std::collections::BTreeMap;
 use std::io;
 
 pub(super) fn run_tab_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
         [command] if command == "list" => tab_list(project),
-        [command] if command == "create" => tab_create(project, "Main"),
-        [command, name] if command == "create" => tab_create(project, name),
+        [command, options @ ..] if command == "create" => tab_create(project, options),
         [command, id] if command == "get" => tab_get(project, id),
         [command, id] if command == "focus" => {
             send_mutation(project, "switch_tab", serde_json::json!({ "id": id }))
@@ -90,8 +90,132 @@ fn format_tab_list(workspace_id: &str, tabs: &[TabView], active_id: &str) -> Str
     output
 }
 
-fn tab_create(project: &Project, name: &str) -> io::Result<()> {
-    send_mutation(project, "create_tab", serde_json::json!({ "name": name }))
+fn tab_create(project: &Project, args: &[String]) -> io::Result<()> {
+    let mut name = "Main".to_owned();
+    let mut cwd = None;
+    let mut env = BTreeMap::new();
+    let mut focus = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--cwd" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --cwd"));
+                };
+                cwd = Some(value.clone());
+                index += 2;
+            }
+            "--env" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --env"));
+                };
+                let (key, value) = parse_env_assignment(value)?;
+                env.insert(key, value);
+                index += 2;
+            }
+            "--focus" => {
+                focus = true;
+                index += 1;
+            }
+            "--no-focus" => {
+                focus = false;
+                index += 1;
+            }
+            value if !value.starts_with('-') && name == "Main" => {
+                name = value.to_owned();
+                index += 1;
+            }
+            value if value.starts_with('-') => {
+                return Err(io::Error::other(format!("unknown option: {value}")));
+            }
+            value => return Err(io::Error::other(format!("unexpected argument: {value}"))),
+        }
+    }
+
+    let before = get_snapshot(project)?;
+    let previous_tab_id = active_tab_id(&before);
+    let response = super::send_command_with_payload(
+        project,
+        "create_tab",
+        serde_json::json!({ "name": name }),
+    )?;
+    if !response.ok {
+        return Err(io::Error::other(
+            response
+                .error
+                .map(|error| error.message)
+                .unwrap_or_else(|| "server rejected the tab create request".into()),
+        ));
+    }
+    let snapshot = get_snapshot(project)?;
+    let repository_path =
+        active_workspace(&snapshot).and_then(|workspace| workspace.repository_path.clone());
+    let pane = super::send_command_with_payload(
+        project,
+        "ensure_active_pane",
+        serde_json::json!({
+            "command": "powershell.exe",
+            "args": ["-NoLogo", "-NoProfile"],
+            "cwd": cwd.or(repository_path).or_else(|| std::env::current_dir().ok().map(|path| path.to_string_lossy().into_owned())),
+            "env": env,
+            "cols": 80,
+            "rows": 24,
+        }),
+    )?;
+    if !pane.ok {
+        return Err(io::Error::other(
+            pane.error
+                .map(|error| error.message)
+                .unwrap_or_else(|| "tab was created but its shell could not start".into()),
+        ));
+    }
+    if !focus {
+        if let Some(previous_tab_id) = previous_tab_id {
+            let restore = super::send_command_with_payload(
+                project,
+                "switch_tab",
+                serde_json::json!({ "id": previous_tab_id }),
+            )?;
+            if !restore.ok {
+                return Err(io::Error::other(
+                    "tab was created, but the previous tab could not be restored",
+                ));
+            }
+        }
+    }
+    if let Some(payload) = response.payload {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&payload).map_err(io::Error::other)?
+        );
+    }
+    Ok(())
+}
+
+fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
+    active_workspace(snapshot).map(|workspace| workspace.active_tab_id.clone())
+}
+
+fn active_workspace(snapshot: &SessionSnapshot) -> Option<&crate::server::session::WorkspaceView> {
+    let space = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)?;
+    let workspace_id = space.active_workspace_id.as_deref()?;
+    space
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.workspace_id == workspace_id)
+}
+
+fn parse_env_assignment(value: &str) -> io::Result<(String, String)> {
+    let (key, value) = value
+        .split_once('=')
+        .ok_or_else(|| io::Error::other(format!("environment must use KEY=VALUE: {value}")))?;
+    if key.is_empty() {
+        return Err(io::Error::other("environment key cannot be empty"));
+    }
+    Ok((key.to_owned(), value.to_owned()))
 }
 
 fn tab_get(project: &Project, id: &str) -> io::Result<()> {
@@ -146,9 +270,9 @@ fn send_mutation(project: &Project, operation: &str, payload: serde_json::Value)
 }
 
 fn print_help() {
-    println!("Usage: spindle tab <list|create [label]|get <id>|focus <id>|rename <id> <label>|close <id>>");
+    println!("Usage: spindle tab <list|create [label] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]|get <id>|focus <id>|rename <id> <label>|close <id>>");
     println!("  list             list tabs in the active workspace");
-    println!("  create [label]   create a tab in the active workspace");
+    println!("  create [label]   create a tab and start its PowerShell pane (--cwd, --env, --focus|--no-focus)");
     println!("  get <id>         show a tab");
     println!("  focus <id>       focus a tab in the active workspace");
     println!("  rename <id> ...  rename a tab");
@@ -157,7 +281,7 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::format_tab_list;
+    use super::{format_tab_list, parse_env_assignment};
     use crate::server::session::Session;
 
     #[test]
@@ -168,5 +292,15 @@ mod tests {
         let active = tab["tab_id"].as_str().unwrap();
         let output = format_tab_list("workspace-1", tabs, active);
         assert!(output.contains("* tab-workspace-1-1\tLogs\t[workspace-1]"));
+    }
+
+    #[test]
+    fn tab_env_assignments_match_herdr_rules() {
+        assert_eq!(
+            parse_env_assignment("SPINDLE_TAB=dev").unwrap(),
+            ("SPINDLE_TAB".into(), "dev".into())
+        );
+        assert!(parse_env_assignment("missing-separator").is_err());
+        assert!(parse_env_assignment("=empty-key").is_err());
     }
 }
