@@ -157,6 +157,64 @@ impl LayoutNode {
         }
     }
 
+    pub fn resize_pane_direction(
+        &mut self,
+        pane_id: &str,
+        direction: FocusDirection,
+        amount: f32,
+    ) -> bool {
+        let delta = match direction {
+            FocusDirection::Right | FocusDirection::Down => amount.abs(),
+            FocusDirection::Left | FocusDirection::Up => -amount.abs(),
+        };
+        self.resize_pane_direction_inner(pane_id, direction, delta)
+    }
+
+    fn resize_pane_direction_inner(
+        &mut self,
+        pane_id: &str,
+        direction: FocusDirection,
+        delta: f32,
+    ) -> bool {
+        let Self::Split {
+            direction: split_direction,
+            ratio,
+            first,
+            second,
+        } = self
+        else {
+            return false;
+        };
+        let contains_first = first.contains(pane_id);
+        let contains_second = second.contains(pane_id);
+        if !contains_first && !contains_second {
+            return false;
+        }
+        let axis_matches = matches!(
+            (split_direction, direction),
+            (
+                Direction::Horizontal,
+                FocusDirection::Left | FocusDirection::Right
+            ) | (
+                Direction::Vertical,
+                FocusDirection::Up | FocusDirection::Down
+            )
+        );
+        let child_changed = if contains_first {
+            first.resize_pane_direction_inner(pane_id, direction, delta)
+        } else {
+            second.resize_pane_direction_inner(pane_id, direction, delta)
+        };
+        if child_changed {
+            return true;
+        }
+        if axis_matches {
+            *ratio = clamp_ratio(*ratio + delta);
+            return true;
+        }
+        false
+    }
+
     pub fn set_split_ratio(&mut self, path: &[bool], ratio: f32) -> bool {
         if !ratio.is_finite() {
             return false;
@@ -330,7 +388,7 @@ pub fn clamp_ratio(ratio: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{Direction, LayoutNode};
+    use super::{Direction, FocusDirection, LayoutNode};
 
     #[test]
     fn split_clamps_ratio_and_preserves_order() {
@@ -376,6 +434,20 @@ mod tests {
                 if matches!(first.as_ref(), LayoutNode::Split { ratio, .. }
                     if (*ratio - 0.7).abs() < f32::EPSILON)
         ));
+    }
+
+    #[test]
+    fn directional_resize_uses_herdr_axis_and_sign() {
+        let mut layout = LayoutNode::pane("one").split(Direction::Horizontal, 0.5, "two");
+        assert!(layout.resize_pane_direction("one", FocusDirection::Right, 0.1));
+        assert!(
+            matches!(&layout, LayoutNode::Split { ratio, .. } if (*ratio - 0.6).abs() < f32::EPSILON)
+        );
+        assert!(layout.resize_pane_direction("one", FocusDirection::Left, 0.1));
+        assert!(
+            matches!(&layout, LayoutNode::Split { ratio, .. } if (*ratio - 0.5).abs() < f32::EPSILON)
+        );
+        assert!(!layout.resize_pane_direction("one", FocusDirection::Up, 0.1));
     }
 
     #[test]

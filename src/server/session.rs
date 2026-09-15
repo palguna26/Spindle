@@ -1415,6 +1415,41 @@ impl Session {
         Ok(serde_json::json!({ "pane_id": pane_id, "delta": delta }))
     }
 
+    pub fn resize_pane_direction(
+        &mut self,
+        amount: f32,
+        direction: crate::model::layout::FocusDirection,
+    ) -> Result<Value, String> {
+        if !amount.is_finite() {
+            return Err("resize amount must be finite".into());
+        }
+        let amount = amount.abs().min(0.5);
+        let tab = self.active_tab_mut()?;
+        let pane_id = tab
+            .focused_pane_id
+            .clone()
+            .ok_or_else(|| "no pane is focused".to_string())?;
+        let layout = tab
+            .layout
+            .as_mut()
+            .ok_or_else(|| "active tab has no layout".to_string())?;
+        if !layout.resize_pane_direction(&pane_id, direction, amount) {
+            return Err("no split in that direction".into());
+        }
+        self.record_active_layout_event();
+        let direction = match direction {
+            crate::model::layout::FocusDirection::Left => "left",
+            crate::model::layout::FocusDirection::Right => "right",
+            crate::model::layout::FocusDirection::Up => "up",
+            crate::model::layout::FocusDirection::Down => "down",
+        };
+        Ok(serde_json::json!({
+            "pane_id": pane_id,
+            "amount": amount,
+            "direction": direction,
+        }))
+    }
+
     pub fn set_split_ratio(&mut self, path: &[bool], ratio: f32) -> Result<Value, String> {
         let tab = self.active_tab_mut()?;
         let layout = tab

@@ -112,6 +112,14 @@ struct LayoutResizeRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct DirectionalResizeRequest {
+    pane_id: Option<String>,
+    direction: String,
+    #[serde(default)]
+    amount: Option<f32>,
+}
+
+#[derive(Debug, Deserialize)]
 struct SetSplitRatioRequest {
     path: Vec<bool>,
     ratio: f32,
@@ -736,6 +744,34 @@ pub(crate) fn response_for_with_interactive(
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
                 session.resize_pane(&payload.pane_id, payload.delta)
+            })
+        }
+        "resize_pane_direction" => {
+            let payload: DirectionalResizeRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let direction = match payload.direction.as_str() {
+                "left" => crate::model::layout::FocusDirection::Left,
+                "right" => crate::model::layout::FocusDirection::Right,
+                "up" => crate::model::layout::FocusDirection::Up,
+                "down" => crate::model::layout::FocusDirection::Down,
+                other => {
+                    return request_error(
+                        request.request_id,
+                        "invalid_payload",
+                        format!("unknown resize direction '{other}'"),
+                    )
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                if let Some(pane_id) = payload.pane_id.as_deref() {
+                    session.focus_pane(pane_id)?;
+                }
+                session.resize_pane_direction(payload.amount.unwrap_or(0.05), direction)
             })
         }
         "set_split_ratio" => {

@@ -212,6 +212,7 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   repeated `--env` options while retaining the legacy split form;
   split options also support Herdr's ratio, focus, and right-click controls;
   pane rename accepts Herdr's `--clear` label form;
+  pane resize accepts Herdr's directional `--amount` and pane selector form;
   popup panes now use a transient server popup slot, preserve the tiled
   background focus, render centered terminal content, accept popup placement
   from the plugin CLI, and close when the process exits. Overlay panes now

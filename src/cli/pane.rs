@@ -52,6 +52,11 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         [command, direction, command_args @ ..] if command == "split" => {
             pane_split(project, direction, Some(command_args))
         }
+        [command, options @ ..]
+            if command == "resize" && options.first().is_some_and(|arg| arg.starts_with('-')) =>
+        {
+            pane_resize_options(project, options)
+        }
         [command, id, delta] if command == "resize" => pane_resize(project, id, delta),
         [command, args @ ..] if command == "read" => pane_read_command(project, args),
         [command, args @ ..] if command == "swap" => pane_swap_command(project, args),
@@ -1390,6 +1395,54 @@ fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
     )
 }
 
+fn pane_resize_options(project: &Project, args: &[String]) -> io::Result<()> {
+    let pane_id = parse_optional_pane_selector(args).map_err(io::Error::other)?;
+    let mut direction = None;
+    let mut amount = 0.05_f32;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--pane" => index += 2,
+            "--current" => index += 1,
+            "--direction" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --direction"));
+                };
+                parse_layout_direction(value).map_err(io::Error::other)?;
+                direction = Some(value.clone());
+                index += 2;
+            }
+            "--amount" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --amount"));
+                };
+                amount = value
+                    .parse::<f32>()
+                    .map_err(|_| io::Error::other(format!("invalid amount: {value}")))?;
+                if !amount.is_finite() {
+                    return Err(io::Error::other("resize amount must be finite"));
+                }
+                index += 2;
+            }
+            other => return Err(io::Error::other(format!("unknown option: {other}"))),
+        }
+    }
+    let direction = direction.ok_or_else(|| {
+        io::Error::other(
+            "usage: spindle pane resize --direction left|right|up|down [--amount FLOAT] [--pane ID|--current]",
+        )
+    })?;
+    pane_mutation_with_payload(
+        project,
+        "resize_pane_direction",
+        serde_json::json!({
+            "pane_id": pane_id,
+            "direction": direction,
+            "amount": amount,
+        }),
+    )
+}
+
 fn print_help() {
     println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|wait-output|split|resize>");
     println!("  list [--workspace <id>]  list panes in a workspace");
@@ -1423,7 +1476,7 @@ fn print_help() {
     );
     println!("  wait-output <id> --match TEXT [--timeout MS] [--lines N]  wait for output");
     println!("  split <direction> [command args...] | [--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus|--no-focus]  split with a new pane");
-    println!("  resize <id> <delta>  resize the pane layout by a ratio delta");
+    println!("  resize <id> <delta> | --direction left|right|up|down [--amount FLOAT] [--pane ID|--current]  resize the pane layout");
 }
 
 #[cfg(test)]
