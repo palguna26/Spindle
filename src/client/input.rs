@@ -616,6 +616,8 @@ mod tests {
             command: "echo hello".into(),
             action_type: "shell".into(),
             description: None,
+            width: None,
+            height: None,
         });
         let keymap = Keymap::from_config(&config);
         assert_eq!(

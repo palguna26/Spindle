@@ -292,10 +292,11 @@ approved design changes it.
   confirmation when reload is invoked from the keyboard or global menu.
 - [x] Keep `spindle config default` aligned with the supported Settings and
   reload bindings so the starter file is discoverable and usable.
-- [x] Add Herdr-style `[[keys.command]]` detached shell commands with direct
-  or prefix key bindings, Windows `cmd.exe /d /c` execution, focused-pane
-  working-directory selection, and active workspace/tab/pane environment
-  variables.
+- [x] Add Herdr-style `[[keys.command]]` commands with direct or prefix key
+  bindings. Shell commands use Windows `cmd.exe /d /c`; pane commands use the
+  temporary overlay lifecycle and popup commands use the transient centered
+  popup. All command types receive focused-pane cwd and active
+  workspace/tab/pane environment variables.
 - [x] Add mouse navigation to the Settings overlay for section and value
   selection, with outside-click dismissal.
 - [x] Keep the normal narrow sidebar title compact so workspace controls stay

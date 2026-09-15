@@ -96,6 +96,8 @@ struct CustomCommandFile {
     #[serde(rename = "type")]
     action_type: String,
     description: Option<String>,
+    width: Option<u16>,
+    height: Option<u16>,
 }
 
 #[derive(Debug, Clone)]
@@ -104,6 +106,8 @@ pub(crate) struct CustomCommand {
     pub(crate) command: String,
     pub(crate) action_type: String,
     pub(crate) description: Option<String>,
+    pub(crate) width: Option<u16>,
+    pub(crate) height: Option<u16>,
 }
 
 #[derive(Debug, Clone)]
@@ -175,6 +179,8 @@ pub fn load_from(path: &std::path::Path) -> Config {
                 command: command.command,
                 action_type: command.action_type,
                 description: command.description,
+                width: command.width,
+                height: command.height,
             })
             .collect(),
         theme_name: file.theme.name,

@@ -2,13 +2,15 @@ use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 
+use super::ControlClient;
 use crate::config::CustomCommand;
 use crate::server::session::SessionSnapshot;
+use serde_json::json;
 
 pub(crate) fn run(
     command: &CustomCommand,
     snapshot: &SessionSnapshot,
-    endpoint: &str,
+    client: &ControlClient,
 ) -> io::Result<()> {
     if command.command.trim().is_empty() {
         return Err(io::Error::new(
@@ -16,19 +18,69 @@ pub(crate) fn run(
             "custom command is empty",
         ));
     }
-    if !command.action_type.is_empty() && command.action_type != "shell" {
-        return Err(io::Error::new(
+    match command.action_type.as_str() {
+        "" | "shell" => run_shell(command, snapshot, client.endpoint()),
+        "pane" => open_pane(command, snapshot, client, false),
+        "popup" => open_pane(command, snapshot, client, true),
+        other => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "only custom command type 'shell' is supported",
-        ));
+            format!("unsupported custom command type '{other}'"),
+        )),
     }
+}
 
+fn run_shell(
+    command: &CustomCommand,
+    snapshot: &SessionSnapshot,
+    endpoint: &str,
+) -> io::Result<()> {
     let (env, cwd) = context(snapshot, endpoint);
     let mut process = shell_command(&command.command);
     if let Some(cwd) = cwd {
         process.current_dir(cwd);
     }
     process.envs(env).spawn().map(|_| ())
+}
+
+fn open_pane(
+    command: &CustomCommand,
+    snapshot: &SessionSnapshot,
+    client: &ControlClient,
+    popup: bool,
+) -> io::Result<()> {
+    let (env, cwd) = context(snapshot, client.endpoint());
+    let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let (program, args) = pane_argv(&command.command);
+    let cols = command.width.unwrap_or(80).max(10);
+    let rows = command.height.unwrap_or(24).max(4);
+    let payload = json!({
+        "command": program,
+        "args": args,
+        "cwd": cwd.display().to_string(),
+        "env": env.into_iter().collect::<std::collections::BTreeMap<_, _>>(),
+        "cols": if popup { cols.saturating_sub(2).max(4) } else { cols },
+        "rows": if popup { rows.saturating_sub(2).max(4) } else { rows },
+        "popup": popup,
+        "overlay": !popup,
+    });
+    client
+        .interactive_request("custom-command-pane", "create_pane", payload)
+        .map(|_| ())
+        .map_err(|error| io::Error::other(format!("{error:?}")))
+}
+
+fn pane_argv(command: &str) -> (String, Vec<String>) {
+    #[cfg(windows)]
+    {
+        (
+            std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".into()),
+            vec!["/d".into(), "/c".into(), command.into()],
+        )
+    }
+    #[cfg(not(windows))]
+    {
+        ("sh".into(), vec!["-lc".into(), command.into()])
+    }
 }
 
 fn shell_command(command: &str) -> Command {

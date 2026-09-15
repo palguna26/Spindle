@@ -888,7 +888,7 @@ fn event_loop(
                 record_action_error(
                     &mut action_error,
                     command.description.as_deref().unwrap_or("custom command"),
-                    super::custom_commands::run(command, &snapshot, client.endpoint())
+                    super::custom_commands::run(command, &snapshot, client)
                         .map_err(ClientError::Io),
                 );
             }
