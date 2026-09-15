@@ -8,7 +8,8 @@ The same selectors now work with `spindle pane read`.
 `spindle pane list` now lists all session panes by default; `--workspace` still
 narrows the result to one workspace.
 Pane reads default to Herdr's `recent` source and accept explicit `visible`
-or `recent` selection.
+or `recent` selection, plus the `recent-unwrapped`, `detection`, `--format`,
+`--ansi`, and `--raw` forms; text output strips terminal escape sequences.
 
 Latest CLI parity: `spindle pane move <id>` preserves the live pane process
 while moving it to a new tab or an existing tab in the active workspace. The

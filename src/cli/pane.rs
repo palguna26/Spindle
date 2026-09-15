@@ -491,11 +491,20 @@ fn pane_get(project: &Project, id: &str) -> io::Result<()> {
 enum ReadSource {
     Visible,
     Recent,
+    RecentUnwrapped,
+    Detection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadFormat {
+    Text,
+    Ansi,
 }
 
 struct ReadOptions {
     source: ReadSource,
     lines: Option<usize>,
+    format: ReadFormat,
 }
 
 fn pane_read_command(project: &Project, args: &[String]) -> io::Result<()> {
@@ -544,12 +553,14 @@ fn parse_read_target(
             }
             _ => {
                 options.push(args[index].clone());
-                if matches!(args[index].as_str(), "--source" | "--lines") {
+                if matches!(args[index].as_str(), "--source" | "--lines" | "--format") {
                     let Some(value) = args.get(index + 1) else {
                         return Err(format!("missing value for {}", args[index]));
                     };
                     options.push(value.clone());
                     index += 2;
+                } else if matches!(args[index].as_str(), "--ansi" | "--raw") {
+                    index += 1;
                 } else {
                     return Err(format!("unknown option: {}", args[index]));
                 }
@@ -562,6 +573,7 @@ fn parse_read_target(
 fn parse_read_options(args: &[String]) -> Result<ReadOptions, String> {
     let mut source = ReadSource::Recent;
     let mut lines = None;
+    let mut format = ReadFormat::Text;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -572,6 +584,8 @@ fn parse_read_options(args: &[String]) -> Result<ReadOptions, String> {
                 source = match value.as_str() {
                     "visible" => ReadSource::Visible,
                     "recent" => ReadSource::Recent,
+                    "recent-unwrapped" => ReadSource::RecentUnwrapped,
+                    "detection" => ReadSource::Detection,
                     _ => return Err(format!("invalid read source: {value}")),
                 };
                 index += 2;
@@ -587,10 +601,29 @@ fn parse_read_options(args: &[String]) -> Result<ReadOptions, String> {
                 );
                 index += 2;
             }
+            "--format" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --format".into());
+                };
+                format = match value.as_str() {
+                    "text" => ReadFormat::Text,
+                    "ansi" => ReadFormat::Ansi,
+                    _ => return Err(format!("invalid read format: {value}")),
+                };
+                index += 2;
+            }
+            "--ansi" | "--raw" => {
+                format = ReadFormat::Ansi;
+                index += 1;
+            }
             other => return Err(format!("unknown option: {other}")),
         }
     }
-    Ok(ReadOptions { source, lines })
+    Ok(ReadOptions {
+        source,
+        lines,
+        format,
+    })
 }
 
 fn pane_read(project: &Project, id: &str, options: ReadOptions) -> io::Result<()> {
@@ -606,9 +639,17 @@ fn pane_read(project: &Project, id: &str, options: ReadOptions) -> io::Result<()
             )
         })?;
     let output = match options.source {
-        ReadSource::Visible => pane.screen.clone(),
-        ReadSource::Recent if pane.scrollback.is_empty() => pane.screen.clone(),
-        ReadSource::Recent => String::from_utf8_lossy(&pane.scrollback).into_owned(),
+        ReadSource::Visible | ReadSource::Detection => pane.screen.clone(),
+        ReadSource::Recent | ReadSource::RecentUnwrapped if pane.scrollback.is_empty() => {
+            pane.screen.clone()
+        }
+        ReadSource::Recent | ReadSource::RecentUnwrapped => {
+            String::from_utf8_lossy(&pane.scrollback).into_owned()
+        }
+    };
+    let output = match options.format {
+        ReadFormat::Text => strip_ansi(&output),
+        ReadFormat::Ansi => output,
     };
     if let Some(lines) = options.lines {
         let content: Vec<_> = output.lines().collect();
@@ -666,6 +707,47 @@ fn pane_wait_output(project: &Project, id: &str, args: &[String]) -> io::Result<
         }
         std::thread::sleep(Duration::from_millis(50));
     }
+}
+
+fn strip_ansi(text: &str) -> String {
+    let mut output = Vec::with_capacity(text.len());
+    let mut bytes = text.bytes();
+    while let Some(byte) = bytes.next() {
+        if byte != 0x1b {
+            output.push(byte);
+            continue;
+        }
+        let Some(next) = bytes.next() else {
+            break;
+        };
+        match next {
+            b'[' => {
+                for byte in bytes.by_ref() {
+                    if (0x40..=0x7e).contains(&byte) {
+                        break;
+                    }
+                }
+            }
+            b']' => {
+                let mut escaped = false;
+                for byte in bytes.by_ref() {
+                    if byte == 0x07 {
+                        break;
+                    }
+                    if escaped {
+                        escaped = false;
+                        if byte == b'\\' {
+                            break;
+                        }
+                    } else if byte == 0x1b {
+                        escaped = true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    String::from_utf8_lossy(&output).into_owned()
 }
 
 fn parse_wait_options(args: &[String]) -> Result<WaitOptions, String> {
@@ -860,7 +942,7 @@ fn print_help() {
     println!("  send-text <id> <text>  send text to a pane");
     println!("  send-keys <id> <key>...  send keys (Enter, arrows, ctrl-x)");
     println!("  run <id> <command>  send a command followed by Enter");
-    println!("  read <id> [--source visible|recent] [--lines N]  read pane output");
+    println!("  read [<id>|--pane ID|--current] [--source visible|recent|recent-unwrapped|detection] [--lines N] [--format text|ansi] [--ansi|--raw]  read pane output");
     println!(
         "  swap --direction left|right|up|down | --source-pane ID --target-pane ID  swap panes"
     );
@@ -877,7 +959,8 @@ mod tests {
     use super::{
         all_pane_ids, format_pane_list, parse_current_pane, parse_focus_direction,
         parse_list_workspace, parse_move_options, parse_read_options, parse_read_target,
-        parse_swap_options, parse_zoom_options, MoveOptions, ReadSource, SwapOptions, ZoomMode,
+        parse_swap_options, parse_zoom_options, strip_ansi, MoveOptions, ReadFormat, ReadSource,
+        SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -944,7 +1027,9 @@ mod tests {
         let options = parse_read_options(&args).unwrap();
         assert_eq!(options.source, ReadSource::Recent);
         assert_eq!(options.lines, Some(4));
-        assert!(parse_read_options(&["--source".into(), "detection".into()]).is_err());
+        let detection = parse_read_options(&["--source".into(), "detection".into()]).unwrap();
+        assert_eq!(detection.source, ReadSource::Detection);
+        assert!(parse_read_options(&["--format".into(), "json".into()]).is_err());
     }
 
     #[test]
@@ -952,6 +1037,27 @@ mod tests {
         let options = parse_read_options(&[]).unwrap();
         assert_eq!(options.source, ReadSource::Recent);
         assert_eq!(options.lines, None);
+        assert_eq!(options.format, ReadFormat::Text);
+    }
+
+    #[test]
+    fn read_options_accept_herdr_output_aliases() {
+        let ansi = parse_read_options(&["--ansi".into()]).unwrap();
+        assert_eq!(ansi.format, ReadFormat::Ansi);
+        let raw = parse_read_options(&["--raw".into()]).unwrap();
+        assert_eq!(raw.format, ReadFormat::Ansi);
+        let unwrapped =
+            parse_read_options(&["--source".into(), "recent-unwrapped".into()]).unwrap();
+        assert_eq!(unwrapped.source, ReadSource::RecentUnwrapped);
+        let (_, target_options) =
+            parse_read_target(&["--current".into(), "--ansi".into()], Some("pane-1")).unwrap();
+        assert_eq!(target_options.format, ReadFormat::Ansi);
+    }
+
+    #[test]
+    fn text_reads_strip_terminal_escape_sequences_without_losing_unicode() {
+        assert_eq!(strip_ansi("\x1b[31mhello\x1b[0m π"), "hello π");
+        assert_eq!(strip_ansi("\x1b]0;title\x07ready"), "ready");
     }
 
     #[test]
