@@ -4,6 +4,7 @@ mod navigator;
 
 use super::context_menu::ContextMenu;
 use super::copy_mode::{CopyMode, SelectionKind};
+use super::input::{Action, Keymap};
 use super::selection::TextSelection;
 use crate::model::status::PaneStatus;
 use crate::server::session::{SessionSnapshot, WorkspaceView};
@@ -430,7 +431,7 @@ pub fn render_palette(frame: &mut Frame<'_>, selected: usize) {
     );
 }
 
-pub fn render_help(frame: &mut Frame<'_>) {
+pub fn render_help(frame: &mut Frame<'_>, keymap: &Keymap) {
     let area = centered_rect(72, 90, frame.area());
     let rows = [
         "Mouse",
@@ -441,14 +442,8 @@ pub fn render_help(frame: &mut Frame<'_>) {
         "Double-click selects a word.",
         "Ctrl-click visible web URLs to open them.",
         "Terminal apps receive mouse events when requested.",
-        "Keyboard (press Ctrl-b, then the key)",
-        "c: new tab; n / p: next / previous tab",
-        "Shift+n new; Shift+w rename; Shift+d close workspace",
-        "x / Shift+x: close pane / tab; s / r: stop / restart",
-        "b: compact sidebar; w: choose workspace; g: session navigator",
-        "h/j/k/l focus; o / O cycle; picker: arrows/Enter/Esc",
-        "v / -: split vertical / horizontal; z: zoom pane",
-        "?: help; colon: palette; q / d: detach; [: copy mode",
+        "Keyboard (configured prefix and bindings)",
+        "",
         "Create, rename, and delete actions are in the command palette.",
         "Sidebar agent badges: W working, ! blocked, I idle, ? unknown.",
         "Click the sidebar title to switch grouped/priority agent order.",
@@ -457,6 +452,40 @@ pub fn render_help(frame: &mut Frame<'_>) {
     .into_iter()
     .map(Line::from)
     .collect::<Vec<_>>();
+    let mut rows = rows;
+    rows.splice(
+        10..10,
+        [
+            format!(
+                "{}: new tab; {}: next tab",
+                keymap.binding_label(Action::NewTab),
+                keymap.binding_label(Action::NextTab)
+            ),
+            format!(
+                "{}: previous tab; {}: close pane",
+                keymap.binding_label(Action::PreviousTab),
+                keymap.binding_label(Action::ClosePane)
+            ),
+            format!(
+                "{}: workspace picker; {}: navigator",
+                keymap.binding_label(Action::WorkspacePicker),
+                keymap.binding_label(Action::SessionNavigator)
+            ),
+            format!(
+                "{}: split vertical; {}: zoom pane",
+                keymap.binding_label(Action::SplitVertical),
+                keymap.binding_label(Action::ToggleZoom)
+            ),
+            format!(
+                "{}: help; {}: palette; {}: detach",
+                keymap.binding_label(Action::Help),
+                keymap.binding_label(Action::CommandPalette),
+                keymap.binding_label(Action::Detach)
+            ),
+        ]
+        .into_iter()
+        .map(Line::from),
+    );
     frame.render_widget(Clear, area);
     frame.render_widget(
         Paragraph::new(rows).block(
@@ -642,6 +671,7 @@ pub fn status_color(status: &PaneStatus) -> Color {
 #[cfg(test)]
 mod tests {
     use super::super::copy_mode::{CopyMode, CopySelection, Point, SelectionKind};
+    use super::super::input::Keymap;
     use super::super::selection::TextSelection;
     use super::{
         active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, render,
@@ -750,7 +780,8 @@ mod tests {
     fn help_overlay_explains_mouse_and_keyboard_controls() {
         let backend = TestBackend::new(60, 20);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(render_help).unwrap();
+        let keymap = Keymap::default();
+        terminal.draw(|frame| render_help(frame, &keymap)).unwrap();
         let content: String = terminal
             .backend()
             .buffer()

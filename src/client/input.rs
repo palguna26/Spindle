@@ -120,6 +120,21 @@ impl Keymap {
                 }
             })
     }
+
+    pub fn binding_label(&self, action: Action) -> String {
+        self.bindings
+            .iter()
+            .find(|binding| binding.action == action)
+            .map(|binding| {
+                let key = key_label(binding.code, binding.modifiers);
+                if binding.prefix {
+                    format!("prefix+{key}")
+                } else {
+                    key
+                }
+            })
+            .unwrap_or_else(|| "unbound".into())
+    }
 }
 
 pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
@@ -316,6 +331,33 @@ fn parse_key(value: &str) -> Option<KeyCode> {
         value if value.chars().count() == 1 => KeyCode::Char(value.chars().next()?),
         _ => return None,
     })
+}
+
+fn key_label(code: KeyCode, modifiers: KeyModifiers) -> String {
+    let mut label = String::new();
+    if modifiers.contains(KeyModifiers::CONTROL) {
+        label.push_str("Ctrl+");
+    }
+    if modifiers.contains(KeyModifiers::ALT) {
+        label.push_str("Alt+");
+    }
+    if modifiers.contains(KeyModifiers::SUPER) {
+        label.push_str("Super+");
+    }
+    if modifiers.contains(KeyModifiers::SHIFT) {
+        label.push_str("Shift+");
+    }
+    match code {
+        KeyCode::Char(character) => format!("{label}{character}"),
+        KeyCode::Enter => format!("{label}Enter"),
+        KeyCode::Esc => format!("{label}Esc"),
+        KeyCode::Tab => format!("{label}Tab"),
+        KeyCode::Left => format!("{label}Left"),
+        KeyCode::Right => format!("{label}Right"),
+        KeyCode::Up => format!("{label}Up"),
+        KeyCode::Down => format!("{label}Down"),
+        _ => format!("{label}key"),
+    }
 }
 
 #[cfg(test)]

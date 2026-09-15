@@ -328,7 +328,7 @@ fn event_loop(
                     renderer::render_navigator(frame, &snapshot, navigator);
                 }
                 if help_open {
-                    renderer::render_help(frame);
+                    renderer::render_help(frame, &keymap);
                 }
                 if let Some(prompt) = &rename_prompt {
                     let title = match prompt.target {
