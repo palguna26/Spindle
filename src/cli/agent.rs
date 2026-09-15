@@ -1,12 +1,14 @@
 use super::Project;
 use crate::server::session::SessionSnapshot;
 use std::io;
+use std::time::{Duration, Instant};
 
 pub(super) fn run_agent_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
         [command] if command == "list" => agent_list(project),
         [command, pane_id] if command == "get" => agent_get(project, pane_id),
         [command, pane_id] if command == "focus" => agent_focus(project, pane_id),
+        [command, args @ ..] if command == "wait" => agent_wait(project, args),
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -82,6 +84,76 @@ fn agent_focus(project: &Project, pane_id: &str) -> io::Result<()> {
     Ok(())
 }
 
+fn agent_wait(project: &Project, args: &[String]) -> io::Result<()> {
+    let Some(pane_id) = args.first() else {
+        return Err(io::Error::other(
+            "usage: spindle agent wait <pane-id> [--until STATE]... [--timeout MS]",
+        ));
+    };
+    let mut states = Vec::new();
+    let mut timeout = Duration::from_secs(30);
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--until" => {
+                let Some(state) = args.get(index + 1) else {
+                    return Err(io::Error::other("--until requires a state"));
+                };
+                if !matches!(state.as_str(), "unknown" | "idle" | "working" | "blocked" | "done")
+                {
+                    return Err(io::Error::other(format!("invalid agent state: {state}")));
+                }
+                states.push(state.as_str());
+                index += 2;
+            }
+            "--timeout" => {
+                let Some(raw) = args.get(index + 1) else {
+                    return Err(io::Error::other("--timeout requires milliseconds"));
+                };
+                let milliseconds = raw
+                    .parse::<u64>()
+                    .map_err(|_| io::Error::other(format!("invalid timeout: {raw}")))?;
+                timeout = Duration::from_millis(milliseconds);
+                index += 2;
+            }
+            option => return Err(io::Error::other(format!("unknown option: {option}"))),
+        }
+    }
+    let default_states = ["idle", "done", "blocked"];
+    let wanted = if states.is_empty() {
+        &default_states[..]
+    } else {
+        &states[..]
+    };
+    let deadline = Instant::now() + timeout;
+    loop {
+        let snapshot = get_snapshot(project)?;
+        let row = agent_rows(&snapshot)
+            .into_iter()
+            .find(|row| row["pane_id"].as_str() == Some(pane_id.as_str()))
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("agent in pane '{pane_id}' is not running"),
+                )
+            })?;
+        if row["state"].as_str().is_some_and(|state| wanted.contains(&state)) {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&row).map_err(io::Error::other)?
+            );
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("timed out waiting for agent in pane '{pane_id}'"),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 fn get_snapshot(project: &Project) -> io::Result<SessionSnapshot> {
     let response = super::send_command(project, "get_snapshot")?;
     if !response.ok {
@@ -132,7 +204,7 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
 }
 
 fn print_help() {
-    println!("Usage: spindle agent <list|get|focus PANE_ID>");
+    println!("Usage: spindle agent <list|get|focus PANE_ID|wait PANE_ID [OPTIONS]>");
 }
 
 #[cfg(test)]
