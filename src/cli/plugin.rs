@@ -1,8 +1,10 @@
 use std::io;
 use std::path::PathBuf;
+use std::process::Command;
 
 pub(crate) fn run(args: &[String]) -> io::Result<()> {
     match args.first().map(String::as_str) {
+        Some("install") => install(&args[1..]),
         Some("link") => link(&args[1..]),
         Some("unlink") => unlink(&args[1..]),
         Some("list") => list(&args[1..]),
@@ -20,6 +22,122 @@ pub(crate) fn run(args: &[String]) -> io::Result<()> {
             format!("unknown plugin command '{other}'"),
         )),
     }
+}
+
+fn install(args: &[String]) -> io::Result<()> {
+    let Some(source) = args.first() else {
+        return usage("usage: spindle plugin install <owner>/<repo>[/subdir] [--ref REF] [--yes]");
+    };
+    let mut requested_ref = None;
+    let mut yes = false;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--ref" => {
+                let Some(value) = args.get(index + 1) else {
+                    return usage("missing value for --ref");
+                };
+                requested_ref = Some(value.clone());
+                index += 2;
+            }
+            "--yes" | "-y" => {
+                yes = true;
+                index += 1;
+            }
+            other => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unknown option: {other}"),
+                ))
+            }
+        }
+    }
+    if !yes {
+        return usage("remote plugin install requires --yes");
+    }
+    let parts = source.split('/').collect::<Vec<_>>();
+    if parts.len() < 2
+        || parts
+            .iter()
+            .any(|part| part.is_empty() || *part == "." || *part == "..")
+    {
+        return usage("plugin source must be owner/repo[/subdir]");
+    }
+    let owner = parts[0];
+    let repo = parts[1];
+    let subdir = parts[2..].join("/");
+    let checkout = crate::plugin::managed_path(source)?;
+    if checkout.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!(
+                "managed plugin checkout already exists: {}",
+                checkout.display()
+            ),
+        ));
+    }
+    let parent = checkout
+        .parent()
+        .ok_or_else(|| io::Error::other("invalid plugin checkout path"))?;
+    std::fs::create_dir_all(parent)?;
+    let temporary = parent.join(format!(
+        ".{}-{}",
+        crate::plugin::safe_component(source),
+        std::process::id()
+    ));
+    let url = format!("https://github.com/{owner}/{repo}.git");
+    let mut command = Command::new("git");
+    command.args(["clone", "--depth", "1"]);
+    if let Some(reference) = requested_ref.as_deref() {
+        command.args(["--branch", reference]);
+    }
+    let temporary_string = temporary.to_string_lossy().into_owned();
+    let status = command.args([&url, &temporary_string]).status()?;
+    if !status.success() {
+        let _ = std::fs::remove_dir_all(&temporary);
+        return Err(io::Error::other("git clone failed"));
+    }
+    let manifest_root = if subdir.is_empty() {
+        temporary.clone()
+    } else {
+        temporary.join(subdir.replace('/', std::path::MAIN_SEPARATOR_STR))
+    };
+    let manifest = match crate::plugin::load(&manifest_root) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&temporary);
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid plugin manifest: {error}"),
+            ));
+        }
+    };
+    if checkout.exists() {
+        let _ = std::fs::remove_dir_all(&temporary);
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "plugin checkout appeared during install",
+        ));
+    }
+    std::fs::rename(&temporary, &checkout)?;
+    let path = if subdir.is_empty() {
+        checkout.clone()
+    } else {
+        checkout.join(subdir.replace('/', std::path::MAIN_SEPARATOR_STR))
+    };
+    let mut registrations = crate::plugin::read_registry()?;
+    registrations.retain(|registration| registration.id != manifest.id);
+    registrations.push(crate::plugin::Registration {
+        id: manifest.id.clone(),
+        path,
+        enabled: true,
+    });
+    if let Err(error) = crate::plugin::write_registry(&registrations) {
+        let _ = std::fs::remove_dir_all(&checkout);
+        return Err(error);
+    }
+    println!("installed plugin {}", manifest.id);
+    Ok(())
 }
 
 fn link(args: &[String]) -> io::Result<()> {
@@ -450,7 +568,10 @@ fn usage(message: &str) -> io::Result<()> {
 }
 
 fn help() {
-    println!("Usage: spindle plugin <link|unlink|list|enable|disable|config-dir|action|pane>");
+    println!(
+        "Usage: spindle plugin <install|link|unlink|list|enable|disable|config-dir|action|pane>"
+    );
+    println!("  install owner/repo[/subdir] [--ref REF] --yes  install from GitHub");
     println!("  link <path> [--disabled]  register a local Herdr manifest");
     println!("  list                      list linked plugins");
     println!("  unlink <plugin_id>        unregister a plugin, leaving files alone");

@@ -69,6 +69,10 @@ pub(crate) fn root() -> io::Result<PathBuf> {
     Ok(PathBuf::from(app_data).join("Spindle").join("plugins"))
 }
 
+pub(crate) fn managed_path(source: &str) -> io::Result<PathBuf> {
+    Ok(root()?.join("github").join(safe_component(source)))
+}
+
 pub(crate) fn config_dir(id: &str) -> io::Result<PathBuf> {
     Ok(root()?.join("config").join(safe_component(id)))
 }
@@ -85,7 +89,7 @@ pub(crate) fn ensure_user_dirs(id: &str) -> io::Result<(PathBuf, PathBuf)> {
     Ok((config, state))
 }
 
-fn safe_component(id: &str) -> String {
+pub(crate) fn safe_component(id: &str) -> String {
     id.chars()
         .map(|character| {
             if character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_') {
