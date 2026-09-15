@@ -604,18 +604,10 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
         Paragraph::new(lines).block(
             ratatui::widgets::Block::default()
                 .borders(ratatui::widgets::Borders::ALL)
-                .title(format!(
-                    "Spaces · agents {}{}",
-                    if agent_priority_sort {
-                        "priority"
-                    } else {
-                        "grouped"
-                    },
-                    if navigation_workspace.is_some() {
-                        " · ↑/↓ choose · Enter open · Esc cancel"
-                    } else {
-                        ""
-                    }
+                .title(sidebar_title(
+                    area,
+                    agent_priority_sort,
+                    navigation_workspace.is_some(),
                 )),
         ),
         area,
@@ -653,6 +645,24 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
     if max_scroll > 0 && body.width > 1 && body.height > 0 {
         render_sidebar_scrollbar(frame, body, start, max_scroll, rows.len());
     }
+}
+
+fn sidebar_title(area: Rect, agent_priority_sort: bool, navigating: bool) -> String {
+    if area.width < 36 {
+        return "Spaces".into();
+    }
+    let mut title = format!(
+        "Spaces · agents {}",
+        if agent_priority_sort {
+            "priority"
+        } else {
+            "grouped"
+        }
+    );
+    if navigating {
+        title.push_str(" · ↑/↓ choose · Enter open · Esc cancel");
+    }
+    title
 }
 
 fn render_sidebar_scrollbar(
@@ -771,6 +781,15 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
     use ratatui::Terminal;
+
+    #[test]
+    fn narrow_sidebar_uses_a_compact_title_like_herdr() {
+        assert_eq!(
+            super::sidebar_title(Rect::new(0, 0, 20, 30), false, false),
+            "Spaces"
+        );
+        assert!(super::sidebar_title(Rect::new(0, 0, 40, 30), true, true).contains("priority"));
+    }
 
     #[test]
     fn priority_sort_matches_herdr_agent_status_order() {

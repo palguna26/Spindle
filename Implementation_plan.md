@@ -287,6 +287,9 @@ approved design changes it.
   reload bindings so the starter file is discoverable and usable.
 - [x] Add mouse navigation to the Settings overlay for section and value
   selection, with outside-click dismissal.
+- [x] Keep the normal narrow sidebar title compact so workspace controls stay
+  readable at the default terminal width, matching Herdr's compact sidebar
+  header.
 - [x] Keep client orchestration categorized like Herdr's shell modules; startup
   failure actions now live in `src/client/startup.rs` instead of the main event
   loop module.
