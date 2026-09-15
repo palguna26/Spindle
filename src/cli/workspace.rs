@@ -6,11 +6,13 @@ use std::io;
 pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
         [command] if command == "list" => workspace_list(project),
+        [command, options @ ..] if command == "create" => workspace_create(project, options),
         [command, workspace_id] if command == "get" => workspace_get(project, workspace_id),
         [command, workspace_id] if command == "focus" => workspace_focus(project, workspace_id),
         [command, workspace_id, label @ ..] if command == "rename" && !label.is_empty() => {
             workspace_rename(project, workspace_id, &label.join(" "))
         }
+        [command, workspace_id] if command == "close" => workspace_close(project, workspace_id),
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -19,10 +21,137 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle workspace <list|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>>",
+                "usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>|close <workspace_id>>",
             ))
         }
     }
+}
+
+fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
+    let mut name = "Workspace".to_owned();
+    let mut cwd = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--cwd" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --cwd"));
+                };
+                cwd = Some(value.clone());
+                index += 2;
+            }
+            "--label" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --label"));
+                };
+                name = value.clone();
+                index += 2;
+            }
+            value if !value.starts_with('-') && name == "Workspace" => {
+                name = value.to_owned();
+                index += 1;
+            }
+            value if value.starts_with('-') => {
+                return Err(io::Error::other(format!("unknown option: {value}")));
+            }
+            value => return Err(io::Error::other(format!("unexpected argument: {value}"))),
+        }
+    }
+    let cwd = cwd.or_else(|| {
+        std::env::current_dir()
+            .ok()
+            .map(|path| path.to_string_lossy().into_owned())
+    });
+    let response = super::send_command_with_payload(
+        project,
+        "create_workspace",
+        serde_json::json!({
+            "name": name,
+            "repository_path": cwd.clone(),
+        }),
+    )?;
+    if !response.ok {
+        return Err(io::Error::other(
+            response
+                .error
+                .map(|error| error.message)
+                .unwrap_or_else(|| "server rejected the workspace create request".into()),
+        ));
+    }
+    let snapshot = get_snapshot(project)?;
+    let repository_path = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)
+        .and_then(|space| space.active_workspace_id.as_deref().and_then(|id| {
+            space
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.workspace_id == id)
+        }))
+        .and_then(|workspace| workspace.repository_path.clone())
+        .or(cwd);
+    let pane = super::send_command_with_payload(
+        project,
+        "ensure_active_pane",
+        serde_json::json!({
+            "command": "powershell.exe",
+            "args": ["-NoLogo", "-NoProfile"],
+            "cwd": repository_path,
+            "cols": 80,
+            "rows": 24,
+        }),
+    )?;
+    if !pane.ok {
+        return Err(io::Error::other(
+            pane.error
+                .map(|error| error.message)
+                .unwrap_or_else(|| "workspace was created but its shell could not start".into()),
+        ));
+    }
+    if let Some(payload) = response.payload {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&payload).map_err(io::Error::other)?
+        );
+    }
+    Ok(())
+}
+
+fn get_snapshot(project: &Project) -> io::Result<SessionSnapshot> {
+    let response = super::send_command(project, "get_snapshot")?;
+    if !response.ok {
+        return Err(io::Error::other(
+            response
+                .error
+                .map(|error| error.message)
+                .unwrap_or_else(|| "server rejected the snapshot request".into()),
+        ));
+    }
+    serde_json::from_value(
+        response
+            .payload
+            .ok_or_else(|| io::Error::other("server returned no session snapshot"))?,
+    )
+    .map_err(io::Error::other)
+}
+
+fn workspace_close(project: &Project, workspace_id: &str) -> io::Result<()> {
+    let response = super::send_command_with_payload(
+        project,
+        "delete_workspace",
+        serde_json::json!({ "id": workspace_id }),
+    )?;
+    if !response.ok {
+        return Err(io::Error::other(
+            response
+                .error
+                .map(|error| error.message)
+                .unwrap_or_else(|| "server rejected the workspace close request".into()),
+        ));
+    }
+    println!("closed workspace: {workspace_id}");
+    Ok(())
 }
 
 fn workspace_focus(project: &Project, workspace_id: &str) -> io::Result<()> {
@@ -141,11 +270,13 @@ fn format_workspace_list(snapshot: &SessionSnapshot) -> String {
 }
 
 fn print_help() {
-    println!("Usage: spindle workspace <list|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>>");
+    println!("Usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>|close <workspace_id>>");
     println!("  list    list workspaces in the current project session");
+    println!("  create  create a workspace and start its PowerShell pane");
     println!("  get     show a workspace by ID");
     println!("  focus   focus a workspace by ID");
     println!("  rename  rename a workspace by ID");
+    println!("  close   close a workspace by ID");
 }
 
 #[cfg(test)]
