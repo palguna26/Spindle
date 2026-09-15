@@ -300,7 +300,9 @@ Terminal verification is still pending.
   lifecycle transitions remain.
 - [x] Provide a scriptable agent report. `spindle agent list` reports every
   detected agent across spaces with pane, workspace, tab, focus, state, cwd,
-  and terminal title, following Herdr's agent-listing direction.
+  and terminal title, following Herdr's agent-listing direction. Agent commands
+  also accept a unique case-insensitive detected agent name, matching Herdr's
+  pane-ID-or-name target behavior; ambiguous names require a pane ID.
 - [ ] Keep state associated with the correct pane, tab, and workspace through
   switches, restarts, and recovery. A session test now verifies status remains
   attached to its pane across tab and workspace switches; a restart test now

@@ -39,15 +39,7 @@ fn agent_list(project: &Project) -> io::Result<()> {
 
 fn agent_get(project: &Project, pane_id: &str) -> io::Result<()> {
     let snapshot = get_snapshot(project)?;
-    let row = agent_rows(&snapshot)
-        .into_iter()
-        .find(|row| row["pane_id"].as_str() == Some(pane_id))
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("no detected agent in pane '{pane_id}'"),
-            )
-        })?;
+    let (_, row) = resolve_agent(&agent_rows(&snapshot), pane_id)?;
     println!(
         "{}",
         serde_json::to_string_pretty(&row).map_err(io::Error::other)?
@@ -57,19 +49,11 @@ fn agent_get(project: &Project, pane_id: &str) -> io::Result<()> {
 
 fn agent_focus(project: &Project, pane_id: &str) -> io::Result<()> {
     let snapshot = get_snapshot(project)?;
-    let row = agent_rows(&snapshot)
-        .into_iter()
-        .find(|row| row["pane_id"].as_str() == Some(pane_id))
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("no detected agent in pane '{pane_id}'"),
-            )
-        })?;
+    let (resolved_pane_id, row) = resolve_agent(&agent_rows(&snapshot), pane_id)?;
     let response = super::send_command_with_payload(
         project,
         "focus_pane",
-        serde_json::json!({ "pane_id": pane_id }),
+        serde_json::json!({ "pane_id": resolved_pane_id }),
     )?;
     if !response.ok {
         return Err(io::Error::other(
@@ -103,8 +87,10 @@ fn agent_wait(project: &Project, args: &[String]) -> io::Result<()> {
                 let Some(state) = args.get(index + 1) else {
                     return Err(io::Error::other("--until requires a state"));
                 };
-                if !matches!(state.as_str(), "unknown" | "idle" | "working" | "blocked" | "done")
-                {
+                if !matches!(
+                    state.as_str(),
+                    "unknown" | "idle" | "working" | "blocked" | "done"
+                ) {
                     return Err(io::Error::other(format!("invalid agent state: {state}")));
                 }
                 states.push(state.as_str());
@@ -132,16 +118,11 @@ fn agent_wait(project: &Project, args: &[String]) -> io::Result<()> {
     let deadline = Instant::now() + timeout;
     loop {
         let snapshot = get_snapshot(project)?;
-        let row = agent_rows(&snapshot)
-            .into_iter()
-            .find(|row| row["pane_id"].as_str() == Some(pane_id.as_str()))
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("agent in pane '{pane_id}' is not running"),
-                )
-            })?;
-        if row["state"].as_str().is_some_and(|state| wanted.contains(&state)) {
+        let (_, row) = resolve_agent(&agent_rows(&snapshot), pane_id)?;
+        if row["state"]
+            .as_str()
+            .is_some_and(|state| wanted.contains(&state))
+        {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&row).map_err(io::Error::other)?
@@ -165,16 +146,8 @@ fn agent_read(project: &Project, args: &[String]) -> io::Result<()> {
         ));
     };
     let snapshot = get_snapshot(project)?;
-    if !agent_rows(&snapshot)
-        .iter()
-        .any(|row| row["pane_id"].as_str() == Some(pane_id.as_str()))
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("no detected agent in pane '{pane_id}'"),
-        ));
-    }
-    let mut pane_args = vec!["read".to_owned(), pane_id.clone()];
+    let (resolved_pane_id, _) = resolve_agent(&agent_rows(&snapshot), pane_id)?;
+    let mut pane_args = vec!["read".to_owned(), resolved_pane_id];
     pane_args.extend(args.iter().skip(1).cloned());
     super::pane::run_pane_command(project, &pane_args)
 }
@@ -191,16 +164,8 @@ fn agent_send_keys(project: &Project, args: &[String]) -> io::Result<()> {
         ));
     }
     let snapshot = get_snapshot(project)?;
-    if !agent_rows(&snapshot)
-        .iter()
-        .any(|row| row["pane_id"].as_str() == Some(pane_id.as_str()))
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("no detected agent in pane '{pane_id}'"),
-        ));
-    }
-    let mut pane_args = vec!["send-keys".to_owned(), pane_id.clone()];
+    let (resolved_pane_id, _) = resolve_agent(&agent_rows(&snapshot), pane_id)?;
+    let mut pane_args = vec!["send-keys".to_owned(), resolved_pane_id];
     pane_args.extend(args.iter().skip(1).cloned());
     super::pane::run_pane_command(project, &pane_args)
 }
@@ -222,21 +187,13 @@ fn agent_prompt(project: &Project, args: &[String]) -> io::Result<()> {
         ));
     }
     let snapshot = get_snapshot(project)?;
-    let row = agent_rows(&snapshot)
-        .into_iter()
-        .find(|row| row["pane_id"].as_str() == Some(pane_id.as_str()))
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("no detected agent in pane '{pane_id}'"),
-            )
-        })?;
+    let (resolved_pane_id, row) = resolve_agent(&agent_rows(&snapshot), pane_id)?;
     if row["state"].as_str() == Some("blocked") {
         return Err(io::Error::other(format!(
-            "agent in pane '{pane_id}' is blocked and needs interactive input"
+            "agent '{pane_id}' is blocked and needs interactive input"
         )));
     }
-    let mut pane_args = vec!["run".to_owned(), pane_id.clone()];
+    let mut pane_args = vec!["run".to_owned(), resolved_pane_id];
     pane_args.extend(args.iter().skip(1).cloned());
     super::pane::run_pane_command(project, &pane_args)
 }
@@ -253,16 +210,8 @@ fn agent_rename(project: &Project, args: &[String]) -> io::Result<()> {
         ));
     }
     let snapshot = get_snapshot(project)?;
-    if !agent_rows(&snapshot)
-        .iter()
-        .any(|row| row["pane_id"].as_str() == Some(pane_id.as_str()))
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("no detected agent in pane '{pane_id}'"),
-        ));
-    }
-    let mut pane_args = vec!["rename".to_owned(), pane_id.clone()];
+    let (resolved_pane_id, _) = resolve_agent(&agent_rows(&snapshot), pane_id)?;
+    let mut pane_args = vec!["rename".to_owned(), resolved_pane_id];
     pane_args.extend(args.iter().skip(1).cloned());
     super::pane::run_pane_command(project, &pane_args)
 }
@@ -285,6 +234,40 @@ fn get_snapshot(project: &Project) -> io::Result<SessionSnapshot> {
     .map_err(io::Error::other)
 }
 
+fn resolve_agent(
+    rows: &[serde_json::Value],
+    target: &str,
+) -> io::Result<(String, serde_json::Value)> {
+    if let Some(row) = rows
+        .iter()
+        .find(|row| row["pane_id"].as_str() == Some(target))
+    {
+        return Ok((target.to_owned(), row.clone()));
+    }
+    let matches: Vec<_> = rows
+        .iter()
+        .filter(|row| {
+            row["agent"]
+                .as_str()
+                .is_some_and(|name| name.eq_ignore_ascii_case(target))
+        })
+        .collect();
+    match matches.as_slice() {
+        [row] => Ok((
+            row["pane_id"].as_str().unwrap_or_default().to_owned(),
+            (*row).clone(),
+        )),
+        [] => Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("no detected agent matching '{target}'"),
+        )),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("agent name '{target}' is ambiguous; use a pane ID"),
+        )),
+    }
+}
+
 fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
     snapshot
         .spaces
@@ -295,7 +278,8 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
                     let focused = tab.focused_pane_id.as_deref();
                     tab.layout.as_ref().into_iter().flat_map(move |layout| {
                         layout.pane_ids().into_iter().filter_map(move |pane_id| {
-                            let pane = snapshot.panes.iter().find(|pane| pane.pane_id == pane_id)?;
+                            let pane =
+                                snapshot.panes.iter().find(|pane| pane.pane_id == pane_id)?;
                             let agent = pane.agent?;
                             Some(serde_json::json!({
                                 "pane_id": pane.pane_id,
@@ -317,12 +301,14 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
 }
 
 fn print_help() {
-    println!("Usage: spindle agent <list|get|focus|wait|read|send-keys|prompt|rename PANE_ID [OPTIONS]>");
+    println!(
+        "Usage: spindle agent <list|get|focus|wait|read|send-keys|prompt|rename TARGET [OPTIONS]>\nTARGET is a pane ID or a unique live agent name"
+    );
 }
 
 #[cfg(test)]
 mod tests {
-    use super::agent_rows;
+    use super::{agent_rows, resolve_agent};
     use crate::server::session::Session;
 
     #[test]
@@ -330,13 +316,12 @@ mod tests {
         let mut session = Session::default();
         session.create_space("Other project".into()).unwrap();
         let mut snapshot = session.snapshot().clone();
-        snapshot.spaces[1].workspaces[0].tabs[0].layout = Some(
-            crate::model::layout::LayoutNode::pane("pane-1").split(
+        snapshot.spaces[1].workspaces[0].tabs[0].layout =
+            Some(crate::model::layout::LayoutNode::pane("pane-1").split(
                 crate::model::layout::Direction::Horizontal,
                 0.5,
                 "pane-2",
-            ),
-        );
+            ));
         snapshot.panes.push(
             serde_json::from_value(serde_json::json!({
                 "pane_id": "pane-1",
@@ -374,5 +359,22 @@ mod tests {
         );
         assert_eq!(rows[1]["agent"], "Claude");
         assert_eq!(rows[1]["state"], "blocked");
+    }
+
+    #[test]
+    fn agent_target_accepts_unique_name_and_rejects_ambiguous_name() {
+        let rows = vec![
+            serde_json::json!({"pane_id": "pane-1", "agent": "Codex"}),
+            serde_json::json!({"pane_id": "pane-2", "agent": "Claude"}),
+        ];
+        assert_eq!(resolve_agent(&rows, "codex").unwrap().0, "pane-1");
+        assert_eq!(resolve_agent(&rows, "pane-2").unwrap().0, "pane-2");
+
+        let duplicate = vec![
+            serde_json::json!({"pane_id": "pane-1", "agent": "Codex"}),
+            serde_json::json!({"pane_id": "pane-2", "agent": "Codex"}),
+        ];
+        let error = resolve_agent(&duplicate, "codex").unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }
 }
