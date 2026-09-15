@@ -8,6 +8,7 @@ pub(super) fn run_agent_command(project: &Project, args: &[String]) -> io::Resul
         [command] if command == "list" => agent_list(project),
         [command, pane_id] if command == "get" => agent_get(project, pane_id),
         [command, pane_id] if command == "focus" => agent_focus(project, pane_id),
+        [command, args @ ..] if command == "start" => agent_start(project, args),
         [command, args @ ..] if command == "wait" => agent_wait(project, args),
         [command, args @ ..] if command == "read" => agent_read(project, args),
         [command, args @ ..] if command == "send-keys" => agent_send_keys(project, args),
@@ -70,6 +71,142 @@ fn agent_focus(project: &Project, pane_id: &str) -> io::Result<()> {
         serde_json::to_string_pretty(&row).map_err(io::Error::other)?
     );
     Ok(())
+}
+
+fn agent_start(project: &Project, args: &[String]) -> io::Result<()> {
+    let Some(name) = args.first() else {
+        return Err(io::Error::other(
+            "usage: spindle agent start NAME --kind KIND --pane PANE_ID [--timeout MS] [-- AGENT_ARGS...]",
+        ));
+    };
+    let separator = args
+        .iter()
+        .position(|arg| arg == "--")
+        .unwrap_or(args.len());
+    let mut kind = None;
+    let mut pane_id = None;
+    let mut timeout = Duration::from_secs(30);
+    let mut index = 1;
+    while index < separator {
+        match args[index].as_str() {
+            "--kind" => {
+                let Some(value) = args.get(index + 1).filter(|_| index + 1 < separator) else {
+                    return Err(io::Error::other("missing value for --kind"));
+                };
+                kind = Some(value.clone());
+                index += 2;
+            }
+            "--pane" => {
+                let Some(value) = args.get(index + 1).filter(|_| index + 1 < separator) else {
+                    return Err(io::Error::other("missing value for --pane"));
+                };
+                pane_id = Some(value.clone());
+                index += 2;
+            }
+            "--timeout" => {
+                let Some(value) = args.get(index + 1).filter(|_| index + 1 < separator) else {
+                    return Err(io::Error::other("missing value for --timeout"));
+                };
+                let milliseconds = value
+                    .parse::<u64>()
+                    .map_err(|_| io::Error::other(format!("invalid timeout: {value}")))?;
+                if !(3_000..=300_000).contains(&milliseconds) {
+                    return Err(io::Error::other(
+                        "agent start timeout must be between 3000 and 300000 milliseconds",
+                    ));
+                }
+                timeout = Duration::from_millis(milliseconds);
+                index += 2;
+            }
+            option => return Err(io::Error::other(format!("unknown option: {option}"))),
+        }
+    }
+    let kind = kind.ok_or_else(|| io::Error::other("missing required --kind"))?;
+    let pane_id = pane_id.ok_or_else(|| io::Error::other("missing required --pane"))?;
+    let command = agent_command(&kind)
+        .ok_or_else(|| io::Error::other(format!("unsupported interactive agent kind: {kind}")))?;
+    let snapshot = get_snapshot(project)?;
+    if !snapshot.panes.iter().any(|pane| pane.pane_id == pane_id) {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pane '{pane_id}' does not exist"),
+        ));
+    }
+
+    super::pane::run_pane_command(project, &["rename".into(), pane_id.clone(), name.clone()])?;
+    let mut command_line = command.to_owned();
+    if separator < args.len() {
+        for argument in &args[separator + 1..] {
+            command_line.push(' ');
+            command_line.push_str(&shell_quote(argument));
+        }
+    }
+    super::pane::run_pane_command(project, &["run".into(), pane_id.clone(), command_line])?;
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        let snapshot = get_snapshot(project)?;
+        if let Some(row) = agent_rows(&snapshot)
+            .into_iter()
+            .find(|row| row["pane_id"].as_str() == Some(pane_id.as_str()))
+        {
+            match row["state"].as_str() {
+                Some("blocked") => {
+                    return Err(io::Error::other(format!("agent '{name}' started blocked")));
+                }
+                Some("idle") | Some("working") => {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&row).map_err(io::Error::other)?
+                    );
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("timed out waiting for agent '{name}' to start"),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn agent_command(kind: &str) -> Option<&'static str> {
+    match kind
+        .to_ascii_lowercase()
+        .replace([' ', '_', '-'], "")
+        .as_str()
+    {
+        "pi" => Some("pi"),
+        "qodercli" => Some("qoder"),
+        "droid" => Some("droid"),
+        "kiro" => Some("kiro"),
+        "cline" => Some("cline"),
+        "kimi" => Some("kimi"),
+        "devin" => Some("devin"),
+        "cursor" => Some("cursor-agent"),
+        "amp" => Some("amp"),
+        "kilo" => Some("kilo"),
+        "antigravity" => Some("agy"),
+        "hermes" => Some("hermes"),
+        "qwen" => Some("qwen"),
+        "grok" => Some("grok"),
+        "maki" => Some("maki"),
+        "muse" => Some("muse"),
+        "claude" => Some("claude"),
+        "codex" => Some("codex"),
+        "gemini" => Some("gemini"),
+        "opencode" => Some("opencode"),
+        "githubcopilot" | "copilot" => Some("github-copilot"),
+        _ => None,
+    }
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 fn agent_wait(project: &Project, args: &[String]) -> io::Result<()> {
@@ -361,13 +498,13 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
 
 fn print_help() {
     println!(
-        "Usage: spindle agent <list|get|focus|wait|read|send-keys|prompt|rename TARGET [OPTIONS]>\nTARGET is a pane ID or a unique live agent name\nagent prompt TARGET TEXT [--wait] [--until STATE]... [--timeout MS]"
+        "Usage: spindle agent <list|get|focus|start|wait|read|send-keys|prompt|rename TARGET [OPTIONS]>\nTARGET is a pane ID or a unique live agent name\nagent start NAME --kind KIND --pane PANE_ID [--timeout MS] [-- AGENT_ARGS...]\nagent prompt TARGET TEXT [--wait] [--until STATE]... [--timeout MS]"
     );
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_rows, parse_prompt_options, resolve_agent};
+    use super::{agent_command, agent_rows, parse_prompt_options, resolve_agent, shell_quote};
     use crate::server::session::Session;
 
     #[test]
@@ -454,5 +591,13 @@ mod tests {
         assert_eq!(text, ["Review", "the", "diff"]);
         assert_eq!(wait.unwrap(), ["--until", "done", "--timeout", "120000"]);
         assert!(parse_prompt_options(&["codex".into(), "--until".into(), "done".into()]).is_err());
+    }
+
+    #[test]
+    fn agent_start_uses_supported_commands_and_powershell_quoting() {
+        assert_eq!(agent_command("Qoder CLI"), Some("qoder"));
+        assert_eq!(agent_command("github-copilot"), Some("github-copilot"));
+        assert_eq!(agent_command("not-an-agent"), None);
+        assert_eq!(shell_quote("say 'yes'"), "'say ''yes'''");
     }
 }
