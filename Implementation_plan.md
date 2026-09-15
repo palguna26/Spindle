@@ -159,6 +159,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Keep keyboard command-palette actions for pane, tab, and workspace
   actions available through the mouse, including clearing a pane's manual name.
 - [x] Add in-app help that explains both keyboard shortcuts and mouse controls.
+- [x] Add Herdr's sidebar `menu` launcher with a modal menu for help, the
+  command palette, config reload, and detach actions.
 - [x] Ctrl-click visible `http://` and `https://` URLs in panes to open them;
   use terminal display columns for hit testing and trim sentence punctuation.
 - [ ] Add the full Herdr plugin system. OSC 8 hyperlink metadata is now tracked

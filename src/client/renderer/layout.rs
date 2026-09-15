@@ -36,6 +36,10 @@ pub(super) fn main_areas(area: Rect) -> MainAreas {
     main_areas_with_sidebar(area, false)
 }
 
+pub(crate) fn sidebar_area(area: Rect, sidebar_collapsed: bool) -> Rect {
+    main_areas_with_sidebar(area, sidebar_collapsed).sidebar
+}
+
 pub(super) fn main_areas_with_sidebar(area: Rect, sidebar_collapsed: bool) -> MainAreas {
     let body = Layout::default()
         .direction(Direction::Vertical)

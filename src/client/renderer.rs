@@ -4,13 +4,14 @@ mod navigator;
 
 use super::context_menu::ContextMenu;
 use super::copy_mode::{CopyMode, SelectionKind};
+use super::global_menu::GlobalMenu;
 use super::input::{Action, Keymap};
 use super::selection::TextSelection;
 use crate::model::status::PaneStatus;
 use crate::server::session::{SessionSnapshot, WorkspaceView};
 pub(crate) use layout::{
     pane_content_area, pane_content_area_with_sidebar, pane_inner_size, pane_rectangles,
-    pane_sizes, split_handles, PaneSize,
+    pane_sizes, sidebar_area, split_handles, PaneSize,
 };
 use navigation::render_tabs;
 pub use navigation::{
@@ -644,6 +645,38 @@ pub fn render_prompt(frame: &mut Frame<'_>, title: &str, input: &str) {
                 .title(format!("{title} (Enter to save, Esc to cancel)")),
         ),
         area,
+    );
+}
+
+pub(crate) fn render_global_menu(frame: &mut Frame<'_>, menu: &GlobalMenu) {
+    let sidebar = sidebar_area(frame.area(), false);
+    let rect = GlobalMenu::rect(sidebar, frame.area());
+    let lines = GlobalMenu::items()
+        .iter()
+        .enumerate()
+        .map(|(index, (label, _))| {
+            Line::from(Span::styled(
+                format!(" {label}"),
+                if index == menu.selected {
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::Cyan)
+                        .add_modifier(ratatui::style::Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::White).bg(Color::DarkGray)
+                },
+            ))
+        })
+        .collect::<Vec<_>>();
+    frame.render_widget(Clear, rect);
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Menu")
+                .border_style(Style::default().fg(Color::Cyan)),
+        ),
+        rect,
     );
 }
 

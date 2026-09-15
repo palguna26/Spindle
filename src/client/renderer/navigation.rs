@@ -10,6 +10,7 @@ use super::layout::{pane_rectangles, split_handles};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickTarget {
+    GlobalMenu,
     SidebarToggle,
     ToggleAgentSort,
     SidebarScroll(usize),
@@ -77,10 +78,16 @@ pub fn hit_test_with_sidebar_scroll_and_sort(
     let y = mouse.row;
     let main = super::layout::main_areas_with_sidebar(area, sidebar_collapsed);
     if contains(main.sidebar, x, y) {
-        if y == main.sidebar.bottom().saturating_sub(1)
-            && x == main.sidebar.right().saturating_sub(2)
-        {
-            return Some(ClickTarget::SidebarToggle);
+        if y == main.sidebar.bottom().saturating_sub(1) {
+            if !sidebar_collapsed
+                && x >= main.sidebar.right().saturating_sub(7)
+                && x < main.sidebar.right().saturating_sub(2)
+            {
+                return Some(ClickTarget::GlobalMenu);
+            }
+            if x == main.sidebar.right().saturating_sub(2) {
+                return Some(ClickTarget::SidebarToggle);
+            }
         }
         if !sidebar_collapsed && y == main.sidebar.y && x > main.sidebar.x {
             return Some(ClickTarget::ToggleAgentSort);
@@ -615,6 +622,18 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
         if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
             cell.set_symbol(if collapsed { ">" } else { "<" });
             cell.set_fg(Color::Cyan);
+        }
+        if !collapsed && area.width >= 9 {
+            let label_x = area.right().saturating_sub(7);
+            for (offset, character) in "menu".chars().enumerate() {
+                if let Some(cell) = frame
+                    .buffer_mut()
+                    .cell_mut((label_x.saturating_add(offset as u16), y))
+                {
+                    cell.set_symbol(&character.to_string());
+                    cell.set_fg(Color::DarkGray);
+                }
+            }
         }
     }
     if max_scroll > 0 && body.width > 1 && body.height > 0 {

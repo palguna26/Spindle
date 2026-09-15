@@ -3,6 +3,7 @@ mod clipboard;
 mod context_menu;
 mod control;
 mod copy_mode;
+mod global_menu;
 pub mod input;
 mod links;
 mod mouse;

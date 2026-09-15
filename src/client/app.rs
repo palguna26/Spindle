@@ -1,5 +1,6 @@
 use super::context_menu::{ContextMenu, ContextMenuAction, ContextMenuTarget};
 use super::copy_mode::{CopyMode, KeyResult};
+use super::global_menu::{Action as GlobalMenuAction, GlobalMenu, Outcome as GlobalMenuOutcome};
 use super::input::{is_prefix, Action, Keymap};
 use super::mouse::{
     clear_mouse_capture, pane_mouse_target, should_forward_pane_mouse, visible_web_url_at_point,
@@ -102,6 +103,7 @@ fn event_loop(
     let mut palette_selected = 0;
     let mut palette_open = false;
     let mut navigator: Option<Navigator> = None;
+    let mut global_menu: Option<GlobalMenu> = None;
     let mut rename_prompt: Option<RenamePrompt> = None;
     let mut context_menu: Option<ContextMenu> = None;
     let mut help_open = false;
@@ -351,6 +353,9 @@ fn event_loop(
                 if let Some(menu) = &context_menu {
                     renderer::render_context_menu(frame, menu);
                 }
+                if let Some(menu) = &global_menu {
+                    renderer::render_global_menu(frame, menu);
+                }
                 if let Some(error) = &startup_error {
                     renderer::render_startup_error(frame, error);
                 } else if let Some((error, _)) = &action_error {
@@ -369,6 +374,36 @@ fn event_loop(
         let input = event::read().map_err(ClientError::Io)?;
         let key = match input {
             Event::Mouse(mouse) => {
+                if let Some(menu) = global_menu.as_mut() {
+                    let sidebar = renderer::sidebar_area(
+                        Rect::new(0, 0, terminal_size.0, terminal_size.1),
+                        false,
+                    );
+                    match menu.select_at(
+                        sidebar,
+                        Rect::new(0, 0, terminal_size.0, terminal_size.1),
+                        mouse,
+                    ) {
+                        GlobalMenuOutcome::Continue => {}
+                        GlobalMenuOutcome::Close => global_menu = None,
+                        GlobalMenuOutcome::Activate(action) => {
+                            global_menu = None;
+                            match action {
+                                GlobalMenuAction::Help => help_open = true,
+                                GlobalMenuAction::CommandPalette => {
+                                    palette_open = true;
+                                    palette_selected = 0;
+                                }
+                                GlobalMenuAction::ReloadConfig => {}
+                                GlobalMenuAction::Detach => {
+                                    let _ = client.detach();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
                 if let Some(open_navigator) = navigator.as_mut() {
                     let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
                     let mut activate = None;
@@ -436,6 +471,20 @@ fn event_loop(
                     help_open = false;
                     continue;
                 }
+                if mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                    && matches!(
+                        renderer::hit_test_with_sidebar(
+                            &snapshot,
+                            Rect::new(0, 0, terminal_size.0, terminal_size.1),
+                            mouse,
+                            mouse_state.sidebar_collapsed,
+                        ),
+                        Some(renderer::ClickTarget::GlobalMenu)
+                    )
+                {
+                    global_menu = Some(GlobalMenu::default());
+                    continue;
+                }
                 if let Some(mode) = mouse_state.copy_mode.take() {
                     mouse_state
                         .scroll_offsets
@@ -495,6 +544,28 @@ fn event_loop(
                         "save name",
                         submit_rename(client, &snapshot, target, name, terminal_size),
                     );
+                }
+            }
+            continue;
+        }
+        if let Some(menu) = global_menu.as_mut() {
+            match menu.handle_key(key.code) {
+                GlobalMenuOutcome::Continue => {}
+                GlobalMenuOutcome::Close => global_menu = None,
+                GlobalMenuOutcome::Activate(action) => {
+                    global_menu = None;
+                    match action {
+                        GlobalMenuAction::Help => help_open = true,
+                        GlobalMenuAction::CommandPalette => {
+                            palette_open = true;
+                            palette_selected = 0;
+                        }
+                        GlobalMenuAction::ReloadConfig => {}
+                        GlobalMenuAction::Detach => {
+                            let _ = client.detach();
+                            break;
+                        }
+                    }
                 }
             }
             continue;
@@ -1467,6 +1538,7 @@ fn handle_mouse(
         return Ok(());
     };
     match target {
+        renderer::ClickTarget::GlobalMenu => {}
         renderer::ClickTarget::SidebarToggle => {
             mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
             mouse_state.selection = None;
