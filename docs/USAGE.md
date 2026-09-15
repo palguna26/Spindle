@@ -97,7 +97,7 @@ Tabs can also be automated with `spindle tab list`, `create [label]`,
 Panes can be automated with `spindle pane list`, `current [<id>]`, `get <id>`,
 `focus <id>` or `focus --direction left|right|up|down`, `rename <id> <label>`, `stop <id>`, `restart <id>`, `zoom <id>`,
 `close <id>`, `send-text <id> <text>`, `send-keys <id> <key>...`,
-`run <id> <command>`, `read <id> [--lines N]`, `swap <source> <target>`,
+`run <id> <command>`, `read <id> [--source visible|recent] [--lines N]`, `swap <source> <target>`,
 `wait-output <id> --match TEXT [--timeout MS] [--lines N]`,
 `split <horizontal|vertical>`, and `resize <id> <delta>`. Pane listing and
 mutations use the active tab's current server focus scope.
