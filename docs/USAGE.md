@@ -100,6 +100,7 @@ Panes can be automated with `spindle pane list [--workspace <id>]`, `current [<i
 `run <id> <command>`, `read <id> [--source visible|recent] [--lines N]`, `swap <source> <target>`,
 `wait-output <id> --match TEXT [--timeout MS] [--lines N]`,
 `swap --direction left|right|up|down` or `--source-pane ID --target-pane ID`,
+`move <id> --new-tab [--label TEXT]`,
 `split <horizontal|vertical>`, and `resize <id> <delta>`. Pane listing and
 mutations use the active tab's current server focus scope.
 

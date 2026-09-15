@@ -12,7 +12,7 @@
     "create_tab": {}, "switch_tab": {}, "rename_tab": {}, "close_tab": {},
     "create_pane": {}, "ensure_active_pane": {}, "split_pane": {}, "send_input": {}, "resize_pty": {},
     "stop_pane": {}, "restart_pane": {}, "focus_pane": {}, "swap_panes": {}, "rename_pane": {},
-    "toggle_pane_zoom": {}, "toggle_right_click_passthrough": {}, "focus_next": {}, "focus_previous": {},
+    "toggle_pane_zoom": {}, "toggle_right_click_passthrough": {}, "move_pane": {}, "focus_next": {}, "focus_previous": {},
     "focus_direction": {}, "resize_pane": {}, "set_split_ratio": {}, "close_pane": {}, "stop_server": {}
   }
 }
