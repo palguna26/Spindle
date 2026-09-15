@@ -1027,6 +1027,7 @@ impl Session {
         target_pane_id: Option<&str>,
         direction: crate::model::layout::Direction,
         ratio: f32,
+        focus: bool,
     ) -> Result<Value, String> {
         let workspace = self.active_workspace_mut()?;
         let source_index = workspace
@@ -1099,9 +1100,13 @@ impl Session {
         } else {
             Some(LayoutNode::pane(pane_id))
         };
-        target.focused_pane_id = Some(pane_id.into());
+        if focus {
+            target.focused_pane_id = Some(pane_id.into());
+        }
         workspace.active_tab_id = target_tab_id.into();
-        self.snapshot.focused_pane_id = Some(pane_id.into());
+        if focus {
+            self.snapshot.focused_pane_id = Some(pane_id.into());
+        }
         self.record_event(
             "pane_moved",
             serde_json::json!({
@@ -2835,6 +2840,7 @@ mod tests {
                 Some("pane-2"),
                 crate::model::layout::Direction::Horizontal,
                 0.5,
+                true,
             )
             .unwrap();
         assert_eq!(result["tab_id"], target_tab);

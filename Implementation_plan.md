@@ -214,6 +214,7 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   pane rename accepts Herdr's `--clear` label form;
   pane resize accepts Herdr's directional `--amount` and pane selector form;
   pane move-to-tab accepts Herdr's `--ratio` option;
+  pane moves accept Herdr's `--focus` and `--no-focus` controls for tab moves;
   popup panes now use a transient server popup slot, preserve the tiled
   background focus, render centered terminal content, accept popup placement
   from the plugin CLI, and close when the process exits. Overlay panes now

@@ -551,6 +551,7 @@ fn pane_move_command(project: &Project, args: &[String]) -> io::Result<()> {
         if let Some(ratio) = options.ratio {
             payload["ratio"] = serde_json::json!(ratio);
         }
+        payload["focus"] = serde_json::json!(options.focus);
     }
     pane_mutation_with_payload(project, "move_pane", payload)
 }
@@ -563,6 +564,7 @@ struct MoveOptions {
     target_pane_id: Option<String>,
     direction: String,
     ratio: Option<f32>,
+    focus: bool,
 }
 
 fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
@@ -578,6 +580,7 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
                 target_pane_id: None,
                 direction: "right".into(),
                 ratio: None,
+                focus: true,
             });
         }
         if args.len() >= 4 && args[2] == "--label" {
@@ -590,6 +593,7 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
                     target_pane_id: None,
                     direction: "right".into(),
                     ratio: None,
+                    focus: true,
                 });
             }
         }
@@ -601,6 +605,7 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
     let mut target_pane_id = None;
     let mut direction = "right";
     let mut ratio = None;
+    let mut focus = true;
     let mut index = 3;
     while index < args.len() {
         match args[index].as_str() {
@@ -624,6 +629,14 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
                 }
                 index += 2;
             }
+            "--focus" => {
+                focus = true;
+                index += 1;
+            }
+            "--no-focus" => {
+                focus = false;
+                index += 1;
+            }
             _ => {
                 return Err(
                         "usage: spindle pane move <id> --tab ID [--pane ID] [--split right|down] [--ratio FLOAT]"
@@ -639,6 +652,7 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
         target_pane_id,
         direction: direction.into(),
         ratio,
+        focus,
     })
 }
 
@@ -1773,6 +1787,7 @@ mod tests {
                 target_pane_id: None,
                 direction: "right".into(),
                 ratio: None,
+                focus: true,
             })
         );
         assert!(parse_move_options(&["pane-1".into()]).is_err());
@@ -1790,6 +1805,7 @@ mod tests {
             "down".into(),
             "--ratio".into(),
             "0.7".into(),
+            "--no-focus".into(),
         ];
         assert_eq!(
             parse_move_options(&args),
@@ -1800,6 +1816,7 @@ mod tests {
                 target_pane_id: Some("pane-2".into()),
                 direction: "down".into(),
                 ratio: Some(0.7),
+                focus: false,
             })
         );
     }
