@@ -867,8 +867,9 @@ impl Session {
 
     pub fn create_tab(&mut self, name: String) -> Result<Value, String> {
         let workspace = self.active_workspace_mut()?;
+        let workspace_id = workspace.workspace_id.clone();
         let tab_id = next_numbered_id(
-            &format!("tab-{}", workspace.workspace_id),
+            &format!("tab-{}", workspace_id),
             workspace.tabs.iter().map(|tab| tab.tab_id.clone()),
         );
         workspace.tabs.push(TabView {
@@ -880,6 +881,10 @@ impl Session {
         });
         workspace.active_tab_id = tab_id.clone();
         self.sync_focus_to_active_tab()?;
+        self.record_event(
+            "tab_created",
+            serde_json::json!({ "tab_id": tab_id, "workspace_id": workspace_id }),
+        );
         Ok(serde_json::json!({ "tab_id": tab_id }))
     }
 
