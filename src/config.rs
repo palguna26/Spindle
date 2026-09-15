@@ -23,6 +23,7 @@ struct ThemeConfig {
 struct NotificationsConfig {
     enabled: bool,
     delivery: NotificationDelivery,
+    delay_seconds: u64,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +40,7 @@ impl Default for NotificationsConfig {
         Self {
             enabled: true,
             delivery: NotificationDelivery::Herdr,
+            delay_seconds: 1,
         }
     }
 }
@@ -74,6 +76,7 @@ pub struct Config {
     pub theme_name: Option<String>,
     pub notifications_enabled: bool,
     pub(crate) notification_delivery: NotificationDelivery,
+    pub(crate) notification_delay_seconds: u64,
 }
 
 impl Default for Config {
@@ -84,6 +87,7 @@ impl Default for Config {
             theme_name: None,
             notifications_enabled: true,
             notification_delivery: NotificationDelivery::Herdr,
+            notification_delay_seconds: 1,
         }
     }
 }
@@ -124,11 +128,12 @@ pub fn load_from(path: &std::path::Path) -> Config {
         theme_name: file.theme.name,
         notifications_enabled: file.notifications.enabled,
         notification_delivery: file.notifications.delivery,
+        notification_delay_seconds: file.notifications.delay_seconds.min(3600),
     }
 }
 
 pub fn default_document() -> &'static str {
-    "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n\n[theme]\nname = \"terminal\"\n\n[notifications]\nenabled = true\ndelivery = \"herdr\"\n"
+    "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n\n[theme]\nname = \"terminal\"\n\n[notifications]\nenabled = true\ndelivery = \"herdr\"\ndelay_seconds = 1\n"
 }
 
 #[cfg(test)]
@@ -191,6 +196,19 @@ mod tests {
             load_from(&path).notification_delivery,
             NotificationDelivery::Terminal
         );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_and_bounds_notification_delay() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-notification-delay-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[notifications]\ndelay_seconds = 7\n").unwrap();
+        assert_eq!(load_from(&path).notification_delay_seconds, 7);
+        std::fs::write(&path, "[notifications]\ndelay_seconds = 9999\n").unwrap();
+        assert_eq!(load_from(&path).notification_delay_seconds, 3600);
         std::fs::remove_file(path).unwrap();
     }
 }

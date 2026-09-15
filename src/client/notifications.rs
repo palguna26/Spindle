@@ -16,15 +16,25 @@ pub(crate) struct Event {
     pub kind: Kind,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct QueuedNotification {
+    pub message: String,
+    pub visible_at: Instant,
+    pub expires_at: Instant,
+}
+
 pub(crate) fn deliver(
-    queue: &mut VecDeque<(String, Instant)>,
+    queue: &mut VecDeque<QueuedNotification>,
     events: impl IntoIterator<Item = Event>,
     delivery: crate::config::NotificationDelivery,
+    delay_seconds: u64,
     now: Instant,
 ) {
     match delivery {
         crate::config::NotificationDelivery::Off => {}
-        crate::config::NotificationDelivery::Herdr => enqueue(queue, events, now),
+        crate::config::NotificationDelivery::Herdr => {
+            enqueue_with_delay(queue, events, now, delay_seconds)
+        }
         crate::config::NotificationDelivery::System => {
             for event in events {
                 let notification = message(&event);
@@ -64,24 +74,39 @@ pub(crate) fn observe_all(previous: &SessionSnapshot, current: &SessionSnapshot)
         .collect()
 }
 
-pub(crate) fn enqueue(
-    queue: &mut VecDeque<(String, Instant)>,
+pub(crate) fn enqueue_with_delay(
+    queue: &mut VecDeque<QueuedNotification>,
     events: impl IntoIterator<Item = Event>,
     now: Instant,
+    delay_seconds: u64,
 ) {
     for event in events {
         let position = queue.len() as u32 + 1;
-        queue.push_back((
-            message(&event),
-            now + Duration::from_secs(5).saturating_mul(position),
-        ));
+        let visible_at = now
+            + Duration::from_secs(delay_seconds.min(3600))
+            + Duration::from_secs(5).saturating_mul(position.saturating_sub(1));
+        queue.push_back(QueuedNotification {
+            message: message(&event),
+            visible_at,
+            expires_at: visible_at + Duration::from_secs(5),
+        });
     }
 }
 
-pub(crate) fn expire(queue: &mut VecDeque<(String, Instant)>, now: Instant) {
-    while queue.front().is_some_and(|(_, deadline)| now >= *deadline) {
+pub(crate) fn expire(queue: &mut VecDeque<QueuedNotification>, now: Instant) {
+    while queue
+        .front()
+        .is_some_and(|notification| now >= notification.expires_at)
+    {
         queue.pop_front();
     }
+}
+
+pub(crate) fn visible_message(queue: &VecDeque<QueuedNotification>, now: Instant) -> Option<&str> {
+    queue
+        .front()
+        .filter(|notification| now >= notification.visible_at)
+        .map(|notification| notification.message.as_str())
 }
 
 fn notification_kind(previous: AgentState, current: AgentState, active: bool) -> Option<Kind> {
@@ -137,7 +162,7 @@ pub(crate) fn message(event: &Event) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{enqueue, expire, notification_kind, Event, Kind};
+    use super::{enqueue_with_delay, expire, notification_kind, visible_message, Event, Kind};
     use crate::detect::AgentState;
     use std::collections::VecDeque;
     use std::time::{Duration, Instant};
@@ -162,7 +187,7 @@ mod tests {
     fn queued_notifications_keep_order_and_expire_from_the_front() {
         let now = Instant::now();
         let mut queue = VecDeque::new();
-        enqueue(
+        enqueue_with_delay(
             &mut queue,
             [
                 Event {
@@ -177,13 +202,32 @@ mod tests {
                 },
             ],
             now,
+            0,
         );
         assert_eq!(queue.len(), 2);
-        assert!(queue.front().unwrap().0.contains("codex"));
-        expire(&mut queue, now + Duration::from_secs(5));
+        assert!(queue.front().unwrap().message.contains("codex"));
+        expire(&mut queue, now + Duration::from_secs(6));
         assert_eq!(queue.len(), 1);
-        assert!(queue.front().unwrap().0.contains("claude"));
-        expire(&mut queue, now + Duration::from_secs(10));
+        assert!(queue.front().unwrap().message.contains("claude"));
+        expire(&mut queue, now + Duration::from_secs(12));
         assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn delayed_notifications_stay_hidden_until_their_deadline() {
+        let now = Instant::now();
+        let mut queue = std::collections::VecDeque::new();
+        enqueue_with_delay(
+            &mut queue,
+            [Event {
+                pane_id: "pane-1".into(),
+                agent: "codex".into(),
+                kind: Kind::Finished,
+            }],
+            now,
+            2,
+        );
+        assert_eq!(visible_message(&queue, now + Duration::from_secs(1)), None);
+        assert!(visible_message(&queue, now + Duration::from_secs(7)).is_some());
     }
 }

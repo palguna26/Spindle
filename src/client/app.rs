@@ -198,7 +198,7 @@ fn event_loop(
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
     let mut action_error: Option<(String, Instant)> = None;
-    let mut notifications: VecDeque<(String, Instant)> = VecDeque::new();
+    let mut notifications = VecDeque::new();
     loop {
         let config = crate::config::load();
         keymap = Keymap::from_config(&config);
@@ -220,6 +220,7 @@ fn event_loop(
                         &mut notifications,
                         crate::client::notifications::observe_all(&snapshot, &current),
                         config.notification_delivery,
+                        config.notification_delay_seconds,
                         Instant::now(),
                     );
                 }
@@ -381,7 +382,9 @@ fn event_loop(
                 } else if let Some((error, _)) = &action_error {
                     renderer::render_action_error(frame, error);
                 }
-                if let Some((message, _)) = notifications.front() {
+                if let Some(message) =
+                    crate::client::notifications::visible_message(&notifications, Instant::now())
+                {
                     renderer::render_notification(frame, message);
                 }
             })
