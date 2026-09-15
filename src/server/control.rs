@@ -605,7 +605,9 @@ pub(crate) fn response_for_with_interactive(
                 }
             };
             let mut session = session.lock().expect("session lock poisoned");
-            save_after(&mut session, |session| session.switch_tab(&payload.id))
+            save_after(&mut session, |session| {
+                session.switch_tab_anywhere(&payload.id)
+            })
         }
         "rename_tab" => {
             let payload: IdNameRequest = match serde_json::from_value(request.payload) {
@@ -616,7 +618,7 @@ pub(crate) fn response_for_with_interactive(
             };
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
-                session.rename_tab(&payload.id, payload.name)
+                session.rename_tab_anywhere(&payload.id, payload.name)
             })
         }
         "close_tab" => {
@@ -627,7 +629,9 @@ pub(crate) fn response_for_with_interactive(
                 }
             };
             let mut session = session.lock().expect("session lock poisoned");
-            save_after(&mut session, |session| session.close_tab(&payload.id))
+            save_after(&mut session, |session| {
+                session.close_tab_anywhere(&payload.id)
+            })
         }
         "focus_pane" => {
             let payload: PaneRequest = match serde_json::from_value(request.payload) {

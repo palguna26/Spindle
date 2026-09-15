@@ -1500,6 +1500,47 @@ impl Session {
         Ok(serde_json::json!({ "tab_id": tab_id }))
     }
 
+    pub fn switch_tab_anywhere(&mut self, tab_id: &str) -> Result<Value, String> {
+        let Some((space_index, workspace_index, _tab_index)) = self
+            .snapshot
+            .spaces
+            .iter()
+            .enumerate()
+            .find_map(|(space_index, space)| {
+                space
+                    .workspaces
+                    .iter()
+                    .enumerate()
+                    .find_map(|(workspace_index, workspace)| {
+                        workspace
+                            .tabs
+                            .iter()
+                            .position(|tab| tab.tab_id == tab_id)
+                            .map(|tab_index| (space_index, workspace_index, tab_index))
+                    })
+            })
+        else {
+            return Err(format!("tab '{tab_id}' does not exist"));
+        };
+        let workspace_id = self.snapshot.spaces[space_index].workspaces[workspace_index]
+            .workspace_id
+            .clone();
+        let space_id = self.snapshot.spaces[space_index].space_id.clone();
+        self.snapshot.active_space_id = space_id.clone();
+        self.snapshot.spaces[space_index].active_workspace_id = Some(workspace_id.clone());
+        self.snapshot.spaces[space_index].workspaces[workspace_index].active_tab_id = tab_id.into();
+        self.sync_focus_to_active_tab()?;
+        self.record_event(
+            "tab_focused",
+            serde_json::json!({
+                "tab_id": tab_id,
+                "workspace_id": workspace_id,
+                "space_id": space_id,
+            }),
+        );
+        Ok(serde_json::json!({ "tab_id": tab_id, "workspace_id": workspace_id }))
+    }
+
     pub fn rename_tab(&mut self, tab_id: &str, name: String) -> Result<Value, String> {
         let workspace = self.active_workspace_mut()?;
         let tab = workspace
@@ -1508,6 +1549,25 @@ impl Session {
             .find(|tab| tab.tab_id == tab_id)
             .ok_or_else(|| format!("tab '{tab_id}' does not exist"))?;
         tab.name = name;
+        Ok(serde_json::json!({ "tab_id": tab_id }))
+    }
+
+    pub fn rename_tab_anywhere(&mut self, tab_id: &str, name: String) -> Result<Value, String> {
+        let Some(workspace) = self
+            .snapshot
+            .spaces
+            .iter_mut()
+            .flat_map(|space| space.workspaces.iter_mut())
+            .find(|workspace| workspace.tabs.iter().any(|tab| tab.tab_id == tab_id))
+        else {
+            return Err(format!("tab '{tab_id}' does not exist"));
+        };
+        workspace
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.tab_id == tab_id)
+            .unwrap()
+            .name = name;
         Ok(serde_json::json!({ "tab_id": tab_id }))
     }
 
@@ -1578,6 +1638,86 @@ impl Session {
         workspace.tabs.remove(index);
         if workspace.active_tab_id == tab_id {
             workspace.active_tab_id = workspace.tabs[index.min(workspace.tabs.len() - 1)]
+                .tab_id
+                .clone();
+        }
+        self.sync_focus_to_active_tab()?;
+        Ok(serde_json::json!({ "tab_id": tab_id }))
+    }
+
+    pub fn close_tab_anywhere(&mut self, tab_id: &str) -> Result<Value, String> {
+        let active_space_id = self.snapshot.active_space_id.clone();
+        let active_workspace_id = self
+            .snapshot
+            .spaces
+            .iter()
+            .find(|space| space.space_id == active_space_id)
+            .and_then(|space| space.active_workspace_id.clone());
+        let Some((space_id, workspace_id, tab_count, tab_index, pane_ids)) =
+            self.snapshot.spaces.iter().find_map(|space| {
+                space.workspaces.iter().find_map(|workspace| {
+                    workspace
+                        .tabs
+                        .iter()
+                        .position(|tab| tab.tab_id == tab_id)
+                        .map(|tab_index| {
+                            (
+                                space.space_id.clone(),
+                                workspace.workspace_id.clone(),
+                                workspace.tabs.len(),
+                                tab_index,
+                                workspace.tabs[tab_index]
+                                    .layout
+                                    .as_ref()
+                                    .map(|layout| {
+                                        layout
+                                            .pane_ids()
+                                            .into_iter()
+                                            .map(str::to_owned)
+                                            .collect::<Vec<_>>()
+                                    })
+                                    .unwrap_or_default(),
+                            )
+                        })
+                })
+            })
+        else {
+            return Err(format!("tab '{tab_id}' does not exist"));
+        };
+        if active_space_id == space_id
+            && active_workspace_id.as_deref() == Some(workspace_id.as_str())
+        {
+            return self.close_tab(tab_id);
+        }
+        self.record_event(
+            "tab_closed",
+            serde_json::json!({
+                "tab_id": tab_id, "workspace_id": workspace_id, "space_id": space_id,
+            }),
+        );
+        if tab_count == 1 {
+            self.close_workspace(&space_id, &workspace_id)?;
+            return Ok(serde_json::json!({ "tab_id": tab_id, "closed_workspace": true }));
+        }
+        for pane_id in &pane_ids {
+            let _ = self.pane_manager.remove(pane_id);
+        }
+        self.snapshot
+            .panes
+            .retain(|pane| !pane_ids.contains(&pane.pane_id));
+        let workspace = self
+            .snapshot
+            .spaces
+            .iter_mut()
+            .find(|space| space.space_id == space_id)
+            .unwrap()
+            .workspaces
+            .iter_mut()
+            .find(|workspace| workspace.workspace_id == workspace_id)
+            .unwrap();
+        workspace.tabs.remove(tab_index);
+        if workspace.active_tab_id == tab_id {
+            workspace.active_tab_id = workspace.tabs[tab_index.min(workspace.tabs.len() - 1)]
                 .tab_id
                 .clone();
         }
@@ -2623,6 +2763,39 @@ mod tests {
             session.snapshot().spaces[0].workspaces[1].tabs[1].name,
             "Build logs"
         );
+    }
+
+    #[test]
+    fn tab_operations_resolve_ids_across_workspaces() {
+        let mut session = Session::default();
+        session.create_workspace("Other".into()).unwrap();
+        let other_tab = session.snapshot.spaces[0].workspaces[1].tabs[0]
+            .tab_id
+            .clone();
+        session.switch_workspace("workspace-1").unwrap();
+
+        session.switch_tab_anywhere(&other_tab).unwrap();
+        assert_eq!(
+            session.snapshot.spaces[0].active_workspace_id.as_deref(),
+            Some("workspace-2")
+        );
+        assert_eq!(
+            session.snapshot.spaces[0].workspaces[1].active_tab_id,
+            other_tab
+        );
+        session
+            .rename_tab_anywhere(&other_tab, "Review".into())
+            .unwrap();
+        assert_eq!(
+            session.snapshot.spaces[0].workspaces[1].tabs[0].name,
+            "Review"
+        );
+        session.switch_workspace("workspace-1").unwrap();
+        session.close_tab_anywhere(&other_tab).unwrap();
+        assert!(session.snapshot.spaces[0]
+            .workspaces
+            .iter()
+            .all(|workspace| workspace.workspace_id != "workspace-2"));
     }
 
     #[test]
