@@ -73,6 +73,9 @@ The config is read when the client starts. Supported action names include
 `rename_workspace`, `delete_workspace`, pane focus directions, splits, resize,
 zoom, sidebar, copy mode, help, and the command palette.
 
+Use `spindle config path` to print the path or `spindle config default` to
+print a starter file.
+
 ## Keybindings
 
 `Ctrl-b` is the command prefix. Press `Ctrl-b`, then `?` for the in-app guide

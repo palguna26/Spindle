@@ -33,6 +33,9 @@ pub fn run() -> io::Result<()> {
             println!("spindle {}", env!("CARGO_PKG_VERSION"));
             return Ok(());
         }
+        "config" => {
+            return run_config_command(&env::args().skip(2).collect::<Vec<_>>());
+        }
         _ => {}
     }
     let project = Project::from_current_dir()?;
@@ -190,6 +193,8 @@ fn print_help() {
     println!("  stop     stop the current project's server");
     println!("  list     show the current project identity and state path");
     println!("  doctor   check local Spindle state");
+    println!("  config path     show the user config path");
+    println!("  config default  print a starter config");
     println!("  workspace list  list workspaces in the current project session");
     println!("  workspace get <id>  show a workspace by ID");
     println!("  workspace focus <id>  focus a workspace by ID");
@@ -197,6 +202,23 @@ fn print_help() {
     println!("Options:");
     println!("  --help, -h       show this help");
     println!("  --version, -V    print the version");
+}
+
+fn run_config_command(args: &[String]) -> io::Result<()> {
+    match args {
+        [command] if command == "path" => println!("{}", crate::config::path().display()),
+        [command] if command == "default" => print!("{}", crate::config::default_document()),
+        [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
+            println!("Usage: spindle config <path|default>");
+        }
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "usage: spindle config <path|default>",
+            ));
+        }
+    }
+    Ok(())
 }
 
 struct Project {
