@@ -752,40 +752,40 @@ fn action_invoke(args: &[String]) -> io::Result<()> {
         }
     }
     let context = context.to_string();
-    let child = std::process::Command::new(command)
-        .args(action.command.iter().skip(1))
-        .current_dir(&registration.path)
-        .env("SPINDLE_PLUGIN_ID", &manifest_id)
-        .env("SPINDLE_PLUGIN_ROOT", &registration.path)
-        .env("SPINDLE_PLUGIN_CONFIG_DIR", &config_dir)
-        .env("SPINDLE_PLUGIN_STATE_DIR", &state_dir)
-        .env("SPINDLE_PLUGIN_CONTEXT_JSON", &context)
-        .env("SPINDLE_PLUGIN_ACTION_ID", &action.id)
-        .env(
-            "SPINDLE_PLUGIN_PANE_ID",
-            context_field(&context, "focused_pane_id"),
-        )
-        .env(
-            "SPINDLE_PLUGIN_CWD",
-            context_field(&context, "focused_pane_cwd"),
-        )
-        .env("HERDR_PLUGIN_ID", &manifest_id)
-        .env("HERDR_PLUGIN_ROOT", &registration.path)
-        .env("HERDR_PLUGIN_CONFIG_DIR", &config_dir)
-        .env("HERDR_PLUGIN_STATE_DIR", &state_dir)
-        .env("HERDR_PLUGIN_CONTEXT_JSON", &context)
-        .env("HERDR_PLUGIN_ACTION_ID", &action.id)
-        .env("HERDR_PANE_ID", context_field(&context, "focused_pane_id"))
-        .env(
-            "HERDR_WORKSPACE_ID",
-            context_field(&context, "workspace_id"),
-        )
-        .env("HERDR_TAB_ID", context_field(&context, "tab_id"))
-        .env(
-            "HERDR_PLUGIN_CWD",
-            context_field(&context, "focused_pane_cwd"),
-        )
-        .spawn()?;
+    let action_args = action.command.iter().skip(1).cloned().collect::<Vec<_>>();
+    let child =
+        crate::plugin_command::command_for_argv_in_dir(command, &action_args, &registration.path)
+            .env("SPINDLE_PLUGIN_ID", &manifest_id)
+            .env("SPINDLE_PLUGIN_ROOT", &registration.path)
+            .env("SPINDLE_PLUGIN_CONFIG_DIR", &config_dir)
+            .env("SPINDLE_PLUGIN_STATE_DIR", &state_dir)
+            .env("SPINDLE_PLUGIN_CONTEXT_JSON", &context)
+            .env("SPINDLE_PLUGIN_ACTION_ID", &action.id)
+            .env(
+                "SPINDLE_PLUGIN_PANE_ID",
+                context_field(&context, "focused_pane_id"),
+            )
+            .env(
+                "SPINDLE_PLUGIN_CWD",
+                context_field(&context, "focused_pane_cwd"),
+            )
+            .env("HERDR_PLUGIN_ID", &manifest_id)
+            .env("HERDR_PLUGIN_ROOT", &registration.path)
+            .env("HERDR_PLUGIN_CONFIG_DIR", &config_dir)
+            .env("HERDR_PLUGIN_STATE_DIR", &state_dir)
+            .env("HERDR_PLUGIN_CONTEXT_JSON", &context)
+            .env("HERDR_PLUGIN_ACTION_ID", &action.id)
+            .env("HERDR_PANE_ID", context_field(&context, "focused_pane_id"))
+            .env(
+                "HERDR_WORKSPACE_ID",
+                context_field(&context, "workspace_id"),
+            )
+            .env("HERDR_TAB_ID", context_field(&context, "tab_id"))
+            .env(
+                "HERDR_PLUGIN_CWD",
+                context_field(&context, "focused_pane_cwd"),
+            )
+            .spawn()?;
     let _ = crate::plugin::record_launch(&manifest_id, "action", &action.id, child.id());
     println!("started {}.{} (pid {})", manifest_id, action.id, child.id());
     Ok(())

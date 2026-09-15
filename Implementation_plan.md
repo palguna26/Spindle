@@ -185,7 +185,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   popup actions and richer overlay actions remain. CLI action invocation now
   best-effort enriches plugin context from the active server snapshot with
   workspace, tab, and focused-pane identity/cwd, and exports Herdr-compatible
-  context environment variables;
+  context environment variables. Plugin actions and link handlers now use a
+  Herdr-style Windows command launcher so relative executables and `.cmd`/
+  `.bat` entrypoints work from the plugin directory;
 - [x] Route keyboard input to an open plugin popup before the background pane,
   and make the normal close-pane binding close that popup first, matching
   Herdr's popup input ownership.

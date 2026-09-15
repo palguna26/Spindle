@@ -32,28 +32,31 @@ pub(crate) fn launch_for_url(
             };
             let (config_dir, state_dir) = crate::plugin::ensure_user_dirs(&manifest.id)?;
             let context = link_context(&manifest.id, &handler.id, url, pane_id, pane_cwd);
-            let child = std::process::Command::new(command)
-                .args(action.command.iter().skip(1))
-                .current_dir(&registration.path)
-                .env("SPINDLE_PLUGIN_ID", &manifest.id)
-                .env("SPINDLE_PLUGIN_ROOT", &registration.path)
-                .env("SPINDLE_PLUGIN_CONFIG_DIR", &config_dir)
-                .env("SPINDLE_PLUGIN_STATE_DIR", &state_dir)
-                .env("SPINDLE_PLUGIN_CONTEXT_JSON", &context)
-                .env("SPINDLE_PLUGIN_CLICKED_URL", url)
-                .env("SPINDLE_PLUGIN_LINK_HANDLER_ID", &handler.id)
-                .env("SPINDLE_PLUGIN_PANE_ID", pane_id.unwrap_or_default())
-                .env("SPINDLE_PLUGIN_CWD", pane_cwd.unwrap_or_default())
-                .env("HERDR_PLUGIN_ID", &manifest.id)
-                .env("HERDR_PLUGIN_ROOT", &registration.path)
-                .env("HERDR_PLUGIN_CONFIG_DIR", &config_dir)
-                .env("HERDR_PLUGIN_STATE_DIR", &state_dir)
-                .env("HERDR_PLUGIN_CONTEXT_JSON", &context)
-                .env("HERDR_PLUGIN_CLICKED_URL", url)
-                .env("HERDR_PLUGIN_LINK_HANDLER_ID", &handler.id)
-                .env("HERDR_PLUGIN_PANE_ID", pane_id.unwrap_or_default())
-                .env("HERDR_PLUGIN_CWD", pane_cwd.unwrap_or_default())
-                .spawn()?;
+            let action_args = action.command.iter().skip(1).cloned().collect::<Vec<_>>();
+            let child = crate::plugin_command::command_for_argv_in_dir(
+                command,
+                &action_args,
+                &registration.path,
+            )
+            .env("SPINDLE_PLUGIN_ID", &manifest.id)
+            .env("SPINDLE_PLUGIN_ROOT", &registration.path)
+            .env("SPINDLE_PLUGIN_CONFIG_DIR", &config_dir)
+            .env("SPINDLE_PLUGIN_STATE_DIR", &state_dir)
+            .env("SPINDLE_PLUGIN_CONTEXT_JSON", &context)
+            .env("SPINDLE_PLUGIN_CLICKED_URL", url)
+            .env("SPINDLE_PLUGIN_LINK_HANDLER_ID", &handler.id)
+            .env("SPINDLE_PLUGIN_PANE_ID", pane_id.unwrap_or_default())
+            .env("SPINDLE_PLUGIN_CWD", pane_cwd.unwrap_or_default())
+            .env("HERDR_PLUGIN_ID", &manifest.id)
+            .env("HERDR_PLUGIN_ROOT", &registration.path)
+            .env("HERDR_PLUGIN_CONFIG_DIR", &config_dir)
+            .env("HERDR_PLUGIN_STATE_DIR", &state_dir)
+            .env("HERDR_PLUGIN_CONTEXT_JSON", &context)
+            .env("HERDR_PLUGIN_CLICKED_URL", url)
+            .env("HERDR_PLUGIN_LINK_HANDLER_ID", &handler.id)
+            .env("HERDR_PLUGIN_PANE_ID", pane_id.unwrap_or_default())
+            .env("HERDR_PLUGIN_CWD", pane_cwd.unwrap_or_default())
+            .spawn()?;
             let _ = crate::plugin::record_launch(&manifest.id, "link", &handler.id, child.id());
             return Ok(true);
         }

@@ -8,6 +8,7 @@ pub mod pane;
 pub mod persist;
 mod platform;
 mod plugin;
+mod plugin_command;
 pub mod protocol;
 pub mod pty;
 pub mod server;
