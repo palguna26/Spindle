@@ -20,7 +20,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         }
         [command, id] if command == "stop" => pane_mutation(project, "stop_pane", id),
         [command, id] if command == "restart" => pane_mutation(project, "restart_pane", id),
-        [command, id] if command == "zoom" => pane_mutation(project, "toggle_pane_zoom", id),
+        [command, args @ ..] if command == "zoom" => pane_zoom_command(project, args),
         [command, id] if command == "close" => pane_mutation(project, "close_pane", id),
         [command, id, text @ ..] if command == "send-text" && !text.is_empty() => {
             let text = text.join(" ");
@@ -207,6 +207,86 @@ fn pane_focus(project: &Project, args: &[String]) -> io::Result<()> {
         "focus_direction",
         serde_json::json!({ "direction": direction }),
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ZoomMode {
+    Toggle,
+    On,
+    Off,
+}
+
+fn pane_zoom_command(project: &Project, args: &[String]) -> io::Result<()> {
+    let (requested_id, mode) = parse_zoom_options(args).map_err(io::Error::other)?;
+    let snapshot = get_snapshot(project)?;
+    let pane_id = requested_id
+        .or_else(|| snapshot.focused_pane_id.clone())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no focused pane"))?;
+    let zoomed = active_tab_zoomed(&snapshot);
+    let desired = match mode {
+        ZoomMode::Toggle => !zoomed,
+        ZoomMode::On => true,
+        ZoomMode::Off => false,
+    };
+    if desired == zoomed && mode != ZoomMode::Toggle {
+        println!(
+            "{}",
+            serde_json::json!({ "pane_id": pane_id, "zoomed": zoomed })
+        );
+        return Ok(());
+    }
+    pane_mutation(project, "toggle_pane_zoom", &pane_id)
+}
+
+fn parse_zoom_options(args: &[String]) -> Result<(Option<String>, ZoomMode), String> {
+    let mut pane_id = None;
+    let mut mode = ZoomMode::Toggle;
+    let mut mode_seen = false;
+    for arg in args {
+        match arg.as_str() {
+            "--toggle" | "--on" | "--off" => {
+                if mode_seen {
+                    return Err("provide only one of --toggle, --on, or --off".into());
+                }
+                mode = match arg.as_str() {
+                    "--toggle" => ZoomMode::Toggle,
+                    "--on" => ZoomMode::On,
+                    _ => ZoomMode::Off,
+                };
+                mode_seen = true;
+            }
+            value if value.starts_with('-') => {
+                return Err(format!("unknown option: {value}"));
+            }
+            value if pane_id.is_none() => pane_id = Some(value.to_owned()),
+            _ => return Err("only one pane ID may be provided".into()),
+        }
+    }
+    Ok((pane_id, mode))
+}
+
+fn active_tab_zoomed(snapshot: &SessionSnapshot) -> bool {
+    let Some(space) = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)
+    else {
+        return false;
+    };
+    let Some(workspace_id) = space.active_workspace_id.as_deref() else {
+        return false;
+    };
+    space
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.workspace_id == workspace_id)
+        .and_then(|workspace| {
+            workspace
+                .tabs
+                .iter()
+                .find(|tab| tab.tab_id == workspace.active_tab_id)
+        })
+        .is_some_and(|tab| tab.zoomed)
 }
 
 fn parse_focus_direction(args: &[String]) -> Result<&str, String> {
@@ -556,7 +636,7 @@ fn print_help() {
     println!("  rename <id> ...  rename a pane");
     println!("  stop <id>        stop a pane process");
     println!("  restart <id>     restart a pane process");
-    println!("  zoom <id>        toggle pane zoom");
+    println!("  zoom [<id>] [--toggle|--on|--off]  control pane zoom");
     println!("  close <id>       close a pane");
     println!("  send-text <id> <text>  send text to a pane");
     println!("  send-keys <id> <key>...  send keys (Enter, arrows, ctrl-x)");
@@ -572,7 +652,7 @@ fn print_help() {
 mod tests {
     use super::{
         format_pane_list, parse_focus_direction, parse_list_workspace, parse_read_options,
-        ReadSource,
+        parse_zoom_options, ReadSource, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -630,5 +710,16 @@ mod tests {
             Ok(Some("workspace-2".into()))
         );
         assert!(parse_list_workspace(&["--workspace".into()]).is_err());
+    }
+
+    #[test]
+    fn zoom_options_match_herdr_explicit_modes() {
+        let args = vec!["pane-2".into(), "--on".into()];
+        assert_eq!(
+            parse_zoom_options(&args),
+            Ok((Some("pane-2".into()), ZoomMode::On))
+        );
+        assert_eq!(parse_zoom_options(&[]), Ok((None, ZoomMode::Toggle)));
+        assert!(parse_zoom_options(&["--on".into(), "--off".into()]).is_err());
     }
 }
