@@ -1,6 +1,7 @@
 use super::Project;
 use crate::server::session::{PaneView, SessionSnapshot};
 use std::io;
+use std::time::{Duration, Instant};
 
 pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
@@ -53,6 +54,9 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
             "swap_panes",
             serde_json::json!({ "source_pane_id": source, "target_pane_id": target }),
         ),
+        [command, id, options @ ..] if command == "wait-output" => {
+            pane_wait_output(project, id, options)
+        }
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -61,7 +65,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|split|resize>",
+                "usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|wait-output|split|resize>",
             ))
         }
     }
@@ -204,6 +208,101 @@ fn pane_read(project: &Project, id: &str, lines: Option<usize>) -> io::Result<()
     Ok(())
 }
 
+struct WaitOptions {
+    needle: String,
+    timeout: Duration,
+    lines: Option<usize>,
+}
+
+fn pane_wait_output(project: &Project, id: &str, args: &[String]) -> io::Result<()> {
+    let options = parse_wait_options(args)
+        .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+    let deadline = Instant::now() + options.timeout;
+    loop {
+        let snapshot = get_snapshot(project)?;
+        let pane = snapshot
+            .panes
+            .iter()
+            .find(|pane| pane.pane_id == id)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("pane '{id}' does not exist"),
+                )
+            })?;
+        if pane.screen.contains(&options.needle) {
+            if let Some(lines) = options.lines {
+                let content: Vec<_> = pane.screen.lines().collect();
+                let start = content.len().saturating_sub(lines);
+                println!("{}", content[start..].join("\n"));
+            } else {
+                print!("{}", pane.screen);
+            }
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!(
+                    "timed out waiting for '{id}' to contain {:?}",
+                    options.needle
+                ),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn parse_wait_options(args: &[String]) -> Result<WaitOptions, String> {
+    let mut needle = None;
+    let mut timeout = Duration::from_secs(10);
+    let mut lines = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--match" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --match".into());
+                };
+                needle = Some(value.clone());
+                index += 2;
+            }
+            "--timeout" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --timeout".into());
+                };
+                let milliseconds = value
+                    .parse::<u64>()
+                    .map_err(|_| format!("invalid timeout: {value}"))?;
+                timeout = Duration::from_millis(milliseconds);
+                index += 2;
+            }
+            "--lines" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --lines".into());
+                };
+                lines = Some(
+                    value
+                        .parse::<usize>()
+                        .map_err(|_| format!("invalid line count: {value}"))?,
+                );
+                index += 2;
+            }
+            other => return Err(format!("unknown option: {other}")),
+        }
+    }
+    let Some(needle) = needle else {
+        return Err(
+            "usage: spindle pane wait-output <id> --match TEXT [--timeout MS] [--lines N]".into(),
+        );
+    };
+    Ok(WaitOptions {
+        needle,
+        timeout,
+        lines,
+    })
+}
+
 fn pane_rename(project: &Project, id: &str, label: &str) -> io::Result<()> {
     pane_mutation_with_payload(
         project,
@@ -332,7 +431,7 @@ fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|split|resize>");
+    println!("Usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|wait-output|split|resize>");
     println!("  list             list panes in the active tab");
     println!("  current          show the focused pane");
     println!("  get <id>         show a pane as JSON");
@@ -347,6 +446,7 @@ fn print_help() {
     println!("  run <id> <command>  send a command followed by Enter");
     println!("  read <id> [--lines N]  read visible pane output");
     println!("  swap <source> <target>  swap two panes");
+    println!("  wait-output <id> --match TEXT [--timeout MS] [--lines N]  wait for output");
     println!("  split <direction> [command args...]  split with a new pane");
     println!("  resize <id> <delta>  resize the pane layout by a ratio delta");
 }
@@ -355,6 +455,7 @@ fn print_help() {
 mod tests {
     use super::format_pane_list;
     use crate::server::session::Session;
+    use std::time::Duration;
 
     #[test]
     fn pane_list_handles_an_empty_tab() {
@@ -362,5 +463,21 @@ mod tests {
         let snapshot = session.snapshot();
         let output = format_pane_list(&snapshot.panes, &[], snapshot.focused_pane_id.as_deref());
         assert_eq!(output, "No panes.\n");
+    }
+
+    #[test]
+    fn wait_output_requires_a_match_and_parses_limits() {
+        let args = vec![
+            "--match".into(),
+            "ready".into(),
+            "--timeout".into(),
+            "250".into(),
+            "--lines".into(),
+            "3".into(),
+        ];
+        let options = super::parse_wait_options(&args).unwrap();
+        assert_eq!(options.needle, "ready");
+        assert_eq!(options.timeout, Duration::from_millis(250));
+        assert_eq!(options.lines, Some(3));
     }
 }
