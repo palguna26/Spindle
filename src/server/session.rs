@@ -1026,6 +1026,7 @@ impl Session {
         target_tab_id: &str,
         target_pane_id: Option<&str>,
         direction: crate::model::layout::Direction,
+        ratio: f32,
     ) -> Result<Value, String> {
         let workspace = self.active_workspace_mut()?;
         let source_index = workspace
@@ -1089,11 +1090,11 @@ impl Session {
         target.layout = if let Some(layout) = target.layout.take() {
             if let Some(target_pane_id) = target_pane_id {
                 layout
-                    .split_pane(target_pane_id, direction, pane_id)
+                    .split_pane_with_ratio(target_pane_id, direction, ratio, pane_id)
                     .ok_or_else(|| format!("target pane '{target_pane_id}' does not exist"))
                     .map(Some)?
             } else {
-                Some(layout.split(direction, 0.5, pane_id))
+                Some(layout.split(direction, ratio, pane_id))
             }
         } else {
             Some(LayoutNode::pane(pane_id))
@@ -2833,6 +2834,7 @@ mod tests {
                 &target_tab,
                 Some("pane-2"),
                 crate::model::layout::Direction::Horizontal,
+                0.5,
             )
             .unwrap();
         assert_eq!(result["tab_id"], target_tab);

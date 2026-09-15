@@ -548,17 +548,21 @@ fn pane_move_command(project: &Project, args: &[String]) -> io::Result<()> {
             payload["target_pane_id"] = serde_json::json!(target_pane_id);
         }
         payload["direction"] = serde_json::json!(options.direction);
+        if let Some(ratio) = options.ratio {
+            payload["ratio"] = serde_json::json!(ratio);
+        }
     }
     pane_mutation_with_payload(project, "move_pane", payload)
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 struct MoveOptions {
     pane_id: String,
     label: Option<String>,
     target_tab_id: Option<String>,
     target_pane_id: Option<String>,
     direction: String,
+    ratio: Option<f32>,
 }
 
 fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
@@ -573,6 +577,7 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
                 target_tab_id: None,
                 target_pane_id: None,
                 direction: "right".into(),
+                ratio: None,
             });
         }
         if args.len() >= 4 && args[2] == "--label" {
@@ -584,18 +589,18 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
                     target_tab_id: None,
                     target_pane_id: None,
                     direction: "right".into(),
+                    ratio: None,
                 });
             }
         }
         return Err("usage: spindle pane move <id> --new-tab [--label TEXT]".into());
     }
     if args.get(1).map(String::as_str) != Some("--tab") || args.len() < 3 {
-        return Err(
-            "usage: spindle pane move <id> --tab ID [--pane ID] [--split right|down]".into(),
-        );
+        return Err("usage: spindle pane move <id> --tab ID [--pane ID] [--split right|down] [--ratio FLOAT]".into());
     }
     let mut target_pane_id = None;
     let mut direction = "right";
+    let mut ratio = None;
     let mut index = 3;
     while index < args.len() {
         match args[index].as_str() {
@@ -610,9 +615,18 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
                 }
                 index += 2;
             }
+            "--ratio" if index + 1 < args.len() => {
+                ratio = Some(args[index + 1].parse::<f32>().map_err(|_| {
+                    format!("invalid ratio: {}", args[index + 1])
+                })?);
+                if !ratio.is_some_and(|value| value.is_finite()) {
+                    return Err("ratio must be finite".into());
+                }
+                index += 2;
+            }
             _ => {
                 return Err(
-                    "usage: spindle pane move <id> --tab ID [--pane ID] [--split right|down]"
+                        "usage: spindle pane move <id> --tab ID [--pane ID] [--split right|down] [--ratio FLOAT]"
                         .into(),
                 )
             }
@@ -624,6 +638,7 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
         target_tab_id: Some(args[2].clone()),
         target_pane_id,
         direction: direction.into(),
+        ratio,
     })
 }
 
@@ -1757,6 +1772,7 @@ mod tests {
                 target_tab_id: None,
                 target_pane_id: None,
                 direction: "right".into(),
+                ratio: None,
             })
         );
         assert!(parse_move_options(&["pane-1".into()]).is_err());
@@ -1772,6 +1788,8 @@ mod tests {
             "pane-2".into(),
             "--split".into(),
             "down".into(),
+            "--ratio".into(),
+            "0.7".into(),
         ];
         assert_eq!(
             parse_move_options(&args),
@@ -1781,6 +1799,7 @@ mod tests {
                 target_tab_id: Some("tab-2".into()),
                 target_pane_id: Some("pane-2".into()),
                 direction: "down".into(),
+                ratio: Some(0.7),
             })
         );
     }

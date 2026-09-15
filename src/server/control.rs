@@ -84,6 +84,8 @@ struct MovePaneRequest {
     target_pane_id: Option<String>,
     #[serde(default = "default_move_direction")]
     direction: String,
+    #[serde(default)]
+    ratio: Option<f32>,
 }
 
 fn default_move_direction() -> String {
@@ -659,6 +661,7 @@ pub(crate) fn response_for_with_interactive(
                         &target_tab_id,
                         payload.target_pane_id.as_deref(),
                         direction,
+                        payload.ratio.unwrap_or(0.5),
                     )
                 } else {
                     session.move_pane_to_new_tab(&payload.pane_id, payload.name)
