@@ -74,6 +74,13 @@ struct IdNameRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct MovePaneRequest {
+    pane_id: String,
+    #[serde(default)]
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct SplitRequest {
     direction: String,
     #[serde(flatten)]
@@ -554,6 +561,18 @@ pub(crate) fn response_for_with_interactive(
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
                 session.swap_panes(&payload.source_pane_id, &payload.target_pane_id)
+            })
+        }
+        "move_pane" => {
+            let payload: MovePaneRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.move_pane_to_new_tab(&payload.pane_id, payload.name)
             })
         }
         "toggle_pane_zoom" => {

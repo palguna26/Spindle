@@ -47,6 +47,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         [command, id, delta] if command == "resize" => pane_resize(project, id, delta),
         [command, args @ ..] if command == "read" => pane_read_command(project, args),
         [command, args @ ..] if command == "swap" => pane_swap_command(project, args),
+        [command, args @ ..] if command == "move" => pane_move_command(project, args),
         [command, id, options @ ..] if command == "wait-output" => {
             pane_wait_output(project, id, options)
         }
@@ -309,6 +310,34 @@ fn pane_swap_command(project: &Project, args: &[String]) -> io::Result<()> {
         "swap_panes",
         serde_json::json!({ "source_pane_id": source, "target_pane_id": target }),
     )
+}
+
+fn pane_move_command(project: &Project, args: &[String]) -> io::Result<()> {
+    let (pane_id, label) = parse_move_options(args).map_err(io::Error::other)?;
+    pane_mutation_with_payload(
+        project,
+        "move_pane",
+        serde_json::json!({ "pane_id": pane_id, "name": label }),
+    )
+}
+
+fn parse_move_options(args: &[String]) -> Result<(&str, String), String> {
+    let Some(pane_id) = args.first().map(String::as_str) else {
+        return Err("usage: spindle pane move <id> --new-tab [--label TEXT]".into());
+    };
+    if args.get(1).map(String::as_str) != Some("--new-tab") {
+        return Err("usage: spindle pane move <id> --new-tab [--label TEXT]".into());
+    }
+    if args.len() == 2 {
+        return Ok((pane_id, "Moved pane".into()));
+    }
+    if args.len() >= 4 && args[2] == "--label" {
+        let label = args[3..].join(" ");
+        if !label.trim().is_empty() {
+            return Ok((pane_id, label));
+        }
+    }
+    Err("usage: spindle pane move <id> --new-tab [--label TEXT]".into())
 }
 
 enum SwapOptions {
@@ -695,7 +724,7 @@ fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|wait-output|split|resize>");
+    println!("Usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|wait-output|split|resize>");
     println!("  list [--workspace <id>]  list panes in a workspace");
     println!("  current [<id>]   show the focused or requested pane");
     println!("  get <id>         show a pane as JSON");
@@ -713,6 +742,7 @@ fn print_help() {
     println!(
         "  swap --direction left|right|up|down | --source-pane ID --target-pane ID  swap panes"
     );
+    println!("  move <id> --new-tab [--label TEXT]  move a pane to a new tab");
     println!("  wait-output <id> --match TEXT [--timeout MS] [--lines N]  wait for output");
     println!("  split <direction> [command args...]  split with a new pane");
     println!("  resize <id> <delta>  resize the pane layout by a ratio delta");
@@ -721,8 +751,9 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        format_pane_list, parse_focus_direction, parse_list_workspace, parse_read_options,
-        parse_swap_options, parse_zoom_options, ReadSource, SwapOptions, ZoomMode,
+        format_pane_list, parse_focus_direction, parse_list_workspace, parse_move_options,
+        parse_read_options, parse_swap_options, parse_zoom_options, ReadSource, SwapOptions,
+        ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -810,5 +841,17 @@ mod tests {
             ]),
             Ok(SwapOptions::Explicit { .. })
         ));
+    }
+
+    #[test]
+    fn move_options_support_new_tab_and_label() {
+        let args = vec![
+            "pane-1".into(),
+            "--new-tab".into(),
+            "--label".into(),
+            "Review".into(),
+        ];
+        assert_eq!(parse_move_options(&args), Ok(("pane-1", "Review".into())));
+        assert!(parse_move_options(&["pane-1".into()]).is_err());
     }
 }
