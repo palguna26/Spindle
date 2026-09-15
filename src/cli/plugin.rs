@@ -460,13 +460,15 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         .map(str::parse::<u16>)
         .transpose()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "--width must be a number"))?
-        .unwrap_or(40);
+        .unwrap_or(40)
+        .max(6);
     let popup_height = requested_height
         .as_deref()
         .map(str::parse::<u16>)
         .transpose()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "--height must be a number"))?
-        .unwrap_or(12);
+        .unwrap_or(12)
+        .max(4);
     let Some(command) = pane.command.first() else {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -540,7 +542,18 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     let response = super::send_command_with_payload(
         &project,
         "create_pane",
-        serde_json::json!({ "command": command, "args": pane.command.iter().skip(1).collect::<Vec<_>>(), "cwd": cwd, "label": pane.title, "env": env, "cols": if placement == "popup" { popup_width } else { 80 }, "rows": if placement == "popup" { popup_height } else { 24 }, "popup": placement == "popup" }),
+        serde_json::json!({
+            "command": command,
+            "args": pane.command.iter().skip(1).collect::<Vec<_>>(),
+            "cwd": cwd,
+            "label": pane.title,
+            "env": env,
+            // Herdr's popup dimensions include its border. The PTY gets the
+            // inner terminal size while the renderer uses the outer size.
+            "cols": if placement == "popup" { popup_width.saturating_sub(2).max(4) } else { 80 },
+            "rows": if placement == "popup" { popup_height.saturating_sub(2).max(4) } else { 24 },
+            "popup": placement == "popup",
+        }),
     )?;
     if !response.ok {
         return Err(io::Error::other(
@@ -814,7 +827,7 @@ fn help() {
     println!("  unlink <plugin_id>        unregister a plugin, leaving files alone");
     println!("  enable|disable <id>       change a plugin's global enabled state");
     println!("  config-dir <id>           print and create the plugin config directory");
-    println!("  pane open --plugin ID --entrypoint ID [--env KEY=VALUE]  open a manifest pane");
+    println!("  pane open --plugin ID --entrypoint ID [--placement split|tab|zoomed|popup] [--width N --height N] [--env KEY=VALUE]");
     println!("  pane focus|close <pane_id>              manage a plugin pane");
     println!("  log list [--plugin ID] [--limit N]       show plugin launches");
     println!("  action list [--plugin ID] list manifest actions");
