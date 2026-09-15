@@ -1034,6 +1034,7 @@ impl Session {
         }
         workspace.active_tab_id = tab_id.into();
         self.sync_focus_to_active_tab()?;
+        self.record_event("tab_focused", serde_json::json!({ "tab_id": tab_id }));
         Ok(serde_json::json!({ "tab_id": tab_id }))
     }
 

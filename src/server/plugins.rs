@@ -46,6 +46,7 @@ pub(super) fn run_event_hook(
     let hook_name = match event.event.as_str() {
         "pane_created" => "pane.created",
         "tab_created" => "tab.created",
+        "tab_focused" => "tab.focused",
         "pane_focused" => "pane.focused",
         "pane_closed" => "pane.closed",
         "pane_status"
