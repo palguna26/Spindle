@@ -607,30 +607,28 @@ fn event_loop(
                     if let Some((space_id, workspace_id)) =
                         mouse_state.navigation_workspace.as_ref()
                     {
-                        if space_id == &snapshot.active_space_id {
-                            let result = request_action(
-                                client,
-                                "navigate-workspace",
-                                "switch_workspace",
-                                json!({ "id": workspace_id }),
-                                "switch workspace",
-                            )
-                            .and_then(|()| ensure_active_default_pane(client, terminal_size));
-                            record_action_error(&mut action_error, "switch workspace", result);
-                        }
+                        let result = switch_to_workspace(
+                            client,
+                            &snapshot,
+                            space_id,
+                            workspace_id,
+                            terminal_size,
+                        );
+                        record_action_error(&mut action_error, "switch workspace", result);
                     }
                     mouse_state.navigation_workspace = None;
                 }
                 WorkspacePickerKey::Choose(index) => {
-                    if let Some(workspace_id) = indexed_workspace_selection(&snapshot, index) {
-                        let result = request_action(
+                    if let Some((space_id, workspace_id)) =
+                        indexed_workspace_selection(&snapshot, index)
+                    {
+                        let result = switch_to_workspace(
                             client,
-                            "navigate-workspace",
-                            "switch_workspace",
-                            json!({ "id": workspace_id }),
-                            "switch workspace",
-                        )
-                        .and_then(|()| ensure_active_default_pane(client, terminal_size));
+                            &snapshot,
+                            &space_id,
+                            &workspace_id,
+                            terminal_size,
+                        );
                         record_action_error(&mut action_error, "switch workspace", result);
                         mouse_state.navigation_workspace = None;
                     }
@@ -2345,46 +2343,85 @@ fn move_workspace_selection(
     selected: Option<&(String, String)>,
     forward: bool,
 ) -> Option<(String, String)> {
-    let space = snapshot
+    let workspaces = snapshot
         .spaces
         .iter()
-        .find(|space| space.space_id == snapshot.active_space_id)?;
-    if space.workspaces.is_empty() {
-        return None;
-    }
-    let current_id = selected
-        .filter(|(space_id, _)| space_id == &space.space_id)
-        .map(|(_, workspace_id)| workspace_id.as_str())
-        .or(space.active_workspace_id.as_deref());
-    let index = current_id
-        .and_then(|current| {
+        .flat_map(|space| {
             space
                 .workspaces
                 .iter()
-                .position(|workspace| workspace.workspace_id == current)
+                .map(|workspace| (space.space_id.clone(), workspace.workspace_id.clone()))
         })
-        .unwrap_or(if forward {
-            space.workspaces.len() - 1
-        } else {
-            0
+        .collect::<Vec<_>>();
+    if workspaces.is_empty() {
+        return None;
+    }
+    let current = selected
+        .and_then(|selected| workspaces.iter().position(|item| item == selected))
+        .or_else(|| {
+            workspaces.iter().position(|(space_id, workspace_id)| {
+                space_id == &snapshot.active_space_id
+                    && snapshot
+                        .spaces
+                        .iter()
+                        .find(|space| &space.space_id == space_id)
+                        .and_then(|space| space.active_workspace_id.as_ref())
+                        == Some(workspace_id)
+            })
         });
+    let index = current.unwrap_or(if forward { workspaces.len() - 1 } else { 0 });
     let next = if forward {
-        (index + 1) % space.workspaces.len()
+        (index + 1) % workspaces.len()
     } else {
-        (index + space.workspaces.len() - 1) % space.workspaces.len()
+        (index + workspaces.len() - 1) % workspaces.len()
     };
-    Some((
-        space.space_id.clone(),
-        space.workspaces[next].workspace_id.clone(),
-    ))
+    Some(workspaces[next].clone())
 }
 
-fn indexed_workspace_selection(snapshot: &SessionSnapshot, index: usize) -> Option<String> {
-    let space = snapshot
+fn indexed_workspace_selection(
+    snapshot: &SessionSnapshot,
+    index: usize,
+) -> Option<(String, String)> {
+    snapshot
         .spaces
         .iter()
-        .find(|space| space.space_id == snapshot.active_space_id)?;
-    Some(space.workspaces.get(index)?.workspace_id.clone())
+        .flat_map(|space| {
+            space
+                .workspaces
+                .iter()
+                .map(|workspace| (space.space_id.clone(), workspace.workspace_id.clone()))
+        })
+        .nth(index)
+}
+
+fn switch_to_workspace(
+    client: &ControlClient,
+    snapshot: &SessionSnapshot,
+    space_id: &str,
+    workspace_id: &str,
+    terminal_size: (u16, u16),
+) -> Result<(), ClientError> {
+    let mut result = Ok(());
+    if space_id != snapshot.active_space_id {
+        result = request_action(
+            client,
+            "navigate-space",
+            "switch_space",
+            json!({ "id": space_id }),
+            "switch space",
+        );
+    }
+    result
+        .and_then(|()| {
+            request_action(
+                client,
+                "navigate-workspace",
+                "switch_workspace",
+                json!({ "id": workspace_id }),
+                "switch workspace",
+            )
+        })
+        .and_then(|()| ensure_active_default_pane(client, terminal_size))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3586,8 +3623,60 @@ mod tests {
             .to_owned();
         let snapshot = session.snapshot();
 
-        assert_eq!(indexed_workspace_selection(snapshot, 1), Some(second));
+        assert_eq!(
+            indexed_workspace_selection(snapshot, 1),
+            Some((snapshot.active_space_id.clone(), second))
+        );
         assert_eq!(indexed_workspace_selection(snapshot, 9), None);
+    }
+
+    #[test]
+    fn workspace_picker_cycles_and_indexes_workspaces_across_spaces() {
+        let mut session = Session::default();
+        let first = active_workspace(session.snapshot())
+            .unwrap()
+            .workspace_id
+            .clone();
+        session.create_space("Other".into()).unwrap();
+        let second = active_workspace(session.snapshot())
+            .unwrap()
+            .workspace_id
+            .clone();
+        let snapshot = session.snapshot();
+        let first_space = snapshot
+            .spaces
+            .iter()
+            .find(|space| {
+                space
+                    .workspaces
+                    .iter()
+                    .any(|workspace| workspace.workspace_id == first)
+            })
+            .unwrap()
+            .space_id
+            .clone();
+        let second_space = snapshot
+            .spaces
+            .iter()
+            .find(|space| {
+                space
+                    .workspaces
+                    .iter()
+                    .any(|workspace| workspace.workspace_id == second)
+            })
+            .unwrap()
+            .space_id
+            .clone();
+
+        assert_ne!(first_space, second_space);
+        assert_eq!(
+            move_workspace_selection(snapshot, Some(&(first_space, first)), true),
+            Some((second_space.clone(), second.clone()))
+        );
+        assert_eq!(
+            indexed_workspace_selection(snapshot, 1),
+            Some((second_space, second))
+        );
     }
 
     #[test]
