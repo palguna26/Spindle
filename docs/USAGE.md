@@ -76,6 +76,9 @@ zoom, sidebar, copy mode, help, and the command palette.
 Use `spindle config path` to print the path or `spindle config default` to
 print a starter file.
 
+Set `[theme] name` to `terminal`, `catppuccin`, `dracula`, `gruvbox`, `nord`,
+or `tokyo-night` to change the main UI accent and focused-pane colors.
+
 Background agent panes show a short in-app notification when they need
 attention or finish. Notifications for the active tab are suppressed, like
 Herdr's default behavior.
