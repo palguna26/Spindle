@@ -76,6 +76,10 @@ zoom, sidebar, copy mode, help, and the command palette.
 Use `spindle config path` to print the path or `spindle config default` to
 print a starter file.
 
+Background agent panes show a short in-app notification when they need
+attention or finish. Notifications for the active tab are suppressed, like
+Herdr's default behavior.
+
 Tabs can also be automated with `spindle tab list`, `create [label]`,
 `get <id>`, `focus <id>`, `rename <id> <label>`, and `close <id>`.
 
