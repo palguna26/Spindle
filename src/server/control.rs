@@ -78,6 +78,16 @@ struct MovePaneRequest {
     pane_id: String,
     #[serde(default)]
     name: String,
+    #[serde(default)]
+    target_tab_id: Option<String>,
+    #[serde(default)]
+    target_pane_id: Option<String>,
+    #[serde(default = "default_move_direction")]
+    direction: String,
+}
+
+fn default_move_direction() -> String {
+    "right".into()
 }
 
 #[derive(Debug, Deserialize)]
@@ -572,7 +582,21 @@ pub(crate) fn response_for_with_interactive(
             };
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
-                session.move_pane_to_new_tab(&payload.pane_id, payload.name)
+                if let Some(target_tab_id) = payload.target_tab_id {
+                    let direction = match payload.direction.as_str() {
+                        "right" => crate::model::layout::Direction::Horizontal,
+                        "down" => crate::model::layout::Direction::Vertical,
+                        value => return Err(format!("invalid move direction: {value}")),
+                    };
+                    session.move_pane_to_tab(
+                        &payload.pane_id,
+                        &target_tab_id,
+                        payload.target_pane_id.as_deref(),
+                        direction,
+                    )
+                } else {
+                    session.move_pane_to_new_tab(&payload.pane_id, payload.name)
+                }
             })
         }
         "toggle_pane_zoom" => {

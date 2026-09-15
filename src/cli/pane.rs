@@ -313,31 +313,94 @@ fn pane_swap_command(project: &Project, args: &[String]) -> io::Result<()> {
 }
 
 fn pane_move_command(project: &Project, args: &[String]) -> io::Result<()> {
-    let (pane_id, label) = parse_move_options(args).map_err(io::Error::other)?;
-    pane_mutation_with_payload(
-        project,
-        "move_pane",
-        serde_json::json!({ "pane_id": pane_id, "name": label }),
-    )
+    let options = parse_move_options(args).map_err(io::Error::other)?;
+    let mut payload = serde_json::json!({ "pane_id": options.pane_id });
+    if let Some(label) = options.label {
+        payload["name"] = serde_json::json!(label);
+    }
+    if let Some(target_tab_id) = options.target_tab_id {
+        payload["target_tab_id"] = serde_json::json!(target_tab_id);
+        if let Some(target_pane_id) = options.target_pane_id {
+            payload["target_pane_id"] = serde_json::json!(target_pane_id);
+        }
+        payload["direction"] = serde_json::json!(options.direction);
+    }
+    pane_mutation_with_payload(project, "move_pane", payload)
 }
 
-fn parse_move_options(args: &[String]) -> Result<(&str, String), String> {
+#[derive(Debug, PartialEq, Eq)]
+struct MoveOptions {
+    pane_id: String,
+    label: Option<String>,
+    target_tab_id: Option<String>,
+    target_pane_id: Option<String>,
+    direction: String,
+}
+
+fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
     let Some(pane_id) = args.first().map(String::as_str) else {
-        return Err("usage: spindle pane move <id> --new-tab [--label TEXT]".into());
+        return Err("usage: spindle pane move <id> --new-tab [--label TEXT] or --tab ID [--pane ID] [--split right|down]".into());
     };
-    if args.get(1).map(String::as_str) != Some("--new-tab") {
+    if args.get(1).map(String::as_str) == Some("--new-tab") {
+        if args.len() == 2 {
+            return Ok(MoveOptions {
+                pane_id: pane_id.into(),
+                label: Some("Moved pane".into()),
+                target_tab_id: None,
+                target_pane_id: None,
+                direction: "right".into(),
+            });
+        }
+        if args.len() >= 4 && args[2] == "--label" {
+            let label = args[3..].join(" ");
+            if !label.trim().is_empty() {
+                return Ok(MoveOptions {
+                    pane_id: pane_id.into(),
+                    label: Some(label),
+                    target_tab_id: None,
+                    target_pane_id: None,
+                    direction: "right".into(),
+                });
+            }
+        }
         return Err("usage: spindle pane move <id> --new-tab [--label TEXT]".into());
     }
-    if args.len() == 2 {
-        return Ok((pane_id, "Moved pane".into()));
+    if args.get(1).map(String::as_str) != Some("--tab") || args.len() < 3 {
+        return Err(
+            "usage: spindle pane move <id> --tab ID [--pane ID] [--split right|down]".into(),
+        );
     }
-    if args.len() >= 4 && args[2] == "--label" {
-        let label = args[3..].join(" ");
-        if !label.trim().is_empty() {
-            return Ok((pane_id, label));
+    let mut target_pane_id = None;
+    let mut direction = "right";
+    let mut index = 3;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--pane" if index + 1 < args.len() => {
+                target_pane_id = Some(args[index + 1].clone());
+                index += 2;
+            }
+            "--split" if index + 1 < args.len() => {
+                direction = &args[index + 1];
+                if !matches!(direction, "right" | "down") {
+                    return Err("--split must be right or down".into());
+                }
+                index += 2;
+            }
+            _ => {
+                return Err(
+                    "usage: spindle pane move <id> --tab ID [--pane ID] [--split right|down]"
+                        .into(),
+                )
+            }
         }
     }
-    Err("usage: spindle pane move <id> --new-tab [--label TEXT]".into())
+    Ok(MoveOptions {
+        pane_id: pane_id.into(),
+        label: None,
+        target_tab_id: Some(args[2].clone()),
+        target_pane_id,
+        direction: direction.into(),
+    })
 }
 
 enum SwapOptions {
@@ -742,7 +805,9 @@ fn print_help() {
     println!(
         "  swap --direction left|right|up|down | --source-pane ID --target-pane ID  swap panes"
     );
-    println!("  move <id> --new-tab [--label TEXT]  move a pane to a new tab");
+    println!(
+        "  move <id> --new-tab [--label TEXT] | --tab ID [--pane ID] [--split right|down]  move a pane"
+    );
     println!("  wait-output <id> --match TEXT [--timeout MS] [--lines N]  wait for output");
     println!("  split <direction> [command args...]  split with a new pane");
     println!("  resize <id> <delta>  resize the pane layout by a ratio delta");
@@ -752,8 +817,8 @@ fn print_help() {
 mod tests {
     use super::{
         format_pane_list, parse_focus_direction, parse_list_workspace, parse_move_options,
-        parse_read_options, parse_swap_options, parse_zoom_options, ReadSource, SwapOptions,
-        ZoomMode,
+        parse_read_options, parse_swap_options, parse_zoom_options, MoveOptions, ReadSource,
+        SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -851,7 +916,39 @@ mod tests {
             "--label".into(),
             "Review".into(),
         ];
-        assert_eq!(parse_move_options(&args), Ok(("pane-1", "Review".into())));
+        assert_eq!(
+            parse_move_options(&args),
+            Ok(MoveOptions {
+                pane_id: "pane-1".into(),
+                label: Some("Review".into()),
+                target_tab_id: None,
+                target_pane_id: None,
+                direction: "right".into(),
+            })
+        );
         assert!(parse_move_options(&["pane-1".into()]).is_err());
+    }
+
+    #[test]
+    fn move_options_support_existing_tab_split() {
+        let args = vec![
+            "pane-1".into(),
+            "--tab".into(),
+            "tab-2".into(),
+            "--pane".into(),
+            "pane-2".into(),
+            "--split".into(),
+            "down".into(),
+        ];
+        assert_eq!(
+            parse_move_options(&args),
+            Ok(MoveOptions {
+                pane_id: "pane-1".into(),
+                label: None,
+                target_tab_id: Some("tab-2".into()),
+                target_pane_id: Some("pane-2".into()),
+                direction: "down".into(),
+            })
+        );
     }
 }
