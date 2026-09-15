@@ -27,6 +27,8 @@ pub struct CreatePaneRequest {
     pub rows: u16,
     #[serde(default)]
     pub popup: bool,
+    #[serde(default)]
+    pub overlay: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -217,6 +219,12 @@ pub struct SessionSnapshot {
     #[serde(default)]
     pub popup_height: u16,
     #[serde(default)]
+    pub overlay_pane_id: Option<String>,
+    #[serde(default)]
+    pub overlay_previous_focus: Option<String>,
+    #[serde(default)]
+    pub overlay_previous_zoomed: bool,
+    #[serde(default)]
     pub event_sequence: u64,
 }
 
@@ -279,6 +287,9 @@ impl Default for Session {
                 popup_pane_id: None,
                 popup_width: 0,
                 popup_height: 0,
+                overlay_pane_id: None,
+                overlay_previous_focus: None,
+                overlay_previous_zoomed: false,
                 event_sequence: 0,
             },
             next_pane_id: 1,
@@ -303,10 +314,12 @@ impl Session {
                 let popup_pane_id = snapshot.popup_pane_id.take();
                 snapshot.popup_width = 0;
                 snapshot.popup_height = 0;
-                if let Some(popup_pane_id) = popup_pane_id {
-                    snapshot
-                        .panes
-                        .retain(|pane| pane.pane_id != popup_pane_id);
+                let overlay_pane_id = snapshot.overlay_pane_id.take();
+                snapshot.overlay_previous_focus = None;
+                snapshot.overlay_previous_zoomed = false;
+                let transient_pane_ids = popup_pane_id.into_iter().chain(overlay_pane_id);
+                for pane_id in transient_pane_ids {
+                    snapshot.panes.retain(|pane| pane.pane_id != pane_id);
                 }
                 snapshot.focused_pane_id = active_layout_focus(&snapshot);
                 for pane in &mut snapshot.panes {
@@ -567,6 +580,20 @@ impl Session {
         if request.cols == 0 || request.rows == 0 {
             return Err("pane dimensions must be greater than zero".into());
         }
+        if request.popup && request.overlay {
+            return Err("pane cannot be both popup and overlay".into());
+        }
+        if request.popup && self.snapshot.popup_pane_id.is_some() {
+            return Err("a popup pane is already open".into());
+        }
+        if request.overlay && self.snapshot.overlay_pane_id.is_some() {
+            return Err("an overlay pane is already open".into());
+        }
+        let overlay_previous_focus = if request.overlay {
+            active_layout_focus(&self.snapshot)
+        } else {
+            None
+        };
         let pane_id = format!("pane-{}", self.next_pane_id);
         self.next_pane_id += 1;
         self.pane_manager
@@ -584,15 +611,12 @@ impl Session {
             .map_err(|error| format!("{error:?}"))?;
 
         if request.popup {
-            if self.snapshot.popup_pane_id.is_some() {
-                let _ = self.pane_manager.remove(&pane_id);
-                return Err("a popup pane is already open".into());
-            }
             self.snapshot.popup_pane_id = Some(pane_id.clone());
             self.snapshot.popup_width = request.cols;
             self.snapshot.popup_height = request.rows;
         } else {
             let tab = self.active_tab_mut()?;
+            let previous_zoomed = tab.zoomed;
             let focused = tab.focused_pane_id.clone().or_else(|| {
                 tab.layout
                     .as_ref()
@@ -611,6 +635,12 @@ impl Session {
                 }
             });
             tab.focused_pane_id = Some(pane_id.clone());
+            if request.overlay {
+                tab.zoomed = true;
+                self.snapshot.overlay_pane_id = Some(pane_id.clone());
+                self.snapshot.overlay_previous_focus = overlay_previous_focus;
+                self.snapshot.overlay_previous_zoomed = previous_zoomed;
+            }
         }
         self.snapshot.focused_pane_id = Some(pane_id.clone());
         self.snapshot.panes.push(PaneView {
@@ -1230,6 +1260,9 @@ impl Session {
         if self.snapshot.popup_pane_id.as_deref() == Some(pane_id) {
             return self.close_popup_pane(pane_id);
         }
+        if self.snapshot.overlay_pane_id.as_deref() == Some(pane_id) {
+            return self.close_overlay_pane(pane_id);
+        }
         let active_space_id = self.snapshot.active_space_id.clone();
         let space = self
             .snapshot
@@ -1338,6 +1371,58 @@ impl Session {
         self.snapshot.popup_height = 0;
         self.sync_focus_to_active_tab()?;
         Ok(serde_json::json!({ "pane_id": pane_id, "closed_popup": true }))
+    }
+
+    pub fn close_overlay_pane(&mut self, pane_id: &str) -> Result<Value, String> {
+        if self.snapshot.overlay_pane_id.as_deref() != Some(pane_id) {
+            return Err(format!("overlay pane '{pane_id}' is not open"));
+        }
+        self.pane_manager
+            .remove(pane_id)
+            .map_err(|error| format!("{error:?}"))?;
+        for space in &mut self.snapshot.spaces {
+            for workspace in &mut space.workspaces {
+                for tab in &mut workspace.tabs {
+                    tab.layout = tab
+                        .layout
+                        .take()
+                        .and_then(|layout| layout.close_pane(pane_id));
+                    if tab
+                        .focused_pane_id
+                        .as_deref()
+                        .is_some_and(|focused| focused == pane_id)
+                    {
+                        tab.focused_pane_id = tab
+                            .layout
+                            .as_ref()
+                            .and_then(|layout| layout.pane_ids().first().map(|id| (*id).to_owned()));
+                    }
+                }
+            }
+        }
+        let previous_focus = self.snapshot.overlay_previous_focus.take();
+        let previous_zoomed = self.snapshot.overlay_previous_zoomed;
+        self.snapshot.panes.retain(|pane| pane.pane_id != pane_id);
+        self.snapshot.overlay_pane_id = None;
+        self.snapshot.overlay_previous_zoomed = false;
+        if let Some(previous_focus) = previous_focus {
+            for space in &mut self.snapshot.spaces {
+                for workspace in &mut space.workspaces {
+                    for tab in &mut workspace.tabs {
+                        if tab
+                            .layout
+                            .as_ref()
+                            .is_some_and(|layout| layout.pane_ids().contains(&previous_focus.as_str()))
+                        {
+                            tab.focused_pane_id = Some(previous_focus.clone());
+                            tab.zoomed = previous_zoomed;
+                        }
+                    }
+                }
+            }
+        }
+        self.sync_focus_to_active_tab()?;
+        Ok(serde_json::json!({ "pane_id": pane_id, "closed_overlay": true }))
     }
 
     pub fn send_input(&mut self, pane_id: &str, bytes: &[u8]) -> Result<(), String> {
@@ -1750,6 +1835,22 @@ impl Session {
                 let _ = self.close_popup_pane(&pane_id);
             }
         }
+        let overlay_exited = self
+            .snapshot
+            .overlay_pane_id
+            .as_deref()
+            .is_some_and(|pane_id| {
+                self.snapshot
+                    .panes
+                    .iter()
+                    .find(|pane| pane.pane_id == pane_id)
+                    .is_some_and(|pane| !matches!(pane.status, PaneStatus::Running))
+            });
+        if overlay_exited {
+            if let Some(pane_id) = self.snapshot.overlay_pane_id.clone() {
+                let _ = self.close_overlay_pane(&pane_id);
+            }
+        }
     }
 }
 
@@ -1990,6 +2091,37 @@ mod tests {
     }
 
     #[test]
+    fn overlay_pane_zoom_and_close_restore_background_state() {
+        let mut session = Session::default();
+        let request = |overlay| {
+            serde_json::from_value::<CreatePaneRequest>(serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/c", "ping", "127.0.0.1", "-n", "20"],
+                "cwd": "C:/",
+                "cols": 80,
+                "rows": 24,
+                "overlay": overlay
+            }))
+            .unwrap()
+        };
+        let background = session.create_pane(request(false)).unwrap();
+        let background_id = background["pane_id"].as_str().unwrap().to_owned();
+        let overlay = session.create_pane(request(true)).unwrap();
+        let overlay_id = overlay["pane_id"].as_str().unwrap().to_owned();
+        let tab = &session.snapshot.spaces[0].workspaces[0].tabs[0];
+        assert!(tab.zoomed);
+        assert_eq!(tab.focused_pane_id.as_deref(), Some(overlay_id.as_str()));
+        assert_eq!(session.snapshot.overlay_pane_id.as_deref(), Some(overlay_id.as_str()));
+
+        assert_eq!(session.close_pane(&overlay_id).unwrap()["closed_overlay"], true);
+        let tab = &session.snapshot.spaces[0].workspaces[0].tabs[0];
+        assert!(!tab.zoomed);
+        assert_eq!(tab.focused_pane_id.as_deref(), Some(background_id.as_str()));
+        assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some(background_id.as_str()));
+        let _ = session.close_pane(&background_id);
+    }
+
+    #[test]
     fn default_workspace_context_is_filled_without_overwriting_metadata() {
         let mut session = Session::default();
         session.set_default_workspace_context("C:/repo".into(), Some("main".into()));
@@ -2054,6 +2186,7 @@ mod tests {
             cols: 80,
             rows: 24,
             popup: false,
+            overlay: false,
         });
 
         assert!(result.is_err(), "must try to create a replacement shell");

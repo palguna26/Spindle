@@ -167,8 +167,10 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   pane environment overrides;
   popup panes now use a transient server popup slot, preserve the tiled
   background focus, render centered terminal content, accept popup placement
-  from the plugin CLI, and close when the process exits. Popup mouse routing is
-  implemented; native popup actions and richer overlay placements remain.
+  from the plugin CLI, and close when the process exits. Overlay panes now
+  follow Herdr's temporary zoomed split behavior and restore background focus
+  and zoom state when they close. Popup mouse routing is implemented; native
+  popup actions and richer overlay actions remain.
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior. Tests now cover pane edge hits, captured drags outside
   pane bounds, event-mode routing, and right-click passthrough; existing tests

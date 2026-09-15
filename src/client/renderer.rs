@@ -1025,6 +1025,9 @@ mod tests {
             popup_pane_id: None,
             popup_width: 0,
             popup_height: 0,
+            overlay_pane_id: None,
+            overlay_previous_focus: None,
+            overlay_previous_zoomed: false,
             event_sequence: 0,
         };
         let backend = TestBackend::new(80, 24);

@@ -78,7 +78,9 @@ fn default_enabled() -> bool {
 }
 
 fn default_pane_placement() -> String {
-    "split".into()
+    // Herdr opens manifest panes as temporary zoomed overlays unless a
+    // manifest opts into split, tab, zoomed, or popup placement.
+    "overlay".into()
 }
 
 pub(crate) fn root() -> io::Result<PathBuf> {

@@ -452,8 +452,11 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         ));
     }
     let placement = requested_placement.as_deref().unwrap_or(&pane.placement);
-    if !matches!(placement, "split" | "tab" | "zoomed" | "popup") {
-        return usage("plugin pane placement must be split, tab, zoomed, or popup");
+    if !matches!(placement, "overlay" | "split" | "tab" | "zoomed" | "popup") {
+        return usage("plugin pane placement must be overlay, split, tab, zoomed, or popup");
+    }
+    if placement != "popup" && (requested_width.is_some() || requested_height.is_some()) {
+        return usage("--width and --height are only supported for popup placement");
     }
     let popup_width = requested_width
         .as_deref()
@@ -553,6 +556,7 @@ fn pane_open(args: &[String]) -> io::Result<()> {
             "cols": if placement == "popup" { popup_width.saturating_sub(2).max(4) } else { 80 },
             "rows": if placement == "popup" { popup_height.saturating_sub(2).max(4) } else { 24 },
             "popup": placement == "popup",
+            "overlay": placement == "overlay",
         }),
     )?;
     if !response.ok {
@@ -569,7 +573,7 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         .and_then(|payload| payload.get("pane_id"))
         .and_then(serde_json::Value::as_str)
         .unwrap_or("unknown");
-    if placement != "tab" && placement != "popup" {
+    if placement != "tab" && placement != "popup" && placement != "overlay" {
         if let Some(previous_focus) = previous_focus {
             super::send_command_with_payload(
                 &project,
@@ -827,7 +831,7 @@ fn help() {
     println!("  unlink <plugin_id>        unregister a plugin, leaving files alone");
     println!("  enable|disable <id>       change a plugin's global enabled state");
     println!("  config-dir <id>           print and create the plugin config directory");
-    println!("  pane open --plugin ID --entrypoint ID [--placement split|tab|zoomed|popup] [--width N --height N] [--env KEY=VALUE]");
+    println!("  pane open --plugin ID --entrypoint ID [--placement overlay|split|tab|zoomed|popup] [--width N --height N] [--env KEY=VALUE]");
     println!("  pane focus|close <pane_id>              manage a plugin pane");
     println!("  log list [--plugin ID] [--limit N]       show plugin launches");
     println!("  action list [--plugin ID] list manifest actions");
