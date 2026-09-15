@@ -1286,6 +1286,24 @@ impl Session {
         }))
     }
 
+    pub fn set_right_click_passthrough(
+        &mut self,
+        pane_id: &str,
+        enabled: bool,
+    ) -> Result<Value, String> {
+        let pane = self
+            .snapshot
+            .panes
+            .iter_mut()
+            .find(|pane| pane.pane_id == pane_id)
+            .ok_or_else(|| format!("pane '{pane_id}' does not exist"))?;
+        pane.right_click_passthrough = enabled;
+        Ok(serde_json::json!({
+            "pane_id": pane_id,
+            "right_click_passthrough": enabled
+        }))
+    }
+
     pub fn rename_pane(&mut self, pane_id: &str, label: String) -> Result<Value, String> {
         let pane = self
             .snapshot
@@ -2452,6 +2470,29 @@ mod tests {
         let result = session.focus_direction("right", Some("pane-1")).unwrap();
         assert_eq!(result["pane_id"], serde_json::json!("pane-2"));
         assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("pane-2"));
+    }
+
+    #[test]
+    fn right_click_passthrough_can_be_set_explicitly() {
+        let mut session = Session::default();
+        session.snapshot.panes.push(
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-1",
+                "command": "powershell.exe",
+                "args": [],
+                "cwd": "C:/",
+                "status": "Running",
+                "scrollback_bytes": 0,
+            }))
+            .unwrap(),
+        );
+        let result = session.set_right_click_passthrough("pane-1", true).unwrap();
+        assert_eq!(result["right_click_passthrough"], true);
+        assert!(session.snapshot.panes[0].right_click_passthrough);
+        session
+            .set_right_click_passthrough("pane-1", false)
+            .unwrap();
+        assert!(!session.snapshot.panes[0].right_click_passthrough);
     }
 
     #[test]

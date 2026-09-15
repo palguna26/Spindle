@@ -117,6 +117,12 @@ struct FocusDirectionRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct RightClickRequest {
+    pane_id: String,
+    right_click_passthrough: bool,
+}
+
+#[derive(Debug, Deserialize)]
 struct EventsRequest {
     #[serde(default)]
     after_sequence: u64,
@@ -633,6 +639,19 @@ pub(crate) fn response_for_with_interactive(
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
                 session.toggle_right_click_passthrough(&payload.pane_id)
+            })
+        }
+        "set_right_click_passthrough" => {
+            let payload: RightClickRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session
+                    .set_right_click_passthrough(&payload.pane_id, payload.right_click_passthrough)
             })
         }
         "rename_pane" => {

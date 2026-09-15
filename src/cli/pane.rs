@@ -17,6 +17,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         [command, options @ ..] if command == "edges" => pane_edges(project, options),
         [command, options @ ..] if command == "layout" => pane_layout(project, options),
         [command, options @ ..] if command == "process-info" => pane_process_info(project, options),
+        [command, options @ ..] if command == "input" => pane_input(project, options),
         [command, id] if command == "focus" => pane_mutation(project, "focus_pane", id),
         [command, id, label @ ..] if command == "rename" && !label.is_empty() => {
             pane_rename(project, id, &label.join(" "))
@@ -62,7 +63,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|wait-output|split|resize>",
+                "usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|wait-output|split|resize>",
             ))
         }
     }
@@ -216,6 +217,19 @@ fn pane_focus(project: &Project, args: &[String]) -> io::Result<()> {
         project,
         "focus_direction",
         serde_json::json!({ "direction": direction, "pane_id": pane_id }),
+    )
+}
+
+fn pane_input(project: &Project, args: &[String]) -> io::Result<()> {
+    let (pane_id, right_click_passthrough) =
+        parse_pane_input_options(args).map_err(io::Error::other)?;
+    pane_mutation_with_payload(
+        project,
+        "set_right_click_passthrough",
+        serde_json::json!({
+            "pane_id": pane_id,
+            "right_click_passthrough": right_click_passthrough,
+        }),
     )
 }
 
@@ -691,6 +705,67 @@ fn parse_focus_options(args: &[String]) -> Result<(Option<String>, &str), String
     Ok((pane_id, direction))
 }
 
+fn parse_pane_input_options(args: &[String]) -> Result<(String, bool), String> {
+    let env_pane_id = std::env::var("SPINDLE_PANE_ID")
+        .ok()
+        .or_else(|| std::env::var("HERDR_PANE_ID").ok())
+        .filter(|value| !value.trim().is_empty());
+    let mut pane_id = None;
+    let mut right_click_passthrough = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--pane" => {
+                if pane_id.is_some() {
+                    return Err("provide only one pane selector".into());
+                }
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --pane".into());
+                };
+                pane_id = Some(value.clone());
+                index += 2;
+            }
+            "--current" => {
+                if pane_id.is_some() {
+                    return Err("provide only one pane selector".into());
+                }
+                pane_id = Some(
+                    env_pane_id
+                        .clone()
+                        .ok_or("--current requires a pane ID environment variable")?,
+                );
+                index += 1;
+            }
+            "--right-click" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --right-click".into());
+                };
+                right_click_passthrough = Some(match value.as_str() {
+                    "herdr" => false,
+                    "pane" => true,
+                    other => return Err(format!("invalid right-click target: {other}")),
+                });
+                index += 2;
+            }
+            option if option.starts_with('-') => return Err(format!("unknown option: {option}")),
+            positional => {
+                if pane_id.is_some() {
+                    return Err(format!("unexpected argument: {positional}"));
+                }
+                pane_id = Some(positional.to_owned());
+                index += 1;
+            }
+        }
+    }
+    let pane_id = pane_id.ok_or(
+        "usage: spindle pane input [<pane_id>|--pane ID|--current] --right-click herdr|pane",
+    )?;
+    let right_click_passthrough = right_click_passthrough.ok_or(
+        "usage: spindle pane input [<pane_id>|--pane ID|--current] --right-click herdr|pane",
+    )?;
+    Ok((pane_id, right_click_passthrough))
+}
+
 fn pane_get(project: &Project, id: &str) -> io::Result<()> {
     let snapshot = get_snapshot(project)?;
     let pane = snapshot
@@ -1157,7 +1232,7 @@ fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|wait-output|split|resize>");
+    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|wait-output|split|resize>");
     println!("  list [--workspace <id>]  list panes in a workspace");
     println!("  current [<id>]   show the focused or requested pane");
     println!("  get <id>         show a pane as JSON");
@@ -1169,6 +1244,9 @@ fn print_help() {
     println!("  edges [--pane ID|--current]  inspect pane layout edges");
     println!("  layout [--pane ID|--current]  inspect the active pane layout");
     println!("  process-info [--pane ID|--current]  inspect the running pane process");
+    println!(
+        "  input [<id>|--pane ID|--current] --right-click herdr|pane  set right-click routing"
+    );
     println!("  rename <id> ...  rename a pane");
     println!("  stop <id>        stop a pane process");
     println!("  restart <id>     restart a pane process");
@@ -1194,9 +1272,9 @@ mod tests {
     use super::{
         all_pane_ids, direction_name, format_pane_list, parse_current_pane, parse_focus_options,
         parse_layout_direction, parse_list_workspace, parse_move_options, parse_neighbor_options,
-        parse_optional_pane_selector, parse_read_options, parse_read_target, parse_swap_options,
-        parse_zoom_options, read_line_limit, strip_ansi, MoveOptions, ReadFormat, ReadSource,
-        SwapOptions, ZoomMode,
+        parse_optional_pane_selector, parse_pane_input_options, parse_read_options,
+        parse_read_target, parse_swap_options, parse_zoom_options, read_line_limit, strip_ansi,
+        MoveOptions, ReadFormat, ReadSource, SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -1264,6 +1342,19 @@ mod tests {
             parse_focus_options(&args),
             Ok((Some("pane-2".into()), "left"))
         );
+    }
+
+    #[test]
+    fn pane_input_matches_herdr_right_click_targets() {
+        let args = vec![
+            "--pane".to_string(),
+            "pane-2".to_string(),
+            "--right-click".to_string(),
+            "pane".to_string(),
+        ];
+        assert_eq!(parse_pane_input_options(&args), Ok(("pane-2".into(), true)));
+        let invalid = vec!["--right-click".to_string(), "mouse".to_string()];
+        assert!(parse_pane_input_options(&invalid).is_err());
     }
 
     #[test]

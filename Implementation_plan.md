@@ -206,6 +206,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   persisting process details in session snapshots;
   `spindle pane focus --direction ... --pane ID|--current` can start from an
   explicit pane, matching Herdr's selector-aware directional focus;
+  `spindle pane input ... --right-click herdr|pane` explicitly sets the
+  Herdr-compatible right-click routing policy for a pane;
   popup panes now use a transient server popup slot, preserve the tiled
   background focus, render centered terminal content, accept popup placement
   from the plugin CLI, and close when the process exits. Overlay panes now

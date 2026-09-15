@@ -19,6 +19,8 @@ Herdr-style pane selectors.
 generated shell completion scripts include these pane commands.
 `pane focus --direction ... --pane ID|--current` now supports Herdr's
 selector-aware directional focus.
+`pane input ... --right-click herdr|pane` now explicitly sets right-click
+passthrough for scripts, matching Herdr's pane input API.
 
 Latest CLI parity: `spindle pane move <id>` preserves the live pane process
 while moving it to a new tab or an existing tab in the active workspace. The
