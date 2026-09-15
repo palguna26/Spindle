@@ -115,7 +115,7 @@ fn tab_create(project: &Project, args: &[String]) -> io::Result<()> {
                 let Some(value) = args.get(index + 1) else {
                     return Err(io::Error::other("missing value for --env"));
                 };
-                let (key, value) = parse_env_assignment(value)?;
+                let (key, value) = super::parse_env_assignment(value)?;
                 env.insert(key, value);
                 index += 2;
             }
@@ -258,16 +258,6 @@ fn active_workspace(snapshot: &SessionSnapshot) -> Option<&crate::server::sessio
         .find(|workspace| workspace.workspace_id == workspace_id)
 }
 
-fn parse_env_assignment(value: &str) -> io::Result<(String, String)> {
-    let (key, value) = value
-        .split_once('=')
-        .ok_or_else(|| io::Error::other(format!("environment must use KEY=VALUE: {value}")))?;
-    if key.is_empty() {
-        return Err(io::Error::other("environment key cannot be empty"));
-    }
-    Ok((key.to_owned(), value.to_owned()))
-}
-
 fn tab_get(project: &Project, id: &str) -> io::Result<()> {
     let snapshot = get_snapshot(project)?;
     let Some((space, workspace, tab, active)) = snapshot.spaces.iter().find_map(|space| {
@@ -331,7 +321,7 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_workspace, format_tab_list, parse_env_assignment};
+    use super::{find_workspace, format_tab_list};
     use crate::server::session::Session;
 
     #[test]
@@ -347,11 +337,11 @@ mod tests {
     #[test]
     fn tab_env_assignments_match_herdr_rules() {
         assert_eq!(
-            parse_env_assignment("SPINDLE_TAB=dev").unwrap(),
+            super::super::parse_env_assignment("SPINDLE_TAB=dev").unwrap(),
             ("SPINDLE_TAB".into(), "dev".into())
         );
-        assert!(parse_env_assignment("missing-separator").is_err());
-        assert!(parse_env_assignment("=empty-key").is_err());
+        assert!(super::super::parse_env_assignment("missing-separator").is_err());
+        assert!(super::super::parse_env_assignment("=empty-key").is_err());
     }
 
     #[test]

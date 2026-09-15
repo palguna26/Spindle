@@ -573,18 +573,7 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     let context = context.to_string();
     let mut env = serde_json::Map::new();
     for value in caller_env {
-        let Some((key, value)) = value.split_once('=') else {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "plugin pane --env values must use KEY=VALUE",
-            ));
-        };
-        if key.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "plugin pane --env keys cannot be empty",
-            ));
-        }
+        let (key, value) = super::parse_env_assignment(&value)?;
         env.insert(key.to_owned(), value.to_owned().into());
     }
     for (key, value) in [

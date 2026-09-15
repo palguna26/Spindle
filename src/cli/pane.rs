@@ -1441,12 +1441,7 @@ fn pane_split_options(project: &Project, args: &[String]) -> io::Result<()> {
                 let Some(value) = args.get(index + 1) else {
                     return Err(io::Error::other("missing value for --env"));
                 };
-                let (key, value) = value.split_once('=').ok_or_else(|| {
-                    io::Error::other(format!("environment must use KEY=VALUE: {value}"))
-                })?;
-                if key.is_empty() {
-                    return Err(io::Error::other("environment key cannot be empty"));
-                }
+                let (key, value) = super::parse_env_assignment(value)?;
                 env.insert(key.to_owned(), serde_json::Value::String(value.to_owned()));
                 index += 2;
             }

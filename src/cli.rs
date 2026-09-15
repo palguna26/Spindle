@@ -11,6 +11,16 @@ use serde_json::Value;
 
 const APP_DIR: &str = "Spindle";
 
+pub(super) fn parse_env_assignment(value: &str) -> io::Result<(String, String)> {
+    let (key, value) = value
+        .split_once('=')
+        .ok_or_else(|| io::Error::other(format!("environment must use KEY=VALUE: {value}")))?;
+    if key.is_empty() {
+        return Err(io::Error::other("environment key cannot be empty"));
+    }
+    Ok((key.to_owned(), value.to_owned()))
+}
+
 mod agent;
 mod api;
 mod completion;

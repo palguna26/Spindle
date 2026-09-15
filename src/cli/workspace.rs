@@ -63,7 +63,7 @@ fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
                 let Some(value) = args.get(index + 1) else {
                     return Err(io::Error::other("missing value for --env"));
                 };
-                let (key, parsed) = parse_env_assignment(value)?;
+                let (key, parsed) = super::parse_env_assignment(value)?;
                 env.insert(key, parsed);
                 index += 2;
             }
@@ -177,16 +177,6 @@ fn get_snapshot(project: &Project) -> io::Result<SessionSnapshot> {
             .ok_or_else(|| io::Error::other("server returned no session snapshot"))?,
     )
     .map_err(io::Error::other)
-}
-
-fn parse_env_assignment(value: &str) -> io::Result<(String, String)> {
-    let (key, value) = value
-        .split_once('=')
-        .ok_or_else(|| io::Error::other(format!("environment must use KEY=VALUE: {value}")))?;
-    if key.is_empty() {
-        return Err(io::Error::other("environment key cannot be empty"));
-    }
-    Ok((key.to_owned(), value.to_owned()))
 }
 
 fn workspace_close(project: &Project, workspace_id: &str) -> io::Result<()> {
@@ -336,7 +326,7 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_workspace_list, parse_env_assignment};
+    use super::format_workspace_list;
     use crate::server::session::Session;
 
     #[test]
@@ -363,10 +353,10 @@ mod tests {
     #[test]
     fn workspace_env_assignments_match_herdr_rules() {
         assert_eq!(
-            parse_env_assignment("SPINDLE_MODE=dev").unwrap(),
+            super::super::parse_env_assignment("SPINDLE_MODE=dev").unwrap(),
             ("SPINDLE_MODE".into(), "dev".into())
         );
-        assert!(parse_env_assignment("missing-separator").is_err());
-        assert!(parse_env_assignment("=empty-key").is_err());
+        assert!(super::super::parse_env_assignment("missing-separator").is_err());
+        assert!(super::super::parse_env_assignment("=empty-key").is_err());
     }
 }
