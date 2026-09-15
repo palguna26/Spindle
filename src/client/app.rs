@@ -119,6 +119,7 @@ fn event_loop(
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
     let mut action_error: Option<(String, Instant)> = None;
+    let mut status_notice: Option<(String, Instant)> = None;
     let mut notifications = VecDeque::new();
     let mut pending_external_notifications = VecDeque::new();
     loop {
@@ -133,6 +134,12 @@ fn event_loop(
             .is_some_and(|(_, expires_at)| Instant::now() >= *expires_at)
         {
             action_error = None;
+        }
+        if status_notice
+            .as_ref()
+            .is_some_and(|(_, expires_at)| Instant::now() >= *expires_at)
+        {
+            status_notice = None;
         }
         crate::client::notifications::expire(&mut notifications, Instant::now());
         if config.notification_sound {
@@ -365,6 +372,8 @@ fn event_loop(
                     renderer::render_startup_error(frame, error);
                 } else if let Some((error, _)) = &action_error {
                     renderer::render_action_error(frame, error);
+                } else if let Some((notice, _)) = &status_notice {
+                    renderer::render_status_notice(frame, notice);
                 }
                 if let Some(message) =
                     crate::client::notifications::visible_message(&notifications, Instant::now())
@@ -403,7 +412,12 @@ fn event_loop(
                                     palette_open = true;
                                     palette_selected = 0;
                                 }
-                                GlobalMenuAction::ReloadConfig => {}
+                                GlobalMenuAction::ReloadConfig => {
+                                    status_notice = Some((
+                                        "configuration reloaded".into(),
+                                        Instant::now() + ACTION_ERROR_DURATION,
+                                    ));
+                                }
                                 GlobalMenuAction::Detach => {
                                     let _ = client.detach();
                                     break;
@@ -570,7 +584,12 @@ fn event_loop(
                             palette_open = true;
                             palette_selected = 0;
                         }
-                        GlobalMenuAction::ReloadConfig => {}
+                        GlobalMenuAction::ReloadConfig => {
+                            status_notice = Some((
+                                "configuration reloaded".into(),
+                                Instant::now() + ACTION_ERROR_DURATION,
+                            ));
+                        }
                         GlobalMenuAction::Detach => {
                             let _ = client.detach();
                             break;
@@ -812,6 +831,14 @@ fn event_loop(
         }
         if pressed == Action::Settings {
             settings = Some(Settings::open());
+            prefix_active = false;
+            continue;
+        }
+        if pressed == Action::ReloadConfig {
+            status_notice = Some((
+                "configuration reloaded".into(),
+                Instant::now() + ACTION_ERROR_DURATION,
+            ));
             prefix_active = false;
             continue;
         }
@@ -1217,6 +1244,7 @@ fn event_loop(
             Action::None => {}
             Action::Help => {}
             Action::Settings => {}
+            Action::ReloadConfig => {}
             Action::CommandPalette => {}
             Action::OpenNotificationTarget => {
                 let target =

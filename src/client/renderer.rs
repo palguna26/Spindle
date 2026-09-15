@@ -602,6 +602,31 @@ pub fn render_action_error(frame: &mut Frame<'_>, error: &str) {
     );
 }
 
+pub fn render_status_notice(frame: &mut Frame<'_>, message: &str) {
+    let frame_area = frame.area();
+    let height = 3;
+    let width = frame_area.width.min(50);
+    if frame_area.height < height || width < 5 {
+        return;
+    }
+    let area = Rect::new(
+        frame_area.x + frame_area.width.saturating_sub(width) / 2,
+        frame_area.bottom().saturating_sub(height + 1),
+        width,
+        height,
+    );
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(message).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Spindle")
+                .border_style(Style::default().fg(Color::Green)),
+        ),
+        area,
+    );
+}
+
 pub fn render_notification(frame: &mut Frame<'_>, message: &str) {
     let frame_area = frame.area();
     let height = 3;
