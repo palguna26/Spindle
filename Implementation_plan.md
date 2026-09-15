@@ -276,6 +276,9 @@ approved design changes it.
   the user config and take effect on the next client loop iteration.
 - [x] Match Herdr's default `Ctrl-b s` Settings binding; stop-pane remains
   available through the command palette and explicit `stop_pane` bindings.
+- [x] Preserve terminal key modifiers in fallback input. Ctrl-C and modified
+  cursor keys now reach the PTY as control/CSI sequences instead of losing
+  their modifiers.
 - [x] Keep client orchestration categorized like Herdr's shell modules; startup
   failure actions now live in `src/client/startup.rs` instead of the main event
   loop module.

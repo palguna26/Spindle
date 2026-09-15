@@ -53,7 +53,7 @@ pub enum Action {
     Help,
     CommandPalette,
     OpenNotificationTarget,
-    Send(KeyCode),
+    Send(KeyEvent),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,7 +125,7 @@ impl Keymap {
                 if prefix_active {
                     Action::None
                 } else {
-                    Action::Send(key.code)
+                    Action::Send(key)
                 }
             })
     }
@@ -565,7 +565,7 @@ mod tests {
     fn bare_q_is_sent_to_the_focused_pane() {
         assert_eq!(
             action(false, KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE)),
-            Action::Send(KeyCode::Char('q'))
+            Action::Send(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE))
         );
     }
 
@@ -579,11 +579,11 @@ mod tests {
         assert!(keymap.is_prefix(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)));
         assert_eq!(
             keymap.action(false, KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
-            Action::Send(KeyCode::Char('c'))
+            Action::Send(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE))
         );
         assert_eq!(
             keymap.action(false, KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE)),
-            Action::Send(KeyCode::Char('t'))
+            Action::Send(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE))
         );
         assert_eq!(
             keymap.action(true, KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE)),

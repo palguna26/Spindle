@@ -18,7 +18,7 @@ use crate::model::layout::Direction as SplitDirection;
 use crate::server::session::SessionSnapshot;
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
-    MouseButton, MouseEvent, MouseEventKind,
+    KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -1203,9 +1203,9 @@ fn event_loop(
                     );
                 }
             }
-            Action::Send(code) => {
+            Action::Send(key) => {
                 if let Some(pane_id) = input_pane_id(&snapshot) {
-                    if let Some(bytes) = key_code_bytes(code) {
+                    if let Some(bytes) = key_code_bytes(key) {
                         let _ = client.interactive_request(
                             "input",
                             "send_input",
@@ -3058,17 +3058,76 @@ fn scrollback_text(pane: &crate::server::session::PaneView) -> String {
     lines.join("\n")
 }
 
-fn key_code_bytes(code: KeyCode) -> Option<Vec<u8>> {
-    match code {
-        KeyCode::Char(character) => Some(character.to_string().into_bytes()),
+fn key_code_bytes(key: KeyEvent) -> Option<Vec<u8>> {
+    let modifiers = key.modifiers;
+    if modifiers.contains(KeyModifiers::CONTROL) {
+        if let KeyCode::Char(character) = key.code {
+            let character = character.to_ascii_lowercase();
+            let byte = match character {
+                '@' | ' ' | '2' => 0,
+                'a'..='z' => character as u8 - b'a' + 1,
+                '[' | '3' => 27,
+                '\\' | '4' => 28,
+                ']' | '5' => 29,
+                '^' | '6' => 30,
+                '_' | '7' | '/' => 31,
+                _ => return None,
+            };
+            return Some(vec![byte]);
+        }
+    }
+    let modified =
+        modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT | KeyModifiers::CONTROL);
+    let modifier = 1
+        + u8::from(modifiers.contains(KeyModifiers::SHIFT))
+        + 2 * u8::from(modifiers.contains(KeyModifiers::ALT))
+        + 4 * u8::from(modifiers.contains(KeyModifiers::CONTROL));
+    match key.code {
+        KeyCode::Char(character) => {
+            let mut bytes = Vec::new();
+            if modifiers.contains(KeyModifiers::ALT) {
+                bytes.push(27);
+            }
+            let character = if modifiers.contains(KeyModifiers::SHIFT) {
+                character.to_ascii_uppercase()
+            } else {
+                character
+            };
+            bytes.extend(character.to_string().into_bytes());
+            Some(bytes)
+        }
         KeyCode::Enter => Some(vec![b'\r']),
-        KeyCode::Backspace => Some(vec![8]),
-        KeyCode::Tab => Some(vec![b'\t']),
+        KeyCode::Backspace => Some(vec![if modifiers.contains(KeyModifiers::ALT) {
+            27
+        } else {
+            8
+        }]),
+        KeyCode::Tab => Some(if modifiers.contains(KeyModifiers::SHIFT) {
+            b"\x1b[Z".to_vec()
+        } else {
+            vec![b'\t']
+        }),
         KeyCode::Esc => Some(vec![27]),
-        KeyCode::Left => Some(b"\x1b[D".to_vec()),
-        KeyCode::Right => Some(b"\x1b[C".to_vec()),
-        KeyCode::Up => Some(b"\x1b[A".to_vec()),
-        KeyCode::Down => Some(b"\x1b[B".to_vec()),
+        KeyCode::Left => Some(if modified {
+            format!("\x1b[1;{modifier}D").into_bytes()
+        } else {
+            b"\x1b[D".to_vec()
+        }),
+        KeyCode::Right => Some(if modified {
+            format!("\x1b[1;{modifier}C").into_bytes()
+        } else {
+            b"\x1b[C".to_vec()
+        }),
+        KeyCode::Up => Some(if modified {
+            format!("\x1b[1;{modifier}A").into_bytes()
+        } else {
+            b"\x1b[A".to_vec()
+        }),
+        KeyCode::Down => Some(if modified {
+            format!("\x1b[1;{modifier}B").into_bytes()
+        } else {
+            b"\x1b[B".to_vec()
+        }),
         _ => None,
     }
 }
@@ -3217,8 +3276,22 @@ mod tests {
 
     #[test]
     fn common_keys_encode_for_a_pty() {
-        assert_eq!(key_code_bytes(KeyCode::Enter), Some(vec![b'\r']));
-        assert_eq!(key_code_bytes(KeyCode::Left), Some(b"\x1b[D".to_vec()));
+        assert_eq!(
+            key_code_bytes(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+            Some(vec![b'\r'])
+        );
+        assert_eq!(
+            key_code_bytes(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)),
+            Some(b"\x1b[D".to_vec())
+        );
+        assert_eq!(
+            key_code_bytes(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+            Some(vec![3])
+        );
+        assert_eq!(
+            key_code_bytes(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL)),
+            Some(b"\x1b[1;5D".to_vec())
+        );
         assert_eq!(page_key_bytes(KeyCode::PageUp), Some(b"\x1b[5~".to_vec()));
         assert_eq!(page_key_bytes(KeyCode::PageDown), Some(b"\x1b[6~".to_vec()));
         assert_eq!(pane_size((120, 40)), (90, 36));
