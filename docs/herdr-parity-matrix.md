@@ -7,7 +7,8 @@ while moving it to a new tab or an existing tab in the active workspace. The
 existing-tab form supports an optional target pane and right/down split.
 Plugin lifecycle parity now also covers the Herdr `tab.closed` and
 `workspace.focused`, `workspace.created`, `workspace.renamed`, and
-`workspace.closed`, plus `pane.moved` and `layout.updated` event hooks;
+`workspace.closed`, plus `pane.moved`, `layout.updated`, `pane.agent_detected`,
+and `pane.agent_status_changed` event hooks;
 the lifecycle row below records the remaining workspace and layout gaps.
 Statuses describe the current Spindle checkout, not the target. “Partial” means
 some server/model support exists but the user-facing behavior is missing or

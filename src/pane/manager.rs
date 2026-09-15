@@ -248,16 +248,20 @@ impl PaneManager {
             self.last_agent_scan = Instant::now();
         }
         for pane in self.panes.values_mut() {
+            let previous_agent = pane.agent;
+            let previous_agent_state = pane.agent_state;
             let mut agent_changed = false;
+            let mut agent_exited = false;
             if scan_agents && pane.status.is_running() {
                 let scan = pane
                     .session
                     .process_id()
                     .map(detect::detect_in_process_tree)
                     .unwrap_or(AgentProcessScan::Unavailable);
-                let (changed, agent_exited) =
+                let (changed, exited) =
                     observe_agent_process(&mut pane.agent, scan, &mut pane.agent_missing_scans);
                 agent_changed = changed;
+                agent_exited = exited;
                 if matches!(scan, AgentProcessScan::Found(_)) {
                     pane.agent_done = false;
                 }
@@ -348,6 +352,37 @@ impl PaneManager {
                     events.push(PaneEvent::Status {
                         pane_id: pane.id.clone(),
                         status: pane.status.clone(),
+                    });
+                }
+            }
+
+            if agent_changed {
+                events.push(PaneEvent::AgentDetected {
+                    pane_id: pane.id.clone(),
+                    agent: pane.agent,
+                    released: false,
+                    final_status: None,
+                });
+            } else if agent_exited {
+                events.push(PaneEvent::AgentDetected {
+                    pane_id: pane.id.clone(),
+                    agent: pane.agent,
+                    released: true,
+                    final_status: pane.agent_state,
+                });
+            } else if previous_agent != pane.agent {
+                events.push(PaneEvent::AgentDetected {
+                    pane_id: pane.id.clone(),
+                    agent: pane.agent,
+                    released: pane.agent.is_none(),
+                    final_status: pane.agent_state,
+                });
+            }
+            if previous_agent_state != pane.agent_state {
+                if let Some(agent_state) = pane.agent_state {
+                    events.push(PaneEvent::AgentStatusChanged {
+                        pane_id: pane.id.clone(),
+                        agent_state,
                     });
                 }
             }

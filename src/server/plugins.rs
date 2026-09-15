@@ -55,6 +55,8 @@ pub(super) fn run_event_hook(
         "pane_focused" => "pane.focused",
         "pane_moved" => "pane.moved",
         "layout_updated" => "layout.updated",
+        "pane_agent_detected" => "pane.agent_detected",
+        "pane_agent_status_changed" => "pane.agent_status_changed",
         "pane_closed" => "pane.closed",
         "pane_status"
             if event

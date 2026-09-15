@@ -1647,6 +1647,27 @@ impl Session {
                     "pane_status",
                     serde_json::json!({ "pane_id": pane_id, "status": status }),
                 ),
+                PaneEvent::AgentDetected {
+                    pane_id,
+                    agent,
+                    released,
+                    final_status,
+                } => (
+                    "pane_agent_detected",
+                    serde_json::json!({
+                        "pane_id": pane_id,
+                        "agent": agent,
+                        "released": released,
+                        "final_status": final_status,
+                    }),
+                ),
+                PaneEvent::AgentStatusChanged {
+                    pane_id,
+                    agent_state,
+                } => (
+                    "pane_agent_status_changed",
+                    serde_json::json!({ "pane_id": pane_id, "agent_status": agent_state }),
+                ),
             };
             self.record_event(name, payload);
         }
@@ -3000,10 +3021,16 @@ mod tests {
                 pane_id: "pane-1".into(),
                 bytes: b"done".to_vec(),
             },
+            PaneEvent::AgentStatusChanged {
+                pane_id: "pane-1".into(),
+                agent_state: crate::detect::AgentState::Working,
+            },
         ]);
-        assert_eq!(session.events.len(), 2);
+        assert_eq!(session.events.len(), 3);
         assert_eq!(session.events[0].sequence, 1);
         assert_eq!(session.events[1].sequence, 2);
+        assert_eq!(session.events[2].event, "pane_agent_status_changed");
+        assert_eq!(session.events[2].payload["agent_status"], "working");
     }
 
     #[test]
