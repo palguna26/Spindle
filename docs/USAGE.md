@@ -125,6 +125,7 @@ to mouse and keyboard controls. Press `:` for the command palette. Other keys:
 | `o` / `O` | Focus next / previous pane |
 | `s` | Stop focused pane |
 | `r` | Restart focused pane |
+| `e` | Open focused pane scrollback in the editor |
 | `h` / `j` / `k` / `l` or arrows | Focus pane by direction |
 | `Tab` / `Shift-Tab` | Cycle to the next or previous pane |
 | `Shift+t` | Rename the active tab |
