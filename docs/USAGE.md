@@ -67,7 +67,8 @@ next_tab = ["prefix+n", "ctrl+alt+right"]
 rename_workspace = "prefix+shift+w"
 ```
 
-The config is read when the client starts. Supported action names include
+The config is read when the client starts and refreshed while the client runs.
+Supported action names include
 `new_tab`, `close_pane`, `close_tab`, `next_tab`, `previous_tab`,
 `workspace_picker`, `session_navigator`, `create_workspace`,
 `rename_workspace`, `delete_workspace`, pane focus directions, splits, resize,
