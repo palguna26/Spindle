@@ -146,6 +146,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   checks verified `Ctrl-b w`, direct `1` selection, `Ctrl-b g`,
   search-to-workspace activation, and `Esc`. Live filter and collapsed-branch
   checks remain before marking parity complete.
+- [x] Keep space and workspace expansion markers open while navigator filtering
+  exposes matching descendants, matching Herdr's filtered tree behavior.
 - [x] Support drag-select/copy and terminal mouse passthrough without stealing
   input from applications that request it. Wheel and mode-aware PageUp/PageDown
   now browse recent PTY history, which the same selection/copy path can read;

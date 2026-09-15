@@ -208,9 +208,10 @@ impl Navigator {
                         label: workspace.name.clone(),
                         detail: workspace.branch.clone().unwrap_or_default(),
                         current: false,
-                        expanded: self.expanded_workspaces.iter().any(|item| {
-                            item.0 == space.space_id && item.1 == workspace.workspace_id
-                        }),
+                        expanded: filtering
+                            || self.expanded_workspaces.iter().any(|item| {
+                                item.0 == space.space_id && item.1 == workspace.workspace_id
+                            }),
                     });
                     if filtering
                         || self.expanded_workspaces.iter().any(|item| {
@@ -235,7 +236,7 @@ impl Navigator {
                         "space".into()
                     },
                     current: false,
-                    expanded: self.expanded_spaces.contains(&space.space_id),
+                    expanded: filtering || self.expanded_spaces.contains(&space.space_id),
                 });
                 if filtering || self.expanded_spaces.contains(&space.space_id) {
                     rows.extend(space_rows);
@@ -613,6 +614,13 @@ mod tests {
             .rows(&snapshot)
             .iter()
             .any(|row| matches!(&row.target, Target::Pane { id, .. } if id == "pane-1")));
+        assert!(navigator.rows(&snapshot).iter().any(|row| {
+            matches!(&row.target, Target::Space(id) if id == "space-1") && row.expanded
+        }));
+        assert!(navigator.rows(&snapshot).iter().any(|row| {
+            matches!(&row.target, Target::Workspace { id, .. } if id == "workspace-1")
+                && row.expanded
+        }));
     }
 
     #[test]
