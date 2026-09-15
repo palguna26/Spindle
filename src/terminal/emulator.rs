@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use vt100::Parser;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +34,15 @@ pub struct TerminalSnapshot {
     pub application_cursor: bool,
     #[serde(default)]
     pub bracketed_paste: bool,
+    #[serde(default)]
+    pub hyperlinks: Vec<HyperlinkCell>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HyperlinkCell {
+    pub row: u16,
+    pub col: u16,
+    pub uri: String,
 }
 
 pub struct TerminalEmulator {
@@ -41,6 +51,99 @@ pub struct TerminalEmulator {
     cols: u16,
     query_state: QueryState,
     agent_osc: AgentOscTracker,
+    hyperlinks: HyperlinkTracker,
+}
+
+const MAX_HYPERLINK_CELLS: usize = 8192;
+
+#[derive(Default)]
+struct HyperlinkTracker {
+    state: HyperlinkState,
+    active_uri: Option<String>,
+    cells: BTreeMap<(u16, u16), String>,
+}
+
+#[derive(Default)]
+enum HyperlinkState {
+    #[default]
+    Ground,
+    Escape,
+    Csi,
+    Osc(Vec<u8>),
+    OscEscape(Vec<u8>),
+}
+
+impl HyperlinkTracker {
+    fn observe(&mut self, byte: u8, cursor: (u16, u16)) {
+        let record = matches!(self.state, HyperlinkState::Ground) && byte >= 0x20 && byte != 0x7f;
+        self.state = match std::mem::take(&mut self.state) {
+            HyperlinkState::Ground if byte == 0x1b => HyperlinkState::Escape,
+            HyperlinkState::Ground => HyperlinkState::Ground,
+            HyperlinkState::Escape if byte == b']' => HyperlinkState::Osc(Vec::new()),
+            HyperlinkState::Escape if byte == b'[' => HyperlinkState::Csi,
+            HyperlinkState::Escape if byte == 0x1b => HyperlinkState::Escape,
+            HyperlinkState::Escape => HyperlinkState::Ground,
+            HyperlinkState::Csi if (0x40..=0x7e).contains(&byte) => HyperlinkState::Ground,
+            HyperlinkState::Csi => HyperlinkState::Csi,
+            HyperlinkState::Osc(body) if byte == 0x07 => {
+                self.finish(&body);
+                HyperlinkState::Ground
+            }
+            HyperlinkState::Osc(body) if byte == 0x1b => HyperlinkState::OscEscape(body),
+            HyperlinkState::Osc(mut body) if body.len() < 4096 => {
+                body.push(byte);
+                HyperlinkState::Osc(body)
+            }
+            HyperlinkState::Osc(_) => HyperlinkState::Ground,
+            HyperlinkState::OscEscape(body) if byte == b'\\' => {
+                self.finish(&body);
+                HyperlinkState::Ground
+            }
+            HyperlinkState::OscEscape(mut body) if body.len() + 1 < 4096 => {
+                body.push(0x1b);
+                body.push(byte);
+                HyperlinkState::Osc(body)
+            }
+            HyperlinkState::OscEscape(_) => HyperlinkState::Ground,
+        };
+
+        if record {
+            self.cells.remove(&cursor);
+            if let Some(uri) = &self.active_uri {
+                if self.cells.len() >= MAX_HYPERLINK_CELLS {
+                    if let Some(first) = self.cells.keys().next().copied() {
+                        self.cells.remove(&first);
+                    }
+                }
+                self.cells.insert(cursor, uri.clone());
+            }
+        }
+    }
+
+    fn finish(&mut self, body: &[u8]) {
+        let mut parts = body.splitn(3, |byte| *byte == b';');
+        if parts.next() != Some(b"8") {
+            return;
+        }
+        let Some(_params) = parts.next() else { return };
+        let Some(uri) = parts.next() else { return };
+        let uri = String::from_utf8_lossy(uri)
+            .chars()
+            .filter(|character| !character.is_control())
+            .collect::<String>();
+        self.active_uri = (!uri.is_empty()).then_some(uri);
+    }
+
+    fn snapshot(&self) -> Vec<HyperlinkCell> {
+        self.cells
+            .iter()
+            .map(|(&(row, col), uri)| HyperlinkCell {
+                row,
+                col,
+                uri: uri.clone(),
+            })
+            .collect()
+    }
 }
 
 const MAX_AGENT_OSC_BYTES: usize = 1024;
@@ -133,21 +236,26 @@ impl TerminalEmulator {
             cols,
             query_state: QueryState::Ground,
             agent_osc: AgentOscTracker::default(),
+            hyperlinks: HyperlinkTracker::default(),
         }
     }
 
     pub fn process(&mut self, bytes: &[u8]) -> Vec<Vec<u8>> {
         self.agent_osc.observe(bytes);
         let query_ends = self.cursor_report_query_ends(bytes);
-        let mut responses = Vec::with_capacity(query_ends.len());
-        let mut start = 0;
-        for end in query_ends {
-            self.parser.process(&bytes[start..=end]);
-            let (row, col) = self.parser.screen().cursor_position();
-            responses.push(format!("\x1b[{};{}R", row + 1, col + 1).into_bytes());
-            start = end + 1;
+        let query_count = query_ends.len();
+        let mut query_ends = query_ends.into_iter().peekable();
+        let mut responses = Vec::with_capacity(query_count);
+        for (index, byte) in bytes.iter().copied().enumerate() {
+            let cursor = self.parser.screen().cursor_position();
+            self.hyperlinks.observe(byte, cursor);
+            self.parser.process(&[byte]);
+            if query_ends.peek().copied() == Some(index) {
+                query_ends.next();
+                let (row, col) = self.parser.screen().cursor_position();
+                responses.push(format!("\x1b[{};{}R", row + 1, col + 1).into_bytes());
+            }
         }
-        self.parser.process(&bytes[start..]);
         responses
     }
 
@@ -230,6 +338,7 @@ impl TerminalEmulator {
             utf8_mouse: mouse_encoding == vt100::MouseProtocolEncoding::Utf8,
             application_cursor: screen.application_cursor(),
             bracketed_paste: screen.bracketed_paste(),
+            hyperlinks: self.hyperlinks.snapshot(),
         }
     }
 }
@@ -243,6 +352,33 @@ mod tests {
         let mut terminal = TerminalEmulator::new(2, 8, 4);
         terminal.process(b"hello");
         assert!(terminal.snapshot().contents.starts_with("hello"));
+    }
+
+    #[test]
+    fn osc8_hyperlinks_are_retained_with_cell_coordinates() {
+        let mut terminal = TerminalEmulator::new(2, 16, 4);
+        terminal.process(b"\x1b]8;;https://example.test\x07link\x1b]8;;\x07");
+
+        let snapshot = terminal.snapshot();
+        assert_eq!(snapshot.hyperlinks.len(), 4);
+        assert!(snapshot
+            .hyperlinks
+            .iter()
+            .all(|link| link.uri == "https://example.test"));
+        assert_eq!(snapshot.hyperlinks[0].row, 0);
+        assert_eq!(snapshot.hyperlinks[0].col, 0);
+    }
+
+    #[test]
+    fn osc8_hyperlinks_can_close_with_st_and_span_chunks() {
+        let mut terminal = TerminalEmulator::new(2, 16, 4);
+        terminal.process(b"\x1b]8;;https://example.test\x1b");
+        terminal.process(b"\\link\x1b]8;;\x1b");
+        terminal.process(b"\\tail");
+
+        let snapshot = terminal.snapshot();
+        assert_eq!(snapshot.hyperlinks.len(), 4);
+        assert!(snapshot.hyperlinks.iter().all(|link| link.col < 4));
     }
 
     #[test]

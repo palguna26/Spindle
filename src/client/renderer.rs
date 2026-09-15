@@ -976,6 +976,7 @@ mod tests {
                 application_cursor: false,
                 bracketed_paste: false,
                 right_click_passthrough: false,
+                hyperlinks: Vec::new(),
             }],
             focused_pane_id: Some("pane-1".into()),
             event_sequence: 0,
@@ -1064,6 +1065,7 @@ mod tests {
             application_cursor: false,
             bracketed_paste: false,
             right_click_passthrough: false,
+            hyperlinks: Vec::new(),
         };
         assert!(pane_title_text(&pane).contains("Editor"));
         assert!(pane_title_text(&pane).contains("[Codex working]"));
@@ -1111,6 +1113,7 @@ mod tests {
             application_cursor: false,
             bracketed_paste: false,
             right_click_passthrough: false,
+            hyperlinks: Vec::new(),
         };
         assert!(pane_title_text(&pane).contains("exit 0"));
         pane.status = PaneStatus::Halted {

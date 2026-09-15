@@ -60,6 +60,8 @@ pub struct PaneView {
     #[serde(default)]
     pub alternate_screen: bool,
     #[serde(default)]
+    pub hyperlinks: Vec<crate::terminal::HyperlinkCell>,
+    #[serde(default)]
     pub mouse_reporting: bool,
     #[serde(default)]
     pub mouse_release: bool,
@@ -140,6 +142,7 @@ fn load_history(session_path: &Path, snapshot: &mut SessionSnapshot) -> Result<(
         pane.cursor_visible = false;
         pane.title = saved.title.clone();
         pane.alternate_screen = saved.alternate_screen;
+        pane.hyperlinks = saved.hyperlinks.clone();
     }
     Ok(())
 }
@@ -222,6 +225,8 @@ struct PaneHistory {
     cursor: (u16, u16),
     title: String,
     alternate_screen: bool,
+    #[serde(default)]
+    hyperlinks: Vec<crate::terminal::HyperlinkCell>,
 }
 
 pub struct Session {
@@ -335,6 +340,7 @@ impl Session {
                         cursor: pane.cursor,
                         title: pane.title.clone(),
                         alternate_screen: pane.alternate_screen,
+                        hyperlinks: pane.hyperlinks.clone(),
                     })
                     .collect(),
             };
@@ -353,6 +359,7 @@ impl Session {
                 pane.utf8_mouse = false;
                 pane.application_cursor = false;
                 pane.bracketed_paste = false;
+                pane.hyperlinks.clear();
             }
             save_versioned(path, &metadata)?;
             save_versioned(&history_path(path), &history)?;
@@ -602,6 +609,7 @@ impl Session {
             application_cursor: false,
             bracketed_paste: false,
             right_click_passthrough: false,
+            hyperlinks: Vec::new(),
         });
         self.record_pane_events(vec![PaneEvent::Status {
             pane_id: pane_id.clone(),
@@ -1644,6 +1652,7 @@ impl Session {
                 pane.cursor_visible = terminal.cursor_visible;
                 pane.title = terminal.title;
                 pane.alternate_screen = terminal.alternate_screen;
+                pane.hyperlinks = terminal.hyperlinks;
                 pane.mouse_reporting = terminal.mouse_reporting;
                 pane.mouse_release = terminal.mouse_release;
                 pane.mouse_motion = terminal.mouse_motion;
@@ -1940,6 +1949,7 @@ mod tests {
             application_cursor: false,
             bracketed_paste: false,
             right_click_passthrough: false,
+            hyperlinks: Vec::new(),
         });
         session.rename_pane("pane-1", "Shell".into()).unwrap();
         assert_eq!(session.snapshot.panes[0].label.as_deref(), Some("Shell"));
@@ -2298,6 +2308,7 @@ mod tests {
             application_cursor: false,
             bracketed_paste: false,
             right_click_passthrough: false,
+            hyperlinks: Vec::new(),
         });
         session.snapshot.spaces[0].workspaces[0].tabs[1].layout = Some(LayoutNode::pane("pane-1"));
         assert!(session.close_pane("pane-1").is_err());
@@ -2392,6 +2403,7 @@ mod tests {
             application_cursor: false,
             bracketed_paste: false,
             right_click_passthrough: false,
+            hyperlinks: Vec::new(),
         });
         session.save().unwrap();
         let metadata: serde_json::Value =
@@ -2513,6 +2525,7 @@ mod tests {
             application_cursor: false,
             bracketed_paste: false,
             right_click_passthrough: false,
+            hyperlinks: Vec::new(),
         });
         session.snapshot.spaces[0].workspaces[0].tabs[0].layout =
             Some(crate::model::layout::LayoutNode::pane("pane-1"));
@@ -2550,6 +2563,7 @@ mod tests {
             application_cursor: false,
             bracketed_paste: false,
             right_click_passthrough: false,
+            hyperlinks: Vec::new(),
         });
         assert!(session.restart_pane("pane-1").is_err());
     }
@@ -2587,6 +2601,7 @@ mod tests {
             application_cursor: true,
             bracketed_paste: true,
             right_click_passthrough: true,
+            hyperlinks: Vec::new(),
         });
         session.snapshot.spaces[0].workspaces[0].tabs[0].layout = Some(LayoutNode::pane("pane-1"));
         session.snapshot.spaces[0].workspaces[0].tabs[0].focused_pane_id = Some("pane-1".into());

@@ -82,7 +82,7 @@ fn unmatched_closer(
     closes > opens
 }
 
-fn is_safe_web_url(url: &str) -> bool {
+pub(crate) fn is_safe_web_url(url: &str) -> bool {
     (url.starts_with("http://") || url.starts_with("https://"))
         && !url.chars().any(char::is_control)
 }

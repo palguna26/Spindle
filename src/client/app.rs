@@ -1878,6 +1878,13 @@ fn visible_web_url_at_point(
         .find(|candidate| candidate.pane_id == pane_rect.pane_id)?;
     let inner_x = pane_rect.rect.x.saturating_add(1);
     let inner_y = pane_rect.rect.y.saturating_add(1);
+    if let Some(link) = pane.hyperlinks.iter().find(|link| {
+        link.row == row.saturating_sub(inner_y) && link.col == column.saturating_sub(inner_x)
+    }) {
+        if super::links::is_safe_web_url(&link.uri) {
+            return Some(link.uri.clone());
+        }
+    }
     super::links::web_url_at_cell(
         &pane.screen,
         row.saturating_sub(inner_y),
