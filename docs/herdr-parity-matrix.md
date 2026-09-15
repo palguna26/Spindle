@@ -35,7 +35,7 @@ existing-tab form supports an optional target pane and right/down split; the
 new-workspace form supports workspace/tab labels and focus control.
 The new-tab form also supports Herdr's optional `--workspace` destination.
 Move source IDs are resolved across all Spindle spaces, workspaces, and tabs.
-`spindle tab create` now accepts Herdr's `--workspace`, `--cwd`, repeated
+`spindle tab create` now accepts Herdr's `--label`, `--workspace`, `--cwd`, repeated
 `--env`, and `--focus`/`--no-focus` controls; it starts a PowerShell pane and
 preserves the current workspace/tab by default.
 `spindle tab list --workspace ID` lists tabs in an inactive workspace without

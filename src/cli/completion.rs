@@ -55,7 +55,7 @@ const BASH: &str = r#"_spindle() {
     if [[ "$COMP_WORDS[2]" == "list" ]]; then
       COMPREPLY=( $(compgen -W "--workspace" -- "$cur") )
     elif [[ "$COMP_WORDS[2]" == "create" ]]; then
-      COMPREPLY=( $(compgen -W "--workspace --cwd --env --focus --no-focus" -- "$cur") )
+      COMPREPLY=( $(compgen -W "--label --workspace --cwd --env --focus --no-focus" -- "$cur") )
     else
       COMPREPLY=( $(compgen -W "list create get focus rename close" -- "$cur") )
     fi
@@ -79,6 +79,7 @@ complete -c spindle -f -n '__fish_seen_subcommand_from workspace; and __fish_see
 complete -c spindle -f -n '__fish_seen_subcommand_from workspace; and __fish_seen_subcommand_from create' -l env -r
 complete -c spindle -f -n '__fish_seen_subcommand_from workspace; and __fish_seen_subcommand_from create' -l focus -l no-focus
 complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from create' -l workspace -r
+complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from create' -l label -r
 complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from create' -l cwd -r
 complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from create' -l env -r
 complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from create' -l focus -l no-focus
@@ -94,7 +95,7 @@ _spindle() {
   case $words[2] in
     completion) _arguments '1:shell:(bash elvish fish powershell zsh)' ;;
     workspace) _arguments '1:command:(list create get focus rename close)' '2:options:(--cwd --label --env --focus --no-focus)' ;;
-    tab) _arguments '1:command:(list create get focus rename close)' '2:options:(--workspace --cwd --env --focus --no-focus)' ;;
+    tab) _arguments '1:command:(list create get focus rename close)' '2:options:(--label --workspace --cwd --env --focus --no-focus)' ;;
     pane) _arguments '1:command:(list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize)' ;;
     api) _arguments '1:command:(schema help)' ;;
     agent) _arguments '1:command:(list get focus start wait read send-keys prompt rename help)' ;;
@@ -111,7 +112,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq 'workspace' -and $words[2] -eq 'create') { '--cwd --label --env --focus --no-focus' }
     elseif ($words[1] -eq 'workspace') { 'list create get focus rename close' }
     elseif ($words[1] -eq 'tab' -and $words[2] -eq 'list') { '--workspace' }
-    elseif ($words[1] -eq 'tab' -and $words[2] -eq 'create') { '--workspace --cwd --env --focus --no-focus' }
+    elseif ($words[1] -eq 'tab' -and $words[2] -eq 'create') { '--label --workspace --cwd --env --focus --no-focus' }
     elseif ($words[1] -eq 'tab') { 'list create get focus rename close' }
     elseif ($words[1] -eq 'pane') { 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize' }
     elseif ($words[1] -eq 'agent') { 'list get focus start wait read send-keys prompt rename help' }
@@ -124,7 +125,7 @@ edit:completion:argadd spindle (start attach stop list doctor config workspace t
 edit:completion:argadd 'spindle workspace' (list create get focus rename close)
 edit:completion:argadd 'spindle workspace create' (--cwd --label --env --focus --no-focus)
 edit:completion:argadd 'spindle tab list' (--workspace)
-edit:completion:argadd 'spindle tab create' (--workspace --cwd --env --focus --no-focus)
+edit:completion:argadd 'spindle tab create' (--label --workspace --cwd --env --focus --no-focus)
 edit:completion:argadd 'spindle pane' (list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize)
 edit:completion:argadd 'spindle agent' (list get focus start wait read send-keys prompt rename help)
 "#;

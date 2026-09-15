@@ -111,6 +111,13 @@ fn tab_create(project: &Project, args: &[String]) -> io::Result<()> {
                 workspace_id = Some(value.clone());
                 index += 2;
             }
+            "--label" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --label"));
+                };
+                name = value.clone();
+                index += 2;
+            }
             "--env" => {
                 let Some(value) = args.get(index + 1) else {
                     return Err(io::Error::other("missing value for --env"));
@@ -310,9 +317,9 @@ fn send_mutation(project: &Project, operation: &str, payload: serde_json::Value)
 }
 
 fn print_help() {
-    println!("Usage: spindle tab <list [--workspace ID]|create [label] [--workspace ID] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]|get <id>|focus <id>|rename <id> <label>|close <id>>");
+    println!("Usage: spindle tab <list [--workspace ID]|create [label] [--label TEXT] [--workspace ID] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]|get <id>|focus <id>|rename <id> <label>|close <id>>");
     println!("  list             list tabs in the active or selected workspace");
-    println!("  create [label]   create a tab and start its PowerShell pane (--workspace, --cwd, --env, --focus|--no-focus)");
+    println!("  create [label]   create a tab and start its PowerShell pane (--label, --workspace, --cwd, --env, --focus|--no-focus)");
     println!("  get <id>         show a tab");
     println!("  focus <id>       focus a tab in the active workspace");
     println!("  rename <id> ...  rename a tab");

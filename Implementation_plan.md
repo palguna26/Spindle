@@ -373,7 +373,7 @@ approved design changes it.
   the requested directory. Workspace creation follows Herdr's default no-focus
   behavior; `--focus` opts into selecting the new workspace. Repeated
   `--env KEY=VALUE` options are applied to its initial PowerShell pane. Tab
-  creation also accepts Herdr's workspace destination, cwd, environment, and
+  creation also accepts Herdr's label, workspace destination, cwd, environment, and
   focus controls while preserving the current workspace/tab by default.
   Tab listing accepts `--workspace` for inactive-workspace inspection without
   changing focus.
