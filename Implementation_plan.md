@@ -375,6 +375,8 @@ approved design changes it.
   `--env KEY=VALUE` options are applied to its initial PowerShell pane. Tab
   creation also accepts Herdr's workspace destination, cwd, environment, and
   focus controls while preserving the current workspace/tab by default.
+  Tab listing accepts `--workspace` for inactive-workspace inspection without
+  changing focus.
 - [ ] For behavior not included, record the concrete reason and an equivalent
   Spindle workflow; do not silently omit it.
 - [ ] Improve Windows-specific process launch, terminal input/output, resizing,

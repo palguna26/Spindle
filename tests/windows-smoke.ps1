@@ -54,6 +54,10 @@ try {
     if ($LASTEXITCODE -ne 0 -or $workspaceAfterRemoteTab -notmatch "(?m)^\*\s+$([regex]::Escape($targetWorkspace.workspace_id))\s+Tab target") {
         throw "tab create --workspace changed the active workspace: $workspaceAfterRemoteTab"
     }
+    $remoteTabs = (& $Binary tab list --workspace workspace-1) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $remoteTabs -notmatch '(?m)^\*\s+\S+\s+Remote tab\s+\[workspace-1\]$') {
+        throw "tab list --workspace did not list the selected workspace: $remoteTabs"
+    }
     Invoke-Spindle @("tab", "close", $createdTab.tab_id)
     Invoke-Spindle @("workspace", "close", $targetWorkspace.workspace_id)
     $workspaces = (& $Binary workspace list) -join "`n"

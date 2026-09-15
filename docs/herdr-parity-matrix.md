@@ -38,6 +38,8 @@ Move source IDs are resolved across all Spindle spaces, workspaces, and tabs.
 `spindle tab create` now accepts Herdr's `--workspace`, `--cwd`, repeated
 `--env`, and `--focus`/`--no-focus` controls; it starts a PowerShell pane and
 preserves the current workspace/tab by default.
+`spindle tab list --workspace ID` lists tabs in an inactive workspace without
+changing focus.
 Plugin lifecycle parity now also covers the Herdr `tab.closed` and
 `workspace.focused`, `workspace.created`, `workspace.renamed`, and
 `workspace.closed`, plus `pane.moved`, `layout.updated`, `pane.agent_detected`,

@@ -5,7 +5,7 @@ use std::io;
 
 pub(super) fn run_tab_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
-        [command] if command == "list" => tab_list(project),
+        [command, options @ ..] if command == "list" => tab_list(project, options),
         [command, options @ ..] if command == "create" => tab_create(project, options),
         [command, id] if command == "get" => tab_get(project, id),
         [command, id] if command == "focus" => {
@@ -48,22 +48,20 @@ fn get_snapshot(project: &Project) -> io::Result<SessionSnapshot> {
     .map_err(io::Error::other)
 }
 
-fn tab_list(project: &Project) -> io::Result<()> {
+fn tab_list(project: &Project, args: &[String]) -> io::Result<()> {
     let snapshot = get_snapshot(project)?;
-    let space = snapshot
-        .spaces
-        .iter()
-        .find(|space| space.space_id == snapshot.active_space_id)
-        .ok_or_else(|| io::Error::other("active space does not exist"))?;
-    let workspace_id = space
-        .active_workspace_id
-        .as_deref()
-        .ok_or_else(|| io::Error::other("active workspace does not exist"))?;
-    let workspace = space
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.workspace_id == workspace_id)
-        .ok_or_else(|| io::Error::other("active workspace does not exist"))?;
+    let workspace_id = match args {
+        [] => active_workspace_id(&snapshot)
+            .ok_or_else(|| io::Error::other("active workspace does not exist"))?,
+        [flag, id] if flag == "--workspace" => id.clone(),
+        _ => {
+            return Err(io::Error::other(
+                "usage: spindle tab list [--workspace <workspace_id>]",
+            ));
+        }
+    };
+    let workspace = find_workspace(&snapshot, &workspace_id)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "workspace does not exist"))?;
     print!(
         "{}",
         format_tab_list(
@@ -236,6 +234,18 @@ fn active_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
     active_workspace(snapshot).map(|workspace| workspace.workspace_id.clone())
 }
 
+fn find_workspace<'a>(
+    snapshot: &'a SessionSnapshot,
+    workspace_id: &str,
+) -> Option<&'a crate::server::session::WorkspaceView> {
+    snapshot.spaces.iter().find_map(|space| {
+        space
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.workspace_id == workspace_id)
+    })
+}
+
 fn active_workspace(snapshot: &SessionSnapshot) -> Option<&crate::server::session::WorkspaceView> {
     let space = snapshot
         .spaces
@@ -310,8 +320,8 @@ fn send_mutation(project: &Project, operation: &str, payload: serde_json::Value)
 }
 
 fn print_help() {
-    println!("Usage: spindle tab <list|create [label] [--workspace ID] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]|get <id>|focus <id>|rename <id> <label>|close <id>>");
-    println!("  list             list tabs in the active workspace");
+    println!("Usage: spindle tab <list [--workspace ID]|create [label] [--workspace ID] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]|get <id>|focus <id>|rename <id> <label>|close <id>>");
+    println!("  list             list tabs in the active or selected workspace");
     println!("  create [label]   create a tab and start its PowerShell pane (--workspace, --cwd, --env, --focus|--no-focus)");
     println!("  get <id>         show a tab");
     println!("  focus <id>       focus a tab in the active workspace");
@@ -321,7 +331,7 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_tab_list, parse_env_assignment};
+    use super::{find_workspace, format_tab_list, parse_env_assignment};
     use crate::server::session::Session;
 
     #[test]
@@ -342,5 +352,22 @@ mod tests {
         );
         assert!(parse_env_assignment("missing-separator").is_err());
         assert!(parse_env_assignment("=empty-key").is_err());
+    }
+
+    #[test]
+    fn tab_workspace_selector_finds_inactive_workspace_without_changing_snapshot() {
+        let mut session = Session::default();
+        let workspace = session.create_workspace("Build".into()).unwrap();
+        let workspace_id = workspace["workspace_id"].as_str().unwrap();
+        let snapshot = session.snapshot();
+
+        assert_eq!(
+            find_workspace(snapshot, workspace_id).unwrap().name,
+            "Build"
+        );
+        assert_eq!(
+            snapshot.spaces[0].active_workspace_id.as_deref(),
+            Some("workspace-2")
+        );
     }
 }
