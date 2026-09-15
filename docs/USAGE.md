@@ -164,7 +164,8 @@ per-user configuration directory for a plugin.
 Manifest actions can be inspected or started with `spindle plugin action list`
 and `spindle plugin action invoke <action_id> [--plugin ID]`. Qualified action
 IDs such as `plugin.id.action` avoid ambiguity. Actions run without a shell
-from the plugin directory.
+from the plugin directory. Launches are retained in a bounded per-user log;
+view them with `spindle plugin log list [--plugin ID] [--limit N]`.
 Manifest terminal panes can be opened with
 `spindle plugin pane open --plugin ID --entrypoint ID`; Spindle supports
 `split`, `tab`, and `zoomed` placements and keeps them as normal panes.
