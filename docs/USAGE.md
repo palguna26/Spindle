@@ -79,6 +79,11 @@ print a starter file.
 Tabs can also be automated with `spindle tab list`, `create [label]`,
 `get <id>`, `focus <id>`, `rename <id> <label>`, and `close <id>`.
 
+Panes can be automated with `spindle pane list`, `current`, `get <id>`,
+`focus <id>`, `rename <id> <label>`, `stop <id>`, `restart <id>`, `zoom <id>`,
+and `close <id>`. Pane listing is scoped to the active tab, matching the
+server's current focus scope.
+
 ## Keybindings
 
 `Ctrl-b` is the command prefix. Press `Ctrl-b`, then `?` for the in-app guide

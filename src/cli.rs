@@ -11,6 +11,7 @@ use serde_json::Value;
 
 const APP_DIR: &str = "Spindle";
 
+mod pane;
 mod tab;
 mod workspace;
 
@@ -91,6 +92,7 @@ pub fn run() -> io::Result<()> {
             workspace::run_workspace_command(&project, &env::args().skip(2).collect::<Vec<_>>())?
         }
         "tab" => tab::run_tab_command(&project, &env::args().skip(2).collect::<Vec<_>>())?,
+        "pane" => pane::run_pane_command(&project, &env::args().skip(2).collect::<Vec<_>>())?,
         other => {
             print_help();
             return Err(io::Error::new(
@@ -187,7 +189,7 @@ fn send_command_with_payload(
 fn print_help() {
     println!("Spindle - persistent parallel coding-agent sessions");
     println!();
-    println!("Usage: spindle [start|attach|stop|list|doctor|workspace|help]");
+    println!("Usage: spindle [start|attach|stop|list|doctor|workspace|tab|pane|help]");
     println!();
     println!("Commands:");
     println!("  start    start a server for the current project");
@@ -204,6 +206,7 @@ fn print_help() {
     println!("  tab list        list tabs in the active workspace");
     println!("  tab create      create a tab in the active workspace");
     println!("  tab get/focus/rename/close  manage tabs by ID");
+    println!("  pane list/current/get/focus/rename/stop/restart/zoom/close  manage panes");
     println!("Options:");
     println!("  --help, -h       show this help");
     println!("  --version, -V    print the version");
