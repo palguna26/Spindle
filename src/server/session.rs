@@ -426,6 +426,29 @@ impl Session {
         &self.snapshot
     }
 
+    pub fn process_info(&mut self, pane_id: &str) -> Result<Value, String> {
+        self.poll();
+        self.refresh_snapshot();
+        let pane = self
+            .snapshot
+            .panes
+            .iter()
+            .find(|pane| pane.pane_id == pane_id)
+            .ok_or_else(|| format!("pane '{pane_id}' does not exist"))?;
+        let process_id = self
+            .pane_manager
+            .process_id(pane_id)
+            .map_err(|error| format!("{error:?}"))?;
+        Ok(serde_json::json!({
+            "pane_id": pane.pane_id,
+            "pid": process_id,
+            "command": pane.command,
+            "args": pane.args,
+            "cwd": pane.cwd,
+            "status": pane.status,
+        }))
+    }
+
     pub fn events_since(&mut self, sequence: u64) -> Vec<Event<Value>> {
         self.poll();
         self.refresh_snapshot();
@@ -2362,6 +2385,10 @@ mod tests {
     fn invalid_focus_and_switch_are_rejected() {
         let mut session = Session::default();
         assert!(session.focus_pane("missing").is_err());
+        assert_eq!(
+            session.process_info("missing").unwrap_err(),
+            "pane 'missing' does not exist"
+        );
         assert!(session.switch_workspace("missing").is_err());
         assert!(session.switch_tab("missing").is_err());
     }

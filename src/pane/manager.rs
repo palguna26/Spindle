@@ -396,6 +396,13 @@ impl PaneManager {
             .map(|pane| pane.terminal.snapshot())
             .ok_or_else(|| PaneManagerError::MissingPane(id.into()))
     }
+
+    pub fn process_id(&self, id: &str) -> Result<Option<u32>, PaneManagerError> {
+        self.panes
+            .get(id)
+            .map(|pane| pane.session.process_id())
+            .ok_or_else(|| PaneManagerError::MissingPane(id.into()))
+    }
 }
 
 fn observe_agent_process(

@@ -16,6 +16,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         [command, options @ ..] if command == "neighbor" => pane_neighbor(project, options),
         [command, options @ ..] if command == "edges" => pane_edges(project, options),
         [command, options @ ..] if command == "layout" => pane_layout(project, options),
+        [command, options @ ..] if command == "process-info" => pane_process_info(project, options),
         [command, id] if command == "focus" => pane_mutation(project, "focus_pane", id),
         [command, id, label @ ..] if command == "rename" && !label.is_empty() => {
             pane_rename(project, id, &label.join(" "))
@@ -293,6 +294,32 @@ fn pane_layout(project: &Project, args: &[String]) -> io::Result<()> {
             "pane_id": pane_id,
             "layout": layout,
         })
+    );
+    Ok(())
+}
+
+fn pane_process_info(project: &Project, args: &[String]) -> io::Result<()> {
+    let pane_id = parse_optional_pane_selector(args).map_err(io::Error::other)?;
+    let snapshot = get_snapshot(project)?;
+    let pane_id = pane_id
+        .or_else(|| snapshot.focused_pane_id.clone())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no focused pane"))?;
+    let response = super::send_command_with_payload(
+        project,
+        "process_info",
+        serde_json::json!({ "pane_id": pane_id }),
+    )?;
+    if !response.ok {
+        return Err(io::Error::other(
+            response
+                .error
+                .map(|error| error.message)
+                .unwrap_or_else(|| "server rejected process info request".into()),
+        ));
+    }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&response.payload).map_err(io::Error::other)?
     );
     Ok(())
 }
@@ -1099,7 +1126,7 @@ fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|wait-output|split|resize>");
+    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|wait-output|split|resize>");
     println!("  list [--workspace <id>]  list panes in a workspace");
     println!("  current [<id>]   show the focused or requested pane");
     println!("  get <id>         show a pane as JSON");
@@ -1108,6 +1135,7 @@ fn print_help() {
     println!("  neighbor --direction left|right|up|down [--pane ID|--current]  inspect a neighboring pane");
     println!("  edges [--pane ID|--current]  inspect pane layout edges");
     println!("  layout [--pane ID|--current]  inspect the active pane layout");
+    println!("  process-info [--pane ID|--current]  inspect the running pane process");
     println!("  rename <id> ...  rename a pane");
     println!("  stop <id>        stop a pane process");
     println!("  restart <id>     restart a pane process");

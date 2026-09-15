@@ -313,6 +313,16 @@ pub(crate) fn response_for_with_interactive(
             }
             serde_json::to_value(session.snapshot()).map_err(|error| error.to_string())
         }
+        "process_info" => {
+            let payload: PaneRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            session.process_info(&payload.pane_id)
+        }
         "subscribe_events" => {
             let payload: EventsRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,
