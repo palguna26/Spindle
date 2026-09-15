@@ -15,9 +15,18 @@ pub(crate) struct Manifest {
     #[serde(default)]
     pub(crate) actions: Vec<Action>,
     #[serde(default)]
+    pub(crate) build: Vec<Build>,
+    #[serde(default)]
     pub(crate) link_handlers: Vec<LinkHandler>,
     #[serde(default)]
     pub(crate) panes: Vec<Pane>,
+    #[serde(default)]
+    pub(crate) platforms: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct Build {
+    pub(crate) command: Vec<String>,
     #[serde(default)]
     pub(crate) platforms: Option<Vec<String>>,
 }
@@ -213,4 +222,25 @@ pub(crate) fn installed() -> io::Result<Vec<(Registration, Manifest)>> {
                 .map(|manifest| (registration, manifest))
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load;
+
+    #[test]
+    fn manifest_loads_herdr_build_commands() {
+        let root =
+            std::env::temp_dir().join(format!("spindle-plugin-build-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("herdr-plugin.toml"),
+            "id = \"example.build\"\nname = \"Build\"\nversion = \"1\"\n[[build]]\ncommand = [\"tool\", \"run\"]\nplatforms = [\"windows\"]\n",
+        )
+        .unwrap();
+        let manifest = load(&root).unwrap();
+        assert_eq!(manifest.build[0].command, ["tool", "run"]);
+        assert_eq!(manifest.build[0].platforms, Some(vec!["windows".into()]));
+        let _ = std::fs::remove_dir_all(root);
+    }
 }

@@ -140,6 +140,13 @@ fn install(args: &[String]) -> io::Result<()> {
             ));
         }
     };
+    if let Err(error) = run_build_commands(&manifest, &manifest_root) {
+        let _ = std::fs::remove_dir_all(&temporary);
+        if let Some(backup) = &backup {
+            let _ = std::fs::rename(backup, &checkout);
+        }
+        return Err(error);
+    }
     if checkout.exists() {
         let _ = std::fs::remove_dir_all(&temporary);
         if let Some(backup) = &backup {
@@ -181,6 +188,57 @@ fn install(args: &[String]) -> io::Result<()> {
     }
     println!("installed plugin {}", manifest.id);
     Ok(())
+}
+
+fn run_build_commands(
+    manifest: &crate::plugin::Manifest,
+    root: &std::path::Path,
+) -> io::Result<()> {
+    if !crate::plugin::supports_windows(manifest.platforms.as_deref()) {
+        return Ok(());
+    }
+    for (index, build) in manifest.build.iter().enumerate() {
+        if !crate::plugin::supports_windows(build.platforms.as_deref()) {
+            continue;
+        }
+        let Some(program) = build.command.first() else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "plugin {} build command {} is empty",
+                    manifest.id,
+                    index + 1
+                ),
+            ));
+        };
+        let args = build.command.iter().skip(1).cloned().collect::<Vec<_>>();
+        let output =
+            crate::plugin_command::command_for_argv_in_dir(program, &args, root).output()?;
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(io::Error::other(format!(
+                "plugin {} build command {} failed:{}{}",
+                manifest.id,
+                index + 1,
+                truncate_build_output(&stdout),
+                truncate_build_output(&stderr),
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn truncate_build_output(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        return String::new();
+    }
+    let mut output = value.chars().take(400).collect::<String>();
+    if value.chars().count() > 400 {
+        output.push_str("...");
+    }
+    format!(" {output}")
 }
 
 fn link(args: &[String]) -> io::Result<()> {

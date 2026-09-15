@@ -176,7 +176,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   (`split`, `tab`, `zoomed`), and plugin pane focus/close are now available,
   with plugin config/state/context variables; shallow GitHub install is now
   available, with bounded plugin launch logs, Windows platform filtering, and
-  pane environment overrides;
+  pane environment overrides. GitHub installs now run supported `[[build]]`
+  commands in the temporary plugin checkout before registration and reject
+  failed builds with bounded output, while local links remain author-built;
   popup panes now use a transient server popup slot, preserve the tiled
   background focus, render centered terminal content, accept popup placement
   from the plugin CLI, and close when the process exits. Overlay panes now
