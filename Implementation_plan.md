@@ -198,6 +198,7 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   `--ansi`, and `--raw` forms, stripping terminal escapes for text output;
   `spindle pane neighbor` and `spindle pane edges` expose Herdr-style
   directional layout metadata for scripts;
+  `spindle pane layout` exposes the active tab's layout tree as JSON;
   popup panes now use a transient server popup slot, preserve the tiled
   background focus, render centered terminal content, accept popup placement
   from the plugin CLI, and close when the process exits. Overlay panes now

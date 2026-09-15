@@ -15,6 +15,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         }
         [command, options @ ..] if command == "neighbor" => pane_neighbor(project, options),
         [command, options @ ..] if command == "edges" => pane_edges(project, options),
+        [command, options @ ..] if command == "layout" => pane_layout(project, options),
         [command, id] if command == "focus" => pane_mutation(project, "focus_pane", id),
         [command, id, label @ ..] if command == "rename" && !label.is_empty() => {
             pane_rename(project, id, &label.join(" "))
@@ -267,6 +268,30 @@ fn pane_edges(project: &Project, args: &[String]) -> io::Result<()> {
             "right": layout.directional_pane(&pane_id, crate::model::layout::FocusDirection::Right).is_none(),
             "up": layout.directional_pane(&pane_id, crate::model::layout::FocusDirection::Up).is_none(),
             "down": layout.directional_pane(&pane_id, crate::model::layout::FocusDirection::Down).is_none(),
+        })
+    );
+    Ok(())
+}
+
+fn pane_layout(project: &Project, args: &[String]) -> io::Result<()> {
+    let pane_id = parse_optional_pane_selector(args).map_err(io::Error::other)?;
+    let snapshot = get_snapshot(project)?;
+    let pane_id = pane_id
+        .or_else(|| snapshot.focused_pane_id.clone())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no focused pane"))?;
+    let layout = active_layout(&snapshot)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "active tab has no layout"))?;
+    if !layout.pane_ids().contains(&pane_id.as_str()) {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pane '{pane_id}' is not in the active tab"),
+        ));
+    }
+    println!(
+        "{}",
+        serde_json::json!({
+            "pane_id": pane_id,
+            "layout": layout,
         })
     );
     Ok(())
@@ -1068,7 +1093,7 @@ fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|wait-output|split|resize>");
+    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|wait-output|split|resize>");
     println!("  list [--workspace <id>]  list panes in a workspace");
     println!("  current [<id>]   show the focused or requested pane");
     println!("  get <id>         show a pane as JSON");
@@ -1076,6 +1101,7 @@ fn print_help() {
     println!("  focus --direction left|right|up|down  focus a neighboring pane");
     println!("  neighbor --direction left|right|up|down [--pane ID|--current]  inspect a neighboring pane");
     println!("  edges [--pane ID|--current]  inspect pane layout edges");
+    println!("  layout [--pane ID|--current]  inspect the active pane layout");
     println!("  rename <id> ...  rename a pane");
     println!("  stop <id>        stop a pane process");
     println!("  restart <id>     restart a pane process");
@@ -1101,8 +1127,8 @@ mod tests {
     use super::{
         all_pane_ids, direction_name, format_pane_list, parse_current_pane, parse_focus_direction,
         parse_layout_direction, parse_list_workspace, parse_move_options, parse_neighbor_options,
-        parse_read_options, parse_read_target, parse_swap_options, parse_zoom_options, strip_ansi,
-        MoveOptions, ReadFormat, ReadSource, SwapOptions, ZoomMode,
+        parse_optional_pane_selector, parse_read_options, parse_read_target, parse_swap_options,
+        parse_zoom_options, strip_ansi, MoveOptions, ReadFormat, ReadSource, SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -1173,6 +1199,10 @@ mod tests {
         assert_eq!(
             parse_layout_direction("up"),
             Ok(crate::model::layout::FocusDirection::Up)
+        );
+        assert_eq!(
+            parse_optional_pane_selector(&["--pane".into(), "pane-3".into()]),
+            Ok(Some("pane-3".into()))
         );
     }
 
