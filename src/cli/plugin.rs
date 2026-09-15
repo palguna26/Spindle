@@ -2,6 +2,8 @@ use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::server::session::SessionSnapshot;
+
 pub(crate) fn run(args: &[String]) -> io::Result<()> {
     match args.first().map(String::as_str) {
         Some("install") => install(&args[1..]),
@@ -730,13 +732,26 @@ fn action_invoke(args: &[String]) -> io::Result<()> {
         ));
     };
     let (config_dir, state_dir) = crate::plugin::ensure_user_dirs(&manifest_id)?;
-    let context = serde_json::json!({
+    let mut context = serde_json::json!({
         "source": "cli",
         "plugin_id": &manifest_id,
         "action_id": &action.id,
         "cwd": std::env::current_dir()?.display().to_string(),
-    })
-    .to_string();
+    });
+    if let Ok(project) = super::Project::from_current_dir() {
+        if super::ping_server(&project).is_ok() {
+            if let Ok(response) = super::send_command(&project, "get_snapshot") {
+                if response.ok {
+                    if let Some(payload) = response.payload {
+                        if let Ok(snapshot) = serde_json::from_value::<SessionSnapshot>(payload) {
+                            add_session_context(&mut context, &snapshot);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let context = context.to_string();
     let child = std::process::Command::new(command)
         .args(action.command.iter().skip(1))
         .current_dir(&registration.path)
@@ -746,16 +761,83 @@ fn action_invoke(args: &[String]) -> io::Result<()> {
         .env("SPINDLE_PLUGIN_STATE_DIR", &state_dir)
         .env("SPINDLE_PLUGIN_CONTEXT_JSON", &context)
         .env("SPINDLE_PLUGIN_ACTION_ID", &action.id)
+        .env(
+            "SPINDLE_PLUGIN_PANE_ID",
+            context_field(&context, "focused_pane_id"),
+        )
+        .env(
+            "SPINDLE_PLUGIN_CWD",
+            context_field(&context, "focused_pane_cwd"),
+        )
         .env("HERDR_PLUGIN_ID", &manifest_id)
         .env("HERDR_PLUGIN_ROOT", &registration.path)
         .env("HERDR_PLUGIN_CONFIG_DIR", &config_dir)
         .env("HERDR_PLUGIN_STATE_DIR", &state_dir)
         .env("HERDR_PLUGIN_CONTEXT_JSON", &context)
         .env("HERDR_PLUGIN_ACTION_ID", &action.id)
+        .env("HERDR_PANE_ID", context_field(&context, "focused_pane_id"))
+        .env(
+            "HERDR_WORKSPACE_ID",
+            context_field(&context, "workspace_id"),
+        )
+        .env("HERDR_TAB_ID", context_field(&context, "tab_id"))
+        .env(
+            "HERDR_PLUGIN_CWD",
+            context_field(&context, "focused_pane_cwd"),
+        )
         .spawn()?;
     let _ = crate::plugin::record_launch(&manifest_id, "action", &action.id, child.id());
     println!("started {}.{} (pid {})", manifest_id, action.id, child.id());
     Ok(())
+}
+
+fn context_field(context: &str, field: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(context)
+        .ok()
+        .and_then(|value| {
+            value
+                .get(field)
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
+        .unwrap_or_default()
+}
+
+fn add_session_context(context: &mut serde_json::Value, snapshot: &SessionSnapshot) {
+    let Some(space) = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)
+    else {
+        return;
+    };
+    let Some(workspace_id) = space.active_workspace_id.as_deref() else {
+        return;
+    };
+    let Some(workspace) = space
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.workspace_id == workspace_id)
+    else {
+        return;
+    };
+    context["workspace_id"] = serde_json::json!(workspace.workspace_id);
+    context["workspace_label"] = serde_json::json!(workspace.name);
+    context["workspace_cwd"] = serde_json::json!(workspace.repository_path);
+    context["tab_id"] = serde_json::json!(workspace.active_tab_id);
+    if let Some(tab) = workspace
+        .tabs
+        .iter()
+        .find(|tab| tab.tab_id == workspace.active_tab_id)
+    {
+        context["tab_label"] = serde_json::json!(tab.name);
+    }
+    if let Some(pane_id) = snapshot.focused_pane_id.as_deref() {
+        context["focused_pane_id"] = serde_json::json!(pane_id);
+        if let Some(pane) = snapshot.panes.iter().find(|pane| pane.pane_id == pane_id) {
+            context["focused_pane_cwd"] = serde_json::json!(pane.cwd);
+        }
+    }
 }
 
 fn log(args: &[String]) -> io::Result<()> {
@@ -836,4 +918,31 @@ fn help() {
     println!("  log list [--plugin ID] [--limit N]       show plugin launches");
     println!("  action list [--plugin ID] list manifest actions");
     println!("  action invoke <id>        start a manifest action without a shell");
+}
+
+#[cfg(test)]
+mod action_context_tests {
+    use super::add_session_context;
+    use crate::server::session::{Session, SessionSnapshot};
+
+    #[test]
+    fn action_context_includes_active_workspace_tab_and_pane() {
+        let mut session = Session::default();
+        session.create_tab("Build".into()).unwrap();
+        let mut snapshot: SessionSnapshot = session.snapshot().clone();
+        snapshot.focused_pane_id = Some("pane-1".into());
+        snapshot.panes.push(
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-1", "command": "powershell.exe", "cwd": "C:/repo",
+                "status": "Running", "scrollback_bytes": 0, "args": []
+            }))
+            .unwrap(),
+        );
+        let mut context = serde_json::json!({"source": "cli"});
+        add_session_context(&mut context, &snapshot);
+        assert_eq!(context["workspace_id"], "workspace-1");
+        assert_eq!(context["tab_label"], "Build");
+        assert_eq!(context["focused_pane_id"], "pane-1");
+        assert_eq!(context["focused_pane_cwd"], "C:/repo");
+    }
 }

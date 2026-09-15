@@ -180,7 +180,10 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   from the plugin CLI, and close when the process exits. Overlay panes now
   follow Herdr's temporary zoomed split behavior and restore background focus
   and zoom state when they close. Popup mouse routing is implemented; native
-  popup actions and richer overlay actions remain.
+  popup actions and richer overlay actions remain. CLI action invocation now
+  best-effort enriches plugin context from the active server snapshot with
+  workspace, tab, and focused-pane identity/cwd, and exports Herdr-compatible
+  context environment variables;
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior. Tests now cover pane edge hits, captured drags outside
   pane bounds, event-mode routing, and right-click passthrough; existing tests
