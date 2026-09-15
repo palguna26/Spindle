@@ -180,6 +180,7 @@ fn event_loop(
     preferences_path: &std::path::Path,
 ) -> Result<(), ClientError> {
     let mut prefix_active = false;
+    let mut resize_mode = false;
     let mut keymap;
     let mut palette_selected = 0;
     let mut palette_open = false;
@@ -674,6 +675,32 @@ fn event_loop(
                 continue;
             }
         }
+        if resize_mode {
+            if keymap.is_prefix(key) || matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
+                resize_mode = false;
+                prefix_active = false;
+                continue;
+            }
+            let delta = match key.code {
+                KeyCode::Char('h') | KeyCode::Up | KeyCode::Left => Some(-0.05),
+                KeyCode::Char('j') | KeyCode::Down | KeyCode::Right => Some(0.05),
+                _ => None,
+            };
+            if let (Some(delta), Some(pane_id)) = (delta, snapshot.focused_pane_id.as_deref()) {
+                record_action_error(
+                    &mut action_error,
+                    "resize pane",
+                    request_action(
+                        client,
+                        "resize-mode",
+                        "resize_pane",
+                        json!({ "pane_id": pane_id, "delta": delta }),
+                        "resize pane",
+                    ),
+                );
+            }
+            continue;
+        }
         if keymap.is_prefix(key) {
             prefix_active = true;
             continue;
@@ -943,6 +970,9 @@ fn event_loop(
                     .ok_or_else(|| ClientError::Server("no focused pane".into()))
                     .and_then(open_scrollback_in_editor);
                 record_action_error(&mut action_error, "edit scrollback", result);
+            }
+            Action::EnterResizeMode => {
+                resize_mode = true;
             }
             Action::FocusNext => {
                 record_action_error(
@@ -2564,6 +2594,7 @@ fn execute_action(
             open_scrollback_in_editor(pane)?;
             Ok(false)
         }
+        Action::EnterResizeMode => Ok(false),
         Action::FocusNext => {
             request_action(
                 client,
