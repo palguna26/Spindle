@@ -1793,7 +1793,50 @@ impl Session {
         source_pane_id: &str,
         target_pane_id: &str,
     ) -> Result<Value, String> {
-        let tab = self.active_tab_mut()?;
+        let locate = |session: &Session, pane_id: &str| {
+            session
+                .snapshot
+                .spaces
+                .iter()
+                .enumerate()
+                .find_map(|(space_index, space)| {
+                    space
+                        .workspaces
+                        .iter()
+                        .enumerate()
+                        .find_map(|(workspace_index, workspace)| {
+                            workspace
+                                .tabs
+                                .iter()
+                                .enumerate()
+                                .find_map(|(tab_index, tab)| {
+                                    tab.layout
+                                        .as_ref()
+                                        .filter(|layout| layout.pane_ids().contains(&pane_id))
+                                        .map(|_| (space_index, workspace_index, tab_index))
+                                })
+                        })
+                })
+        };
+        let source_location = locate(self, source_pane_id)
+            .ok_or_else(|| format!("pane '{source_pane_id}' does not exist"))?;
+        let target_location = locate(self, target_pane_id)
+            .ok_or_else(|| format!("pane '{target_pane_id}' does not exist"))?;
+        if source_location != target_location {
+            return Err("both panes must exist in the same tab".into());
+        }
+        let (space_index, workspace_index, tab_index) = source_location;
+        let space_id = self.snapshot.spaces[space_index].space_id.clone();
+        let workspace_id = self.snapshot.spaces[space_index].workspaces[workspace_index]
+            .workspace_id
+            .clone();
+        let tab_id = self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index]
+            .tab_id
+            .clone();
+        self.snapshot.active_space_id = space_id;
+        self.snapshot.spaces[space_index].active_workspace_id = Some(workspace_id);
+        self.snapshot.spaces[space_index].workspaces[workspace_index].active_tab_id = tab_id;
+        let tab = &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
         let layout = tab
             .layout
             .as_mut()
@@ -3783,6 +3826,27 @@ mod tests {
         assert_eq!(tab.focused_pane_id.as_deref(), Some("one"));
         assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("one"));
         assert!(session.swap_panes("one", "missing").is_err());
+    }
+
+    #[test]
+    fn swapping_panes_resolves_both_panes_in_an_inactive_workspace() {
+        let mut session = Session::default();
+        session.create_space("Other project".into()).unwrap();
+        let tab = &mut session.snapshot.spaces[1].workspaces[0].tabs[0];
+        tab.layout = Some(
+            LayoutNode::pane("one")
+                .split(crate::model::layout::Direction::Horizontal, 0.5, "two"),
+        );
+        tab.focused_pane_id = Some("two".into());
+        session.switch_space("space-1").unwrap();
+
+        session.swap_panes("one", "two").unwrap();
+
+        let tab = &session.snapshot.spaces[1].workspaces[0].tabs[0];
+        assert_eq!(tab.layout.as_ref().unwrap().pane_ids(), vec!["two", "one"]);
+        assert_eq!(tab.focused_pane_id.as_deref(), Some("one"));
+        assert_eq!(session.snapshot.active_space_id, "space-2");
+        assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("one"));
     }
 
     #[test]
