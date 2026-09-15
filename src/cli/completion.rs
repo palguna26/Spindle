@@ -52,7 +52,7 @@ const BASH: &str = r#"_spindle() {
   elif [[ "$COMP_WORDS[1]" == "api" ]]; then
     COMPREPLY=( $(compgen -W "schema help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "pane" ]]; then
-    COMPREPLY=( $(compgen -W "list current get focus rename stop restart zoom close send-text send-keys run read swap split resize" -- "$cur") )
+    COMPREPLY=( $(compgen -W "list current get focus rename stop restart zoom close send-text send-keys run read swap wait-output split resize" -- "$cur") )
   fi
 }
 complete -F _spindle spindle
@@ -62,7 +62,7 @@ const FISH: &str = r#"complete -c spindle -f -n '__fish_use_subcommand' -a 'star
 complete -c spindle -f -n '__fish_seen_subcommand_from completion' -a 'bash elvish fish powershell zsh'
 complete -c spindle -f -n '__fish_seen_subcommand_from workspace' -a 'list get focus rename'
 complete -c spindle -f -n '__fish_seen_subcommand_from tab' -a 'list create get focus rename close'
-complete -c spindle -f -n '__fish_seen_subcommand_from pane' -a 'list current get focus rename stop restart zoom close send-text send-keys run read swap split resize'
+complete -c spindle -f -n '__fish_seen_subcommand_from pane' -a 'list current get focus rename stop restart zoom close send-text send-keys run read swap wait-output split resize'
 complete -c spindle -f -n '__fish_seen_subcommand_from api' -a 'schema help'
 "#;
 
@@ -73,7 +73,7 @@ _spindle() {
     completion) _arguments '1:shell:(bash elvish fish powershell zsh)' ;;
     workspace) _arguments '1:command:(list get focus rename)' ;;
     tab) _arguments '1:command:(list create get focus rename close)' ;;
-    pane) _arguments '1:command:(list current get focus rename stop restart zoom close send-text send-keys run read swap split resize)' ;;
+    pane) _arguments '1:command:(list current get focus rename stop restart zoom close send-text send-keys run read swap wait-output split resize)' ;;
     api) _arguments '1:command:(schema help)' ;;
   esac
 }
@@ -87,13 +87,14 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq 'completion') { 'bash elvish fish powershell zsh' }
     elseif ($words[1] -eq 'workspace') { 'list get focus rename' }
     elseif ($words[1] -eq 'tab') { 'list create get focus rename close' }
-    elseif ($words[1] -eq 'pane') { 'list current get focus rename stop restart zoom close send-text send-keys run read swap split resize' }
+    elseif ($words[1] -eq 'pane') { 'list current get focus rename stop restart zoom close send-text send-keys run read swap wait-output split resize' }
   $choices | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
 "#;
 
 const ELVISH: &str = r#"# Add to ~/.elvish/rc.elv:
 edit:completion:argadd spindle (start attach stop list doctor config workspace tab pane completion api help)
+edit:completion:argadd 'spindle pane' (list current get focus rename stop restart zoom close send-text send-keys run read swap wait-output split resize)
 "#;
 
 #[cfg(test)]
@@ -106,6 +107,7 @@ mod tests {
             let output = script(shell);
             assert!(output.contains("workspace"));
             assert!(output.contains("pane"));
+            assert!(output.contains("wait-output"));
         }
     }
 }
