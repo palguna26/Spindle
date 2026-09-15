@@ -199,11 +199,13 @@ fn event_loop(
     let mut snapshot = current_snapshot(client)?;
     let mut action_error: Option<(String, Instant)> = None;
     let mut notifications = VecDeque::new();
+    let mut pending_external_notifications = VecDeque::new();
     loop {
         let config = crate::config::load();
         keymap = Keymap::from_config(&config);
         if !config.notifications_enabled {
             notifications.clear();
+            pending_external_notifications.clear();
         }
         if action_error
             .as_ref()
@@ -215,14 +217,42 @@ fn event_loop(
         let terminal_size = size().map_err(ClientError::Io)?;
         let mut connected = match current_snapshot(client) {
             Ok(current) => {
+                let now = Instant::now();
                 if config.notifications_enabled {
+                    let due = crate::client::notifications::take_due(
+                        &mut pending_external_notifications,
+                        now,
+                    );
                     crate::client::notifications::deliver(
                         &mut notifications,
-                        crate::client::notifications::observe_all(&snapshot, &current),
+                        due,
                         config.notification_delivery,
-                        config.notification_delay_seconds,
-                        Instant::now(),
+                        0,
+                        now,
                     );
+                    let events = crate::client::notifications::observe_all(&snapshot, &current);
+                    if config.notification_delay_seconds > 0
+                        && matches!(
+                            config.notification_delivery,
+                            crate::config::NotificationDelivery::Terminal
+                                | crate::config::NotificationDelivery::System
+                        )
+                    {
+                        crate::client::notifications::defer_external(
+                            &mut pending_external_notifications,
+                            events,
+                            now,
+                            config.notification_delay_seconds,
+                        );
+                    } else {
+                        crate::client::notifications::deliver(
+                            &mut notifications,
+                            events,
+                            config.notification_delivery,
+                            config.notification_delay_seconds,
+                            now,
+                        );
+                    }
                 }
                 snapshot = current;
                 true

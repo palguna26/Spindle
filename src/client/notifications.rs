@@ -23,6 +23,39 @@ pub(crate) struct QueuedNotification {
     pub expires_at: Instant,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingNotification {
+    pub event: Event,
+    pub deliver_at: Instant,
+}
+
+pub(crate) fn defer_external(
+    queue: &mut VecDeque<PendingNotification>,
+    events: impl IntoIterator<Item = Event>,
+    now: Instant,
+    delay_seconds: u64,
+) {
+    let deliver_at = now + Duration::from_secs(delay_seconds.min(3600));
+    queue.extend(
+        events
+            .into_iter()
+            .map(|event| PendingNotification { event, deliver_at }),
+    );
+}
+
+pub(crate) fn take_due(queue: &mut VecDeque<PendingNotification>, now: Instant) -> Vec<Event> {
+    let mut due = Vec::new();
+    while queue
+        .front()
+        .is_some_and(|notification| now >= notification.deliver_at)
+    {
+        if let Some(notification) = queue.pop_front() {
+            due.push(notification.event);
+        }
+    }
+    due
+}
+
 pub(crate) fn deliver(
     queue: &mut VecDeque<QueuedNotification>,
     events: impl IntoIterator<Item = Event>,
@@ -162,7 +195,10 @@ pub(crate) fn message(event: &Event) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{enqueue_with_delay, expire, notification_kind, visible_message, Event, Kind};
+    use super::{
+        defer_external, enqueue_with_delay, expire, notification_kind, take_due, visible_message,
+        Event, Kind,
+    };
     use crate::detect::AgentState;
     use std::collections::VecDeque;
     use std::time::{Duration, Instant};
@@ -229,5 +265,33 @@ mod tests {
         );
         assert_eq!(visible_message(&queue, now + Duration::from_secs(1)), None);
         assert!(visible_message(&queue, now + Duration::from_secs(7)).is_some());
+    }
+
+    #[test]
+    fn external_notifications_are_deferred_and_released_in_order() {
+        let now = Instant::now();
+        let mut queue = std::collections::VecDeque::new();
+        defer_external(
+            &mut queue,
+            [
+                Event {
+                    pane_id: "pane-1".into(),
+                    agent: "codex".into(),
+                    kind: Kind::NeedsAttention,
+                },
+                Event {
+                    pane_id: "pane-2".into(),
+                    agent: "claude".into(),
+                    kind: Kind::Finished,
+                },
+            ],
+            now,
+            2,
+        );
+        assert!(take_due(&mut queue, now + Duration::from_secs(1)).is_empty());
+        let due = take_due(&mut queue, now + Duration::from_secs(2));
+        assert_eq!(due.len(), 2);
+        assert_eq!(due[0].pane_id, "pane-1");
+        assert_eq!(due[1].pane_id, "pane-2");
     }
 }
