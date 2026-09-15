@@ -414,6 +414,7 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     let entrypoint = required_option(args, "--entrypoint")?;
     let requested_placement = optional_option(args, "--placement")?;
     let cwd = optional_option(args, "--cwd")?;
+    let caller_env = repeated_option(args, "--env")?;
     let no_focus = args.iter().any(|arg| arg == "--no-focus");
     if args.iter().any(|arg| arg == "--focus") && no_focus {
         return usage("--focus and --no-focus cannot be combined");
@@ -484,6 +485,21 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     let (config_dir, state_dir) = crate::plugin::ensure_user_dirs(&manifest.id)?;
     let context = serde_json::json!({ "source": "pane", "plugin_id": manifest.id, "entrypoint_id": pane.id, "placement": placement }).to_string();
     let mut env = serde_json::Map::new();
+    for value in caller_env {
+        let Some((key, value)) = value.split_once('=') else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "plugin pane --env values must use KEY=VALUE",
+            ));
+        };
+        if key.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "plugin pane --env keys cannot be empty",
+            ));
+        }
+        env.insert(key.to_owned(), value.to_owned().into());
+    }
     for (key, value) in [
         ("SPINDLE_PLUGIN_ID", manifest.id.clone()),
         (
@@ -582,6 +598,26 @@ fn optional_option(args: &[String], option: &str) -> io::Result<Option<String>> 
             )
         })
         .map(Some)
+}
+
+fn repeated_option(args: &[String], option: &str) -> io::Result<Vec<String>> {
+    let mut values = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == option {
+            let Some(value) = args.get(index + 1) else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("missing value for {option}"),
+                ));
+            };
+            values.push(value.clone());
+            index += 2;
+        } else {
+            index += 1;
+        }
+    }
+    Ok(values)
 }
 
 fn action(args: &[String]) -> io::Result<()> {
@@ -764,7 +800,7 @@ fn help() {
     println!("  unlink <plugin_id>        unregister a plugin, leaving files alone");
     println!("  enable|disable <id>       change a plugin's global enabled state");
     println!("  config-dir <id>           print and create the plugin config directory");
-    println!("  pane open --plugin ID --entrypoint ID  open a manifest pane");
+    println!("  pane open --plugin ID --entrypoint ID [--env KEY=VALUE]  open a manifest pane");
     println!("  pane focus|close <pane_id>              manage a plugin pane");
     println!("  log list [--plugin ID] [--limit N]       show plugin launches");
     println!("  action list [--plugin ID] list manifest actions");
