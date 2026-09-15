@@ -181,11 +181,7 @@ fn agent_prompt(project: &Project, args: &[String]) -> io::Result<()> {
             "usage: spindle agent prompt <pane-id> <text>...",
         ));
     }
-    if args.iter().skip(1).any(|arg| arg.starts_with("--")) {
-        return Err(io::Error::other(
-            "agent prompt options are not supported; use agent wait separately",
-        ));
-    }
+    let (text, wait_args) = parse_prompt_options(args)?;
     let snapshot = get_snapshot(project)?;
     let (resolved_pane_id, row) = resolve_agent(&agent_rows(&snapshot), pane_id)?;
     if row["state"].as_str() == Some("blocked") {
@@ -194,8 +190,71 @@ fn agent_prompt(project: &Project, args: &[String]) -> io::Result<()> {
         )));
     }
     let mut pane_args = vec!["run".to_owned(), resolved_pane_id];
-    pane_args.extend(args.iter().skip(1).cloned());
-    super::pane::run_pane_command(project, &pane_args)
+    pane_args.extend(text);
+    super::pane::run_pane_command(project, &pane_args)?;
+    if let Some(wait_args) = wait_args {
+        let mut wait = vec![pane_id.to_owned()];
+        wait.extend(wait_args);
+        agent_wait(project, &wait)?;
+    }
+    Ok(())
+}
+
+fn parse_prompt_options(args: &[String]) -> io::Result<(Vec<String>, Option<Vec<String>>)> {
+    let mut text = Vec::new();
+    let mut wait = false;
+    let mut wait_args = Vec::new();
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--wait" => {
+                wait = true;
+                index += 1;
+            }
+            "--until" => {
+                let Some(state) = args.get(index + 1) else {
+                    return Err(io::Error::other("--until requires a state"));
+                };
+                if !matches!(
+                    state.as_str(),
+                    "unknown" | "idle" | "working" | "blocked" | "done"
+                ) {
+                    return Err(io::Error::other(format!("invalid agent state: {state}")));
+                }
+                wait_args.extend(["--until".to_owned(), state.clone()]);
+                index += 2;
+            }
+            "--timeout" => {
+                let Some(timeout) = args.get(index + 1) else {
+                    return Err(io::Error::other("--timeout requires milliseconds"));
+                };
+                timeout
+                    .parse::<u64>()
+                    .map_err(|_| io::Error::other(format!("invalid timeout: {timeout}")))?;
+                wait_args.extend(["--timeout".to_owned(), timeout.clone()]);
+                index += 2;
+            }
+            option if option.starts_with("--") => {
+                return Err(io::Error::other(format!("unknown option: {option}")));
+            }
+            value => {
+                if wait {
+                    return Err(io::Error::other("prompt text must come before --wait"));
+                }
+                text.push(value.to_owned());
+                index += 1;
+            }
+        }
+    }
+    if !wait_args.is_empty() && !wait {
+        return Err(io::Error::other("--until and --timeout require --wait"));
+    }
+    if text.is_empty() {
+        return Err(io::Error::other(
+            "agent prompt requires text before options",
+        ));
+    }
+    Ok((text, wait.then_some(wait_args)))
 }
 
 fn agent_rename(project: &Project, args: &[String]) -> io::Result<()> {
@@ -302,13 +361,13 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
 
 fn print_help() {
     println!(
-        "Usage: spindle agent <list|get|focus|wait|read|send-keys|prompt|rename TARGET [OPTIONS]>\nTARGET is a pane ID or a unique live agent name"
+        "Usage: spindle agent <list|get|focus|wait|read|send-keys|prompt|rename TARGET [OPTIONS]>\nTARGET is a pane ID or a unique live agent name\nagent prompt TARGET TEXT [--wait] [--until STATE]... [--timeout MS]"
     );
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_rows, resolve_agent};
+    use super::{agent_rows, parse_prompt_options, resolve_agent};
     use crate::server::session::Session;
 
     #[test]
@@ -376,5 +435,24 @@ mod tests {
         ];
         let error = resolve_agent(&duplicate, "codex").unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn prompt_options_match_herdr_wait_shape() {
+        let args = vec![
+            "codex".into(),
+            "Review".into(),
+            "the".into(),
+            "diff".into(),
+            "--wait".into(),
+            "--until".into(),
+            "done".into(),
+            "--timeout".into(),
+            "120000".into(),
+        ];
+        let (text, wait) = parse_prompt_options(&args).unwrap();
+        assert_eq!(text, ["Review", "the", "diff"]);
+        assert_eq!(wait.unwrap(), ["--until", "done", "--timeout", "120000"]);
+        assert!(parse_prompt_options(&["codex".into(), "--until".into(), "done".into()]).is_err());
     }
 }
