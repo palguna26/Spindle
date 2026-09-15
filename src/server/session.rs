@@ -1325,7 +1325,11 @@ impl Session {
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
-    pub fn focus_direction(&mut self, direction: &str) -> Result<Value, String> {
+    pub fn focus_direction(
+        &mut self,
+        direction: &str,
+        source_pane_id: Option<&str>,
+    ) -> Result<Value, String> {
         let movement = match direction {
             "left" => crate::model::layout::FocusDirection::Left,
             "right" => crate::model::layout::FocusDirection::Right,
@@ -1333,6 +1337,9 @@ impl Session {
             "down" => crate::model::layout::FocusDirection::Down,
             other => return Err(format!("unknown focus direction '{other}'")),
         };
+        if let Some(source_pane_id) = source_pane_id {
+            self.focus_pane(source_pane_id)?;
+        }
         let tab = self.active_tab_mut()?;
         let current = tab
             .focused_pane_id
@@ -2431,6 +2438,20 @@ mod tests {
         assert!(session.events_since(0).iter().any(|event| {
             event.event == "pane_focused" && event.payload["pane_id"] == serde_json::json!(pane_id)
         }));
+    }
+
+    #[test]
+    fn directional_focus_can_start_from_an_explicit_pane() {
+        let mut session = Session::default();
+        session.snapshot.spaces[0].workspaces[0].tabs[0].layout =
+            Some(LayoutNode::pane("pane-1").split(
+                crate::model::layout::Direction::Horizontal,
+                0.5,
+                "pane-2",
+            ));
+        let result = session.focus_direction("right", Some("pane-1")).unwrap();
+        assert_eq!(result["pane_id"], serde_json::json!("pane-2"));
+        assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("pane-2"));
     }
 
     #[test]

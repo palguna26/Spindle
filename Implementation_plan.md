@@ -204,6 +204,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   generated shell completions expose all four pane introspection commands;
   `spindle pane process-info` reports live PTY PID and launch metadata without
   persisting process details in session snapshots;
+  `spindle pane focus --direction ... --pane ID|--current` can start from an
+  explicit pane, matching Herdr's selector-aware directional focus;
   popup panes now use a transient server popup slot, preserve the tiled
   background focus, render centered terminal content, accept popup placement
   from the plugin CLI, and close when the process exits. Overlay panes now

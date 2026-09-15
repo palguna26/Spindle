@@ -17,6 +17,8 @@ Herdr-style pane selectors.
 `pane layout` exposes the active tab's layout tree as JSON.
 `pane process-info` reports the live PTY PID and launch metadata. All five
 generated shell completion scripts include these pane commands.
+`pane focus --direction ... --pane ID|--current` now supports Herdr's
+selector-aware directional focus.
 
 Latest CLI parity: `spindle pane move <id>` preserves the live pane process
 while moving it to a new tab or an existing tab in the active workspace. The

@@ -112,6 +112,8 @@ struct SetSplitRatioRequest {
 #[derive(Debug, Deserialize)]
 struct FocusDirectionRequest {
     direction: String,
+    #[serde(default)]
+    pane_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -662,7 +664,7 @@ pub(crate) fn response_for_with_interactive(
             };
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
-                session.focus_direction(&payload.direction)
+                session.focus_direction(&payload.direction, payload.pane_id.as_deref())
             })
         }
         "resize_pane" => {

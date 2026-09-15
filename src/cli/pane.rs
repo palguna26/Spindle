@@ -211,11 +211,11 @@ fn parse_current_pane(
 }
 
 fn pane_focus(project: &Project, args: &[String]) -> io::Result<()> {
-    let direction = parse_focus_direction(args).map_err(io::Error::other)?;
+    let (pane_id, direction) = parse_focus_options(args).map_err(io::Error::other)?;
     pane_mutation_with_payload(
         project,
         "focus_direction",
-        serde_json::json!({ "direction": direction }),
+        serde_json::json!({ "direction": direction, "pane_id": pane_id }),
     )
 }
 
@@ -650,14 +650,45 @@ fn active_layout(snapshot: &SessionSnapshot) -> Option<&crate::model::layout::La
         .as_ref()
 }
 
-fn parse_focus_direction(args: &[String]) -> Result<&str, String> {
-    if args.len() != 2 || args[0] != "--direction" {
-        return Err("usage: spindle pane focus --direction left|right|up|down".into());
+fn parse_focus_options(args: &[String]) -> Result<(Option<String>, &str), String> {
+    let env_pane_id = || {
+        std::env::var("SPINDLE_PANE_ID")
+            .ok()
+            .or_else(|| std::env::var("HERDR_PANE_ID").ok())
+            .filter(|value| !value.trim().is_empty())
+    };
+    let mut pane_id = None;
+    let mut direction = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--direction" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --direction".into());
+                };
+                if !matches!(value.as_str(), "left" | "right" | "up" | "down") {
+                    return Err(format!("invalid focus direction: {value}"));
+                }
+                direction = Some(value.as_str());
+                index += 2;
+            }
+            "--pane" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --pane".into());
+                };
+                pane_id = Some(value.clone());
+                index += 2;
+            }
+            "--current" => {
+                pane_id = env_pane_id();
+                index += 1;
+            }
+            other => return Err(format!("unknown option: {other}")),
+        }
     }
-    if !matches!(args[1].as_str(), "left" | "right" | "up" | "down") {
-        return Err(format!("invalid focus direction: {}", args[1]));
-    }
-    Ok(args[1].as_str())
+    let direction = direction
+        .ok_or("usage: spindle pane focus --direction left|right|up|down [--pane ID|--current]")?;
+    Ok((pane_id, direction))
 }
 
 fn pane_get(project: &Project, id: &str) -> io::Result<()> {
@@ -1131,7 +1162,9 @@ fn print_help() {
     println!("  current [<id>]   show the focused or requested pane");
     println!("  get <id>         show a pane as JSON");
     println!("  focus <id>       focus a pane");
-    println!("  focus --direction left|right|up|down  focus a neighboring pane");
+    println!(
+        "  focus --direction left|right|up|down [--pane ID|--current]  focus a neighboring pane"
+    );
     println!("  neighbor --direction left|right|up|down [--pane ID|--current]  inspect a neighboring pane");
     println!("  edges [--pane ID|--current]  inspect pane layout edges");
     println!("  layout [--pane ID|--current]  inspect the active pane layout");
@@ -1159,7 +1192,7 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        all_pane_ids, direction_name, format_pane_list, parse_current_pane, parse_focus_direction,
+        all_pane_ids, direction_name, format_pane_list, parse_current_pane, parse_focus_options,
         parse_layout_direction, parse_list_workspace, parse_move_options, parse_neighbor_options,
         parse_optional_pane_selector, parse_read_options, parse_read_target, parse_swap_options,
         parse_zoom_options, read_line_limit, strip_ansi, MoveOptions, ReadFormat, ReadSource,
@@ -1214,9 +1247,23 @@ mod tests {
     #[test]
     fn focus_direction_matches_herdr_cli_shape() {
         let args = vec!["--direction".into(), "right".into()];
-        assert_eq!(parse_focus_direction(&args), Ok("right"));
+        assert_eq!(parse_focus_options(&args), Ok((None, "right")));
         let invalid = vec!["--direction".into(), "diagonal".into()];
-        assert!(parse_focus_direction(&invalid).is_err());
+        assert!(parse_focus_options(&invalid).is_err());
+    }
+
+    #[test]
+    fn focus_direction_accepts_herdr_pane_selector() {
+        let args = vec![
+            "--pane".to_string(),
+            "pane-2".to_string(),
+            "--direction".to_string(),
+            "left".to_string(),
+        ];
+        assert_eq!(
+            parse_focus_options(&args),
+            Ok((Some("pane-2".into()), "left"))
+        );
     }
 
     #[test]
