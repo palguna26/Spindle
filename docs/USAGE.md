@@ -79,6 +79,9 @@ print a starter file.
 Use `spindle completion <shell>` to generate completions for Bash, Elvish,
 Fish, PowerShell, or Zsh.
 
+Use `spindle api schema` to inspect the local control protocol, `--json` to
+print the machine-readable schema, or `--output PATH` to save a copy.
+
 Set `[theme] name` to `terminal`, `catppuccin`, `dracula`, `gruvbox`, `nord`,
 or `tokyo-night` to change the main UI accent and focused-pane colors.
 
