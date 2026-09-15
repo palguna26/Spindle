@@ -168,6 +168,8 @@ from the plugin directory.
 Manifest terminal panes can be opened with
 `spindle plugin pane open --plugin ID --entrypoint ID`; Spindle supports
 `split`, `tab`, and `zoomed` placements and keeps them as normal panes.
+Use `--no-focus` to return focus to the previous pane after a split. Plugin
+panes can be controlled with `spindle plugin pane focus|close <pane_id>`.
 If no handler matches, or a plugin cannot start, Spindle opens the URL normally.
 
 ## State and recovery
