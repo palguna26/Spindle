@@ -12,6 +12,7 @@ pub(super) fn run_agent_command(project: &Project, args: &[String]) -> io::Resul
         [command, args @ ..] if command == "read" => agent_read(project, args),
         [command, args @ ..] if command == "send-keys" => agent_send_keys(project, args),
         [command, args @ ..] if command == "prompt" => agent_prompt(project, args),
+        [command, args @ ..] if command == "rename" => agent_rename(project, args),
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -240,6 +241,32 @@ fn agent_prompt(project: &Project, args: &[String]) -> io::Result<()> {
     super::pane::run_pane_command(project, &pane_args)
 }
 
+fn agent_rename(project: &Project, args: &[String]) -> io::Result<()> {
+    let Some(pane_id) = args.first() else {
+        return Err(io::Error::other(
+            "usage: spindle agent rename <pane-id> <name>|--clear",
+        ));
+    };
+    if args.len() < 2 {
+        return Err(io::Error::other(
+            "usage: spindle agent rename <pane-id> <name>|--clear",
+        ));
+    }
+    let snapshot = get_snapshot(project)?;
+    if !agent_rows(&snapshot)
+        .iter()
+        .any(|row| row["pane_id"].as_str() == Some(pane_id.as_str()))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("no detected agent in pane '{pane_id}'"),
+        ));
+    }
+    let mut pane_args = vec!["rename".to_owned(), pane_id.clone()];
+    pane_args.extend(args.iter().skip(1).cloned());
+    super::pane::run_pane_command(project, &pane_args)
+}
+
 fn get_snapshot(project: &Project) -> io::Result<SessionSnapshot> {
     let response = super::send_command(project, "get_snapshot")?;
     if !response.ok {
@@ -290,7 +317,7 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
 }
 
 fn print_help() {
-    println!("Usage: spindle agent <list|get|focus|wait|read|send-keys|prompt PANE_ID [OPTIONS]>");
+    println!("Usage: spindle agent <list|get|focus|wait|read|send-keys|prompt|rename PANE_ID [OPTIONS]>");
 }
 
 #[cfg(test)]

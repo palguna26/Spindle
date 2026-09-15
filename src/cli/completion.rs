@@ -52,7 +52,7 @@ const BASH: &str = r#"_spindle() {
   elif [[ "$COMP_WORDS[1]" == "api" ]]; then
     COMPREPLY=( $(compgen -W "schema help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "agent" ]]; then
-    COMPREPLY=( $(compgen -W "list get focus wait read send-keys prompt help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "list get focus wait read send-keys prompt rename help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "pane" ]]; then
     COMPREPLY=( $(compgen -W "list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize" -- "$cur") )
   fi
@@ -66,7 +66,7 @@ complete -c spindle -f -n '__fish_seen_subcommand_from workspace' -a 'list get f
 complete -c spindle -f -n '__fish_seen_subcommand_from tab' -a 'list create get focus rename close'
 complete -c spindle -f -n '__fish_seen_subcommand_from pane' -a 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize'
 complete -c spindle -f -n '__fish_seen_subcommand_from api' -a 'schema help'
-complete -c spindle -f -n '__fish_seen_subcommand_from agent' -a 'list get focus wait read send-keys prompt help'
+complete -c spindle -f -n '__fish_seen_subcommand_from agent' -a 'list get focus wait read send-keys prompt rename help'
 "#;
 
 const ZSH: &str = r#"#compdef spindle
@@ -78,7 +78,7 @@ _spindle() {
     tab) _arguments '1:command:(list create get focus rename close)' ;;
     pane) _arguments '1:command:(list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize)' ;;
     api) _arguments '1:command:(schema help)' ;;
-    agent) _arguments '1:command:(list get focus wait read send-keys prompt help)' ;;
+    agent) _arguments '1:command:(list get focus wait read send-keys prompt rename help)' ;;
   esac
 }
 _spindle "$@"
@@ -92,7 +92,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq 'workspace') { 'list get focus rename' }
     elseif ($words[1] -eq 'tab') { 'list create get focus rename close' }
     elseif ($words[1] -eq 'pane') { 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize' }
-    elseif ($words[1] -eq 'agent') { 'list get focus wait read send-keys prompt help' }
+    elseif ($words[1] -eq 'agent') { 'list get focus wait read send-keys prompt rename help' }
   $choices | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
 "#;
@@ -100,7 +100,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
 const ELVISH: &str = r#"# Add to ~/.elvish/rc.elv:
 edit:completion:argadd spindle (start attach stop list doctor config workspace tab pane agent completion api help)
 edit:completion:argadd 'spindle pane' (list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize)
-edit:completion:argadd 'spindle agent' (list get focus wait read send-keys prompt help)
+edit:completion:argadd 'spindle agent' (list get focus wait read send-keys prompt rename help)
 "#;
 
 #[cfg(test)]
