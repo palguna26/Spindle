@@ -199,7 +199,11 @@ fn event_loop(
     let mut action_error: Option<(String, Instant)> = None;
     let mut notifications: VecDeque<(String, Instant)> = VecDeque::new();
     loop {
-        keymap = Keymap::from_config(&crate::config::load());
+        let config = crate::config::load();
+        keymap = Keymap::from_config(&config);
+        if !config.notifications_enabled {
+            notifications.clear();
+        }
         if action_error
             .as_ref()
             .is_some_and(|(_, expires_at)| Instant::now() >= *expires_at)
@@ -210,11 +214,13 @@ fn event_loop(
         let terminal_size = size().map_err(ClientError::Io)?;
         let mut connected = match current_snapshot(client) {
             Ok(current) => {
-                crate::client::notifications::enqueue(
-                    &mut notifications,
-                    crate::client::notifications::observe_all(&snapshot, &current),
-                    Instant::now(),
-                );
+                if config.notifications_enabled {
+                    crate::client::notifications::enqueue(
+                        &mut notifications,
+                        crate::client::notifications::observe_all(&snapshot, &current),
+                        Instant::now(),
+                    );
+                }
                 snapshot = current;
                 true
             }

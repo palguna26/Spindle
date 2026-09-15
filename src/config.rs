@@ -8,12 +8,26 @@ struct FileConfig {
     keys: KeysConfig,
     #[serde(default)]
     theme: ThemeConfig,
+    #[serde(default)]
+    notifications: NotificationsConfig,
 }
 
 #[derive(Debug, Deserialize, Default)]
 struct ThemeConfig {
     #[serde(default)]
     name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+struct NotificationsConfig {
+    enabled: bool,
+}
+
+impl Default for NotificationsConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -40,11 +54,23 @@ struct KeysConfig {
     bindings: BTreeMap<String, BindingValue>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Config {
     pub prefix: Option<String>,
     pub bindings: BTreeMap<String, Vec<String>>,
     pub theme_name: Option<String>,
+    pub notifications_enabled: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            prefix: None,
+            bindings: BTreeMap::new(),
+            theme_name: None,
+            notifications_enabled: true,
+        }
+    }
 }
 
 pub fn path() -> PathBuf {
@@ -81,6 +107,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
             .map(|(name, values)| (name, values.values().map(str::to_owned).collect()))
             .collect(),
         theme_name: file.theme.name,
+        notifications_enabled: file.notifications.enabled,
     }
 }
 
@@ -125,6 +152,15 @@ mod tests {
         let config = load_from(&path);
         assert_eq!(config.theme_name.as_deref(), Some("nord"));
         assert!(config.bindings.is_empty());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_notification_switch_with_enabled_default() {
+        let path =
+            std::env::temp_dir().join(format!("spindle-notifications-{}.toml", std::process::id()));
+        std::fs::write(&path, "[notifications]\nenabled = false\n").unwrap();
+        assert!(!load_from(&path).notifications_enabled);
         std::fs::remove_file(path).unwrap();
     }
 }
