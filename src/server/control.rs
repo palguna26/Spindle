@@ -95,6 +95,12 @@ struct SplitRequest {
     direction: String,
     #[serde(default)]
     pane_id: Option<String>,
+    #[serde(default)]
+    ratio: Option<f32>,
+    #[serde(default)]
+    focus: Option<bool>,
+    #[serde(default)]
+    right_click_passthrough: Option<bool>,
     #[serde(flatten)]
     pane: CreatePaneRequest,
 }
@@ -402,7 +408,36 @@ pub(crate) fn response_for_with_interactive(
                 if let Some(pane_id) = payload.pane_id.as_deref() {
                     session.focus_pane(pane_id)?;
                 }
-                session.split_pane(payload.pane, direction)
+                match (
+                    payload.ratio,
+                    payload.focus,
+                    payload.right_click_passthrough,
+                ) {
+                    (Some(ratio), focus, right_click_passthrough) => session
+                        .split_pane_with_options(
+                            payload.pane,
+                            direction,
+                            ratio,
+                            focus.unwrap_or(true),
+                            right_click_passthrough.unwrap_or(false),
+                        ),
+                    (None, Some(focus), right_click_passthrough) => session
+                        .split_pane_with_options(
+                            payload.pane,
+                            direction,
+                            0.5,
+                            focus,
+                            right_click_passthrough.unwrap_or(false),
+                        ),
+                    (None, None, Some(right_click_passthrough)) => session.split_pane_with_options(
+                        payload.pane,
+                        direction,
+                        0.5,
+                        true,
+                        right_click_passthrough,
+                    ),
+                    (None, None, None) => session.split_pane(payload.pane, direction),
+                }
             })
         }
         "send_input" => {

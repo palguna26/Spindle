@@ -513,7 +513,13 @@ impl Session {
     }
 
     pub fn create_pane(&mut self, request: CreatePaneRequest) -> Result<Value, String> {
-        self.create_pane_with_direction(request, crate::model::layout::Direction::Vertical)
+        self.create_pane_with_direction(
+            request,
+            crate::model::layout::Direction::Vertical,
+            0.5,
+            true,
+            false,
+        )
     }
 
     pub fn ensure_active_pane(&mut self, request: CreatePaneRequest) -> Result<Value, String> {
@@ -589,19 +595,36 @@ impl Session {
         request: CreatePaneRequest,
         direction: crate::model::layout::Direction,
     ) -> Result<Value, String> {
-        self.create_pane_with_direction(request, direction)
+        self.create_pane_with_direction(request, direction, 0.5, true, false)
+    }
+
+    pub fn split_pane_with_options(
+        &mut self,
+        request: CreatePaneRequest,
+        direction: crate::model::layout::Direction,
+        ratio: f32,
+        focus: bool,
+        right_click_passthrough: bool,
+    ) -> Result<Value, String> {
+        self.create_pane_with_direction(request, direction, ratio, focus, right_click_passthrough)
     }
 
     fn create_pane_with_direction(
         &mut self,
         request: CreatePaneRequest,
         direction: crate::model::layout::Direction,
+        ratio: f32,
+        focus: bool,
+        right_click_passthrough: bool,
     ) -> Result<Value, String> {
         if request.command.trim().is_empty() {
             return Err("command cannot be empty".into());
         }
         if request.cols == 0 || request.rows == 0 {
             return Err("pane dimensions must be greater than zero".into());
+        }
+        if !ratio.is_finite() || !(0.05..=0.95).contains(&ratio) {
+            return Err("split ratio must be finite and between 0.05 and 0.95".into());
         }
         if request.popup && request.overlay {
             return Err("pane cannot be both popup and overlay".into());
@@ -648,16 +671,19 @@ impl Session {
             tab.layout = Some(match tab.layout.take() {
                 None => LayoutNode::pane(&pane_id),
                 Some(layout) => {
-                    match focused
-                        .as_deref()
-                        .and_then(|target| layout.clone().split_pane(target, direction, &pane_id))
-                    {
+                    match focused.as_deref().and_then(|target| {
+                        layout
+                            .clone()
+                            .split_pane_with_ratio(target, direction, ratio, &pane_id)
+                    }) {
                         Some(layout) => layout,
-                        None => layout.split(direction, 0.5, &pane_id),
+                        None => layout.split(direction, ratio, &pane_id),
                     }
                 }
             });
-            tab.focused_pane_id = Some(pane_id.clone());
+            if focus {
+                tab.focused_pane_id = Some(pane_id.clone());
+            }
             if request.overlay {
                 tab.zoomed = true;
                 self.snapshot.overlay_pane_id = Some(pane_id.clone());
@@ -665,7 +691,9 @@ impl Session {
                 self.snapshot.overlay_previous_zoomed = previous_zoomed;
             }
         }
-        self.snapshot.focused_pane_id = Some(pane_id.clone());
+        if focus {
+            self.snapshot.focused_pane_id = Some(pane_id.clone());
+        }
         self.snapshot.panes.push(PaneView {
             pane_id: pane_id.clone(),
             command: request.command,
@@ -693,7 +721,7 @@ impl Session {
             utf8_mouse: false,
             application_cursor: false,
             bracketed_paste: false,
-            right_click_passthrough: false,
+            right_click_passthrough,
             hyperlinks: Vec::new(),
         });
         self.record_event("pane_created", serde_json::json!({ "pane_id": pane_id }));

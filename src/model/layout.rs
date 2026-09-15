@@ -49,25 +49,36 @@ impl LayoutNode {
         direction: Direction,
         new_pane_id: impl Into<String>,
     ) -> Option<Self> {
+        self.split_pane_with_ratio(target_pane_id, direction, 0.5, new_pane_id)
+    }
+
+    pub fn split_pane_with_ratio(
+        self,
+        target_pane_id: &str,
+        direction: Direction,
+        ratio: f32,
+        new_pane_id: impl Into<String>,
+    ) -> Option<Self> {
         let new_pane_id = new_pane_id.into();
         match self {
             Self::Pane { pane_id } if pane_id == target_pane_id => {
-                Some(Self::Pane { pane_id }.split(direction, 0.5, new_pane_id))
+                Some(Self::Pane { pane_id }.split(direction, ratio, new_pane_id))
             }
             Self::Pane { pane_id } => Some(Self::Pane { pane_id }),
             Self::Split {
                 direction: current_direction,
-                ratio,
+                ratio: current_ratio,
                 first,
                 second,
             } => {
                 if first.contains(target_pane_id) {
                     Some(Self::Split {
                         direction: current_direction,
-                        ratio,
-                        first: Box::new(first.split_pane(
+                        ratio: current_ratio,
+                        first: Box::new(first.split_pane_with_ratio(
                             target_pane_id,
                             direction,
+                            ratio,
                             new_pane_id,
                         )?),
                         second,
@@ -75,18 +86,19 @@ impl LayoutNode {
                 } else if second.contains(target_pane_id) {
                     Some(Self::Split {
                         direction: current_direction,
-                        ratio,
+                        ratio: current_ratio,
                         first,
-                        second: Box::new(second.split_pane(
+                        second: Box::new(second.split_pane_with_ratio(
                             target_pane_id,
                             direction,
+                            ratio,
                             new_pane_id,
                         )?),
                     })
                 } else {
                     Some(Self::Split {
                         direction: current_direction,
-                        ratio,
+                        ratio: current_ratio,
                         first,
                         second,
                     })
@@ -350,6 +362,20 @@ mod tests {
             .split_pane("one", Direction::Vertical, "three")
             .unwrap();
         assert_eq!(layout.pane_ids(), vec!["one", "three", "two"]);
+    }
+
+    #[test]
+    fn split_targets_the_requested_leaf_with_a_custom_ratio() {
+        let layout = LayoutNode::pane("one")
+            .split(Direction::Horizontal, 0.5, "two")
+            .split_pane_with_ratio("one", Direction::Vertical, 0.7, "three")
+            .unwrap();
+        assert!(matches!(
+            layout,
+            LayoutNode::Split { first, .. }
+                if matches!(first.as_ref(), LayoutNode::Split { ratio, .. }
+                    if (*ratio - 0.7).abs() < f32::EPSILON)
+        ));
     }
 
     #[test]

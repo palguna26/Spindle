@@ -1225,6 +1225,9 @@ fn pane_split_options(project: &Project, args: &[String]) -> io::Result<()> {
     let mut direction = None;
     let mut cwd = None;
     let mut env = serde_json::Map::new();
+    let mut ratio = None;
+    let mut focus = false;
+    let mut right_click_passthrough = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -1266,6 +1269,42 @@ fn pane_split_options(project: &Project, args: &[String]) -> io::Result<()> {
                 cwd = Some(value.clone());
                 index += 2;
             }
+            "--ratio" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --ratio"));
+                };
+                let parsed = value
+                    .parse::<f32>()
+                    .map_err(|_| io::Error::other(format!("invalid ratio: {value}")))?;
+                if !parsed.is_finite() || !(0.05..=0.95).contains(&parsed) {
+                    return Err(io::Error::other(format!("invalid ratio: {value}")));
+                }
+                ratio = Some(parsed);
+                index += 2;
+            }
+            "--focus" => {
+                focus = true;
+                index += 1;
+            }
+            "--no-focus" => {
+                focus = false;
+                index += 1;
+            }
+            "--right-click" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --right-click"));
+                };
+                right_click_passthrough = match value.as_str() {
+                    "herdr" => false,
+                    "pane" => true,
+                    other => {
+                        return Err(io::Error::other(format!(
+                            "invalid right-click target: {other}"
+                        )))
+                    }
+                };
+                index += 2;
+            }
             "--env" => {
                 let Some(value) = args.get(index + 1) else {
                     return Err(io::Error::other("missing value for --env"));
@@ -1284,7 +1323,7 @@ fn pane_split_options(project: &Project, args: &[String]) -> io::Result<()> {
     }
     let direction = direction.ok_or_else(|| {
         io::Error::other(
-            "usage: spindle pane split [--pane ID|--current] --direction right|down [--cwd PATH] [--env KEY=VALUE]",
+            "usage: spindle pane split [--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus|--no-focus]",
         )
     })?;
     let cwd = cwd.unwrap_or(std::env::current_dir()?.to_string_lossy().into_owned());
@@ -1298,6 +1337,9 @@ fn pane_split_options(project: &Project, args: &[String]) -> io::Result<()> {
             "args": ["-NoLogo", "-NoProfile"],
             "cwd": cwd,
             "env": env,
+            "ratio": ratio,
+            "focus": focus,
+            "right_click_passthrough": right_click_passthrough,
             "cols": 80,
             "rows": 24
         }),
@@ -1364,7 +1406,7 @@ fn print_help() {
         "  move <id> --new-tab [--label TEXT] | --tab ID [--pane ID] [--split right|down]  move a pane"
     );
     println!("  wait-output <id> --match TEXT [--timeout MS] [--lines N]  wait for output");
-    println!("  split <direction> [command args...]  split with a new pane");
+    println!("  split <direction> [command args...] | [--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus|--no-focus]  split with a new pane");
     println!("  resize <id> <delta>  resize the pane layout by a ratio delta");
 }
 
