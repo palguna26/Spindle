@@ -93,6 +93,7 @@ fn format_tab_list(workspace_id: &str, tabs: &[TabView], active_id: &str) -> Str
 fn tab_create(project: &Project, args: &[String]) -> io::Result<()> {
     let mut name = "Main".to_owned();
     let mut cwd = None;
+    let mut workspace_id = None;
     let mut env = BTreeMap::new();
     let mut focus = false;
     let mut index = 0;
@@ -103,6 +104,13 @@ fn tab_create(project: &Project, args: &[String]) -> io::Result<()> {
                     return Err(io::Error::other("missing value for --cwd"));
                 };
                 cwd = Some(value.clone());
+                index += 2;
+            }
+            "--workspace" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --workspace"));
+                };
+                workspace_id = Some(value.clone());
                 index += 2;
             }
             "--env" => {
@@ -133,7 +141,23 @@ fn tab_create(project: &Project, args: &[String]) -> io::Result<()> {
     }
 
     let before = get_snapshot(project)?;
+    let previous_workspace_id = active_workspace_id(&before);
     let previous_tab_id = active_tab_id(&before);
+    if let Some(target_workspace_id) = &workspace_id {
+        let response = super::send_command_with_payload(
+            project,
+            "switch_workspace",
+            serde_json::json!({ "id": target_workspace_id }),
+        )?;
+        if !response.ok {
+            return Err(io::Error::other(
+                response
+                    .error
+                    .map(|error| error.message)
+                    .unwrap_or_else(|| "server rejected the workspace focus request".into()),
+            ));
+        }
+    }
     let response = super::send_command_with_payload(
         project,
         "create_tab",
@@ -170,6 +194,18 @@ fn tab_create(project: &Project, args: &[String]) -> io::Result<()> {
         ));
     }
     if !focus {
+        if let Some(previous_workspace_id) = previous_workspace_id {
+            let restore = super::send_command_with_payload(
+                project,
+                "switch_workspace",
+                serde_json::json!({ "id": previous_workspace_id }),
+            )?;
+            if !restore.ok {
+                return Err(io::Error::other(
+                    "tab was created, but the previous workspace could not be restored",
+                ));
+            }
+        }
         if let Some(previous_tab_id) = previous_tab_id {
             let restore = super::send_command_with_payload(
                 project,
@@ -194,6 +230,10 @@ fn tab_create(project: &Project, args: &[String]) -> io::Result<()> {
 
 fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
     active_workspace(snapshot).map(|workspace| workspace.active_tab_id.clone())
+}
+
+fn active_workspace_id(snapshot: &SessionSnapshot) -> Option<String> {
+    active_workspace(snapshot).map(|workspace| workspace.workspace_id.clone())
 }
 
 fn active_workspace(snapshot: &SessionSnapshot) -> Option<&crate::server::session::WorkspaceView> {
@@ -270,9 +310,9 @@ fn send_mutation(project: &Project, operation: &str, payload: serde_json::Value)
 }
 
 fn print_help() {
-    println!("Usage: spindle tab <list|create [label] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]|get <id>|focus <id>|rename <id> <label>|close <id>>");
+    println!("Usage: spindle tab <list|create [label] [--workspace ID] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]|get <id>|focus <id>|rename <id> <label>|close <id>>");
     println!("  list             list tabs in the active workspace");
-    println!("  create [label]   create a tab and start its PowerShell pane (--cwd, --env, --focus|--no-focus)");
+    println!("  create [label]   create a tab and start its PowerShell pane (--workspace, --cwd, --env, --focus|--no-focus)");
     println!("  get <id>         show a tab");
     println!("  focus <id>       focus a tab in the active workspace");
     println!("  rename <id> ...  rename a tab");

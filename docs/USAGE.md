@@ -96,7 +96,7 @@ notifications, or `"system"` to use a native Windows desktop notification.
 Set it to `"off"` to disable notifications.
 
 Tabs can also be automated with `spindle tab list`,
-`create [label] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]`,
+`create [label] [--workspace ID] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]`,
 `get <id>`, `focus <id>`, `rename <id> <label>`, and `close <id>`. Tab
 creation starts a PowerShell pane and leaves the current tab focused by
 default, matching Herdr.

@@ -42,6 +42,20 @@ try {
         throw "tab create changed the active tab: $tabsAfterCreate"
     }
     Invoke-Spindle @("tab", "close", $createdTab.tab_id)
+    $targetWorkspace = ((& $Binary workspace create --label "Tab target" --cwd $PWD --focus) -join "`n") | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($targetWorkspace.workspace_id)) {
+        throw "workspace create --focus did not return a workspace ID: $targetWorkspace"
+    }
+    $createdTab = ((& $Binary tab create "Remote tab" --workspace workspace-1 --cwd $PWD --env SPINDLE_REMOTE_TAB=ok) -join "`n") | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($createdTab.tab_id)) {
+        throw "tab create --workspace did not return a tab ID: $createdTab"
+    }
+    $workspaceAfterRemoteTab = (& $Binary workspace list) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $workspaceAfterRemoteTab -notmatch "(?m)^\*\s+$([regex]::Escape($targetWorkspace.workspace_id))\s+Tab target") {
+        throw "tab create --workspace changed the active workspace: $workspaceAfterRemoteTab"
+    }
+    Invoke-Spindle @("tab", "close", $createdTab.tab_id)
+    Invoke-Spindle @("workspace", "close", $targetWorkspace.workspace_id)
     $workspaces = (& $Binary workspace list) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw "spindle workspace list failed" }
     if ($workspaces -notmatch '(?m)^\*\s+\S+\s+Current project\s+\[Default\]$') {

@@ -372,7 +372,9 @@ approved design changes it.
   workspace create/close, and workspace creation starts a PowerShell pane in
   the requested directory. Workspace creation follows Herdr's default no-focus
   behavior; `--focus` opts into selecting the new workspace. Repeated
-  `--env KEY=VALUE` options are applied to its initial PowerShell pane.
+  `--env KEY=VALUE` options are applied to its initial PowerShell pane. Tab
+  creation also accepts Herdr's workspace destination, cwd, environment, and
+  focus controls while preserving the current workspace/tab by default.
 - [ ] For behavior not included, record the concrete reason and an equivalent
   Spindle workflow; do not silently omit it.
 - [ ] Improve Windows-specific process launch, terminal input/output, resizing,
