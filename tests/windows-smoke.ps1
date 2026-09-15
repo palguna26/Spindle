@@ -24,6 +24,15 @@ try {
     Invoke-Spindle @("help")
     Invoke-Spindle @("start")
     Invoke-Spindle @("start")
+    $createdWorkspace = ((& $Binary workspace create --label "No focus" --cwd $PWD --no-focus) -join "`n") | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($createdWorkspace.workspace_id)) {
+        throw "workspace create did not return a workspace ID: $createdWorkspace"
+    }
+    $workspacesAfterCreate = (& $Binary workspace list) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $workspacesAfterCreate -notmatch '(?m)^\*\s+workspace-1\s+Current project') {
+        throw "workspace create --no-focus changed the active workspace: $workspacesAfterCreate"
+    }
+    Invoke-Spindle @("workspace", "close", $createdWorkspace.workspace_id)
     $workspaces = (& $Binary workspace list) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw "spindle workspace list failed" }
     if ($workspaces -notmatch '(?m)^\*\s+\S+\s+Current project\s+\[Default\]$') {

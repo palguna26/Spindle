@@ -30,6 +30,7 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
 fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
     let mut name = "Workspace".to_owned();
     let mut cwd = None;
+    let mut focus = true;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -47,6 +48,14 @@ fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
                 name = value.clone();
                 index += 2;
             }
+            "--focus" => {
+                focus = true;
+                index += 1;
+            }
+            "--no-focus" => {
+                focus = false;
+                index += 1;
+            }
             value if !value.starts_with('-') && name == "Workspace" => {
                 name = value.to_owned();
                 index += 1;
@@ -62,6 +71,12 @@ fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
             .ok()
             .map(|path| path.to_string_lossy().into_owned())
     });
+    let before = get_snapshot(project)?;
+    let previous_workspace_id = before
+        .spaces
+        .iter()
+        .find(|space| space.space_id == before.active_space_id)
+        .and_then(|space| space.active_workspace_id.clone());
     let response = super::send_command_with_payload(
         project,
         "create_workspace",
@@ -108,6 +123,20 @@ fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
                 .map(|error| error.message)
                 .unwrap_or_else(|| "workspace was created but its shell could not start".into()),
         ));
+    }
+    if !focus {
+        if let Some(previous_workspace_id) = previous_workspace_id {
+            let restore = super::send_command_with_payload(
+                project,
+                "focus_workspace",
+                serde_json::json!({ "id": previous_workspace_id }),
+            )?;
+            if !restore.ok {
+                return Err(io::Error::other(
+                    "workspace was created, but the previous workspace could not be restored",
+                ));
+            }
+        }
     }
     if let Some(payload) = response.payload {
         println!(
@@ -272,7 +301,7 @@ fn format_workspace_list(snapshot: &SessionSnapshot) -> String {
 fn print_help() {
     println!("Usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>|close <workspace_id>>");
     println!("  list    list workspaces in the current project session");
-    println!("  create  create a workspace and start its PowerShell pane");
+    println!("  create  create a workspace and start its PowerShell pane (--cwd, --label, --no-focus)");
     println!("  get     show a workspace by ID");
     println!("  focus   focus a workspace by ID");
     println!("  rename  rename a workspace by ID");
