@@ -1294,7 +1294,17 @@ fn handle_mouse(
             mouse.column,
             mouse.row,
         ) {
-            match super::plugins::launch_for_url(&url) {
+            let pane_id =
+                pane_mouse_target(snapshot, area, mouse, &None, mouse_state.sidebar_collapsed)
+                    .map(|(pane_id, _)| pane_id);
+            let pane_cwd = pane_id.as_deref().and_then(|pane_id| {
+                snapshot
+                    .panes
+                    .iter()
+                    .find(|pane| pane.pane_id == pane_id)
+                    .map(|pane| pane.cwd.as_str())
+            });
+            match super::plugins::launch_for_url(&url, pane_id.as_deref(), pane_cwd) {
                 Ok(true) => return Ok(()),
                 Ok(false) | Err(_) => {
                     super::links::open_web_url(&url).map_err(ClientError::Io)?;
