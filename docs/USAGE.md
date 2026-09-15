@@ -118,6 +118,7 @@ to mouse and keyboard controls. Press `:` for the command palette. Other keys:
 | `x` | Close focused pane |
 | `Shift+x` | Close active tab |
 | `n` / `p` | Next / previous tab |
+| `1`–`9` | Jump directly to tab 1–9 |
 | `]` / `[` | Next / previous tab (alternate) |
 | `w` | Next workspace |
 | `}` / `{` | Next / previous space |
