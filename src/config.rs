@@ -63,6 +63,12 @@ enum BindingValue {
     Many(Vec<String>),
 }
 
+impl Default for BindingValue {
+    fn default() -> Self {
+        Self::One(String::new())
+    }
+}
+
 impl BindingValue {
     fn values(&self) -> impl Iterator<Item = &str> {
         match self {
@@ -76,14 +82,35 @@ impl BindingValue {
 struct KeysConfig {
     #[serde(default)]
     prefix: Option<String>,
+    #[serde(default)]
+    command: Vec<CustomCommandFile>,
     #[serde(flatten)]
     bindings: BTreeMap<String, BindingValue>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct CustomCommandFile {
+    key: BindingValue,
+    command: String,
+    #[serde(rename = "type")]
+    action_type: String,
+    description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CustomCommand {
+    pub(crate) bindings: Vec<String>,
+    pub(crate) command: String,
+    pub(crate) action_type: String,
+    pub(crate) description: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub prefix: Option<String>,
     pub bindings: BTreeMap<String, Vec<String>>,
+    pub(crate) custom_commands: Vec<CustomCommand>,
     pub theme_name: Option<String>,
     pub notifications_enabled: bool,
     pub(crate) notification_delivery: NotificationDelivery,
@@ -96,6 +123,7 @@ impl Default for Config {
         Self {
             prefix: None,
             bindings: BTreeMap::new(),
+            custom_commands: Vec::new(),
             theme_name: None,
             notifications_enabled: true,
             notification_delivery: NotificationDelivery::Herdr,
@@ -138,6 +166,17 @@ pub fn load_from(path: &std::path::Path) -> Config {
             .into_iter()
             .map(|(name, values)| (name, values.values().map(str::to_owned).collect()))
             .collect(),
+        custom_commands: file
+            .keys
+            .command
+            .into_iter()
+            .map(|command| CustomCommand {
+                bindings: command.key.values().map(str::to_owned).collect(),
+                command: command.command,
+                action_type: command.action_type,
+                description: command.description,
+            })
+            .collect(),
         theme_name: file.theme.name,
         notifications_enabled: file.notifications.enabled,
         notification_delivery: file.notifications.delivery,
@@ -162,6 +201,11 @@ open_notification_target = "prefix+o"
 create_workspace = "prefix+shift+n"
 rename_workspace = "prefix+shift+w"
 delete_workspace = "prefix+shift+d"
+
+# Add custom commands with `[[keys.command]]`; for example:
+# key = "prefix+alt+g"
+# type = "shell"
+# command = "git status"
 
 [theme]
 name = "terminal"
@@ -264,6 +308,28 @@ mod tests {
         assert_eq!(config.prefix.as_deref(), Some("ctrl+a"));
         assert_eq!(config.bindings["new_tab"], vec!["prefix+t"]);
         assert_eq!(config.bindings["next_tab"].len(), 2);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_herdr_style_custom_shell_commands() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-custom-command-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "[[keys.command]]\nkey = \"prefix+alt+g\"\ntype = \"shell\"\ncommand = \"echo hello\"\ndescription = \"say hello\"\n",
+        )
+        .unwrap();
+        let config = load_from(&path);
+        assert_eq!(config.custom_commands.len(), 1);
+        assert_eq!(config.custom_commands[0].bindings, ["prefix+alt+g"]);
+        assert_eq!(config.custom_commands[0].command, "echo hello");
+        assert_eq!(
+            config.custom_commands[0].description.as_deref(),
+            Some("say hello")
+        );
         std::fs::remove_file(path).unwrap();
     }
 

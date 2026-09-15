@@ -76,6 +76,10 @@ impl From<serde_json::Error> for ClientError {
 }
 
 impl ControlClient {
+    pub(crate) fn endpoint(&self) -> &str {
+        &self.address
+    }
+
     pub fn connect(address: impl Into<String>) -> Result<Self, ClientError> {
         let mut client = Self {
             address: address.into(),

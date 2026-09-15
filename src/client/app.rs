@@ -883,6 +883,18 @@ fn event_loop(
             prefix_active = false;
             continue;
         }
+        if let Action::CustomCommand(index) = pressed {
+            if let Some(command) = config.custom_commands.get(index) {
+                record_action_error(
+                    &mut action_error,
+                    command.description.as_deref().unwrap_or("custom command"),
+                    super::custom_commands::run(command, &snapshot, client.endpoint())
+                        .map_err(ClientError::Io),
+                );
+            }
+            prefix_active = false;
+            continue;
+        }
         match pressed {
             Action::EnterCopyMode => {
                 if mouse_state.copy_mode.is_none() {
@@ -1300,7 +1312,8 @@ fn event_loop(
             | Action::CreateSpace
             | Action::DeleteActiveSpace
             | Action::SwitchWorkspaceByName
-            | Action::PluginAction => {}
+            | Action::PluginAction
+            | Action::CustomCommand(_) => {}
         }
         prefix_active = false;
     }

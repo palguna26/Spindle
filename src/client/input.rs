@@ -55,6 +55,7 @@ pub enum Action {
     CommandPalette,
     OpenNotificationTarget,
     PluginAction,
+    CustomCommand(usize),
     Send(KeyEvent),
 }
 
@@ -105,6 +106,18 @@ impl Keymap {
                         modifiers,
                         prefix,
                     }));
+            }
+        }
+        for (index, command) in config.custom_commands.iter().enumerate() {
+            for value in &command.bindings {
+                if let Some((code, modifiers, prefix)) = parse_binding(value) {
+                    keymap.bindings.push(Binding {
+                        action: Action::CustomCommand(index),
+                        code,
+                        modifiers,
+                        prefix,
+                    });
+                }
             }
         }
         keymap
@@ -592,6 +605,22 @@ mod tests {
         assert_eq!(
             keymap.action(true, KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE)),
             Action::NewTab
+        );
+    }
+
+    #[test]
+    fn custom_command_bindings_resolve_to_their_configured_index() {
+        let mut config = Config::default();
+        config.custom_commands.push(crate::config::CustomCommand {
+            bindings: vec!["prefix+alt+g".into()],
+            command: "echo hello".into(),
+            action_type: "shell".into(),
+            description: None,
+        });
+        let keymap = Keymap::from_config(&config);
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Char('g'), KeyModifiers::ALT)),
+            Action::CustomCommand(0)
         );
     }
 

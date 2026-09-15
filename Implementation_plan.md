@@ -292,6 +292,10 @@ approved design changes it.
   confirmation when reload is invoked from the keyboard or global menu.
 - [x] Keep `spindle config default` aligned with the supported Settings and
   reload bindings so the starter file is discoverable and usable.
+- [x] Add Herdr-style `[[keys.command]]` detached shell commands with direct
+  or prefix key bindings, Windows `cmd.exe /d /c` execution, focused-pane
+  working-directory selection, and active workspace/tab/pane environment
+  variables.
 - [x] Add mouse navigation to the Settings overlay for section and value
   selection, with outside-click dismissal.
 - [x] Keep the normal narrow sidebar title compact so workspace controls stay
