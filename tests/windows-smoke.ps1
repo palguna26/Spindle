@@ -24,7 +24,7 @@ try {
     Invoke-Spindle @("help")
     Invoke-Spindle @("start")
     Invoke-Spindle @("start")
-    $createdWorkspace = ((& $Binary workspace create --label "No focus" --cwd $PWD) -join "`n") | ConvertFrom-Json
+    $createdWorkspace = ((& $Binary workspace create --label "No focus" --cwd $PWD --env SPINDLE_SMOKE=ok) -join "`n") | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($createdWorkspace.workspace_id)) {
         throw "workspace create did not return a workspace ID: $createdWorkspace"
     }

@@ -1,5 +1,6 @@
 use super::Project;
 use crate::server::session::SessionSnapshot;
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::io;
 
@@ -32,6 +33,7 @@ fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
     let mut cwd = None;
     // Herdr creates the workspace without changing focus unless --focus is given.
     let mut focus = false;
+    let mut env = BTreeMap::new();
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -56,6 +58,14 @@ fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
             "--no-focus" => {
                 focus = false;
                 index += 1;
+            }
+            "--env" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --env"));
+                };
+                let (key, parsed) = parse_env_assignment(value)?;
+                env.insert(key, parsed);
+                index += 2;
             }
             value if !value.starts_with('-') && name == "Workspace" => {
                 name = value.to_owned();
@@ -116,6 +126,7 @@ fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
             "command": "powershell.exe",
             "args": ["-NoLogo", "-NoProfile"],
             "cwd": repository_path,
+            "env": env,
             "cols": 80,
             "rows": 24,
         }),
@@ -166,6 +177,16 @@ fn get_snapshot(project: &Project) -> io::Result<SessionSnapshot> {
             .ok_or_else(|| io::Error::other("server returned no session snapshot"))?,
     )
     .map_err(io::Error::other)
+}
+
+fn parse_env_assignment(value: &str) -> io::Result<(String, String)> {
+    let (key, value) = value
+        .split_once('=')
+        .ok_or_else(|| io::Error::other(format!("environment must use KEY=VALUE: {value}")))?;
+    if key.is_empty() {
+        return Err(io::Error::other("environment key cannot be empty"));
+    }
+    Ok((key.to_owned(), value.to_owned()))
 }
 
 fn workspace_close(project: &Project, workspace_id: &str) -> io::Result<()> {
@@ -305,7 +326,7 @@ fn print_help() {
     println!("Usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>|close <workspace_id>>");
     println!("  list    list workspaces in the current project session");
     println!(
-        "  create  create a workspace and start its PowerShell pane (--cwd, --label, --no-focus)"
+        "  create  create a workspace and start its PowerShell pane (--cwd, --label, --env, --focus|--no-focus)"
     );
     println!("  get     show a workspace by ID");
     println!("  focus   focus a workspace by ID");
@@ -315,7 +336,7 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::format_workspace_list;
+    use super::{format_workspace_list, parse_env_assignment};
     use crate::server::session::Session;
 
     #[test]
@@ -337,5 +358,15 @@ mod tests {
             format_workspace_list(session.snapshot()),
             "No workspaces.\n"
         );
+    }
+
+    #[test]
+    fn workspace_env_assignments_match_herdr_rules() {
+        assert_eq!(
+            parse_env_assignment("SPINDLE_MODE=dev").unwrap(),
+            ("SPINDLE_MODE".into(), "dev".into())
+        );
+        assert!(parse_env_assignment("missing-separator").is_err());
+        assert!(parse_env_assignment("=empty-key").is_err());
     }
 }

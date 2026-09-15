@@ -371,7 +371,8 @@ approved design changes it.
   existing workspace recovery rules. The CLI now also supports Herdr-style
   workspace create/close, and workspace creation starts a PowerShell pane in
   the requested directory. Workspace creation follows Herdr's default no-focus
-  behavior; `--focus` opts into selecting the new workspace.
+  behavior; `--focus` opts into selecting the new workspace. Repeated
+  `--env KEY=VALUE` options are applied to its initial PowerShell pane.
 - [ ] For behavior not included, record the concrete reason and an equivalent
   Spindle workflow; do not silently omit it.
 - [ ] Improve Windows-specific process launch, terminal input/output, resizing,
