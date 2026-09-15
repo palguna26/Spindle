@@ -1559,32 +1559,47 @@ impl Session {
     }
 
     pub fn rename_tab(&mut self, tab_id: &str, name: String) -> Result<Value, String> {
-        let workspace = self.active_workspace_mut()?;
-        let tab = workspace
-            .tabs
-            .iter_mut()
-            .find(|tab| tab.tab_id == tab_id)
-            .ok_or_else(|| format!("tab '{tab_id}' does not exist"))?;
-        tab.name = name;
+        let label = {
+            let workspace = self.active_workspace_mut()?;
+            let tab = workspace
+                .tabs
+                .iter_mut()
+                .find(|tab| tab.tab_id == tab_id)
+                .ok_or_else(|| format!("tab '{tab_id}' does not exist"))?;
+            tab.name = name;
+            tab.name.clone()
+        };
+        self.record_event(
+            "tab_renamed",
+            serde_json::json!({ "tab_id": tab_id, "label": label }),
+        );
         Ok(serde_json::json!({ "tab_id": tab_id }))
     }
 
     pub fn rename_tab_anywhere(&mut self, tab_id: &str, name: String) -> Result<Value, String> {
-        let Some(workspace) = self
-            .snapshot
-            .spaces
-            .iter_mut()
-            .flat_map(|space| space.workspaces.iter_mut())
-            .find(|workspace| workspace.tabs.iter().any(|tab| tab.tab_id == tab_id))
-        else {
-            return Err(format!("tab '{tab_id}' does not exist"));
+        let (workspace_id, label) = {
+            let Some(workspace) = self
+                .snapshot
+                .spaces
+                .iter_mut()
+                .flat_map(|space| space.workspaces.iter_mut())
+                .find(|workspace| workspace.tabs.iter().any(|tab| tab.tab_id == tab_id))
+            else {
+                return Err(format!("tab '{tab_id}' does not exist"));
+            };
+            let workspace_id = workspace.workspace_id.clone();
+            let tab = workspace
+                .tabs
+                .iter_mut()
+                .find(|tab| tab.tab_id == tab_id)
+                .unwrap();
+            tab.name = name;
+            (workspace_id, tab.name.clone())
         };
-        workspace
-            .tabs
-            .iter_mut()
-            .find(|tab| tab.tab_id == tab_id)
-            .unwrap()
-            .name = name;
+        self.record_event(
+            "tab_renamed",
+            serde_json::json!({ "tab_id": tab_id, "workspace_id": workspace_id, "label": label }),
+        );
         Ok(serde_json::json!({ "tab_id": tab_id }))
     }
 
@@ -2970,6 +2985,7 @@ mod tests {
         session
             .rename_workspace(workspace_id, "Feature work".into())
             .unwrap();
+        let sequence = session.snapshot.event_sequence;
         session.rename_tab(tab_id, "Build logs".into()).unwrap();
         assert_eq!(
             session.snapshot().spaces[0].workspaces[1].name,
@@ -2989,6 +3005,11 @@ mod tests {
             session.snapshot().spaces[0].workspaces[1].tabs[1].name,
             "Build logs"
         );
+        assert!(session.events_since(sequence).iter().any(|event| {
+            event.event == "tab_renamed"
+                && event.payload["tab_id"] == tab_id
+                && event.payload["label"] == "Build logs"
+        }));
     }
 
     #[test]
@@ -3016,6 +3037,12 @@ mod tests {
             session.snapshot.spaces[0].workspaces[1].tabs[0].name,
             "Review"
         );
+        assert!(session.events_since(0).iter().any(|event| {
+            event.event == "tab_renamed"
+                && event.payload["tab_id"] == other_tab
+                && event.payload["workspace_id"] == "workspace-2"
+                && event.payload["label"] == "Review"
+        }));
         session.switch_workspace("workspace-1").unwrap();
         session.close_tab_anywhere(&other_tab).unwrap();
         assert!(session.snapshot.spaces[0]
