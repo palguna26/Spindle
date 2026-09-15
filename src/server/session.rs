@@ -25,6 +25,8 @@ pub struct CreatePaneRequest {
     pub env: BTreeMap<String, String>,
     pub cols: u16,
     pub rows: u16,
+    #[serde(default)]
+    pub popup: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,6 +211,12 @@ pub struct SessionSnapshot {
     pub panes: Vec<PaneView>,
     pub focused_pane_id: Option<String>,
     #[serde(default)]
+    pub popup_pane_id: Option<String>,
+    #[serde(default)]
+    pub popup_width: u16,
+    #[serde(default)]
+    pub popup_height: u16,
+    #[serde(default)]
     pub event_sequence: u64,
 }
 
@@ -268,6 +276,9 @@ impl Default for Session {
                 active_space_id: "space-1".into(),
                 panes: Vec::new(),
                 focused_pane_id: None,
+                popup_pane_id: None,
+                popup_width: 0,
+                popup_height: 0,
                 event_sequence: 0,
             },
             next_pane_id: 1,
@@ -561,25 +572,35 @@ impl Session {
             )
             .map_err(|error| format!("{error:?}"))?;
 
-        let tab = self.active_tab_mut()?;
-        let focused = tab.focused_pane_id.clone().or_else(|| {
-            tab.layout
-                .as_ref()
-                .and_then(|layout| layout.pane_ids().first().map(|id| (*id).to_owned()))
-        });
-        tab.layout = Some(match tab.layout.take() {
-            None => LayoutNode::pane(&pane_id),
-            Some(layout) => {
-                match focused
-                    .as_deref()
-                    .and_then(|target| layout.clone().split_pane(target, direction, &pane_id))
-                {
-                    Some(layout) => layout,
-                    None => layout.split(direction, 0.5, &pane_id),
-                }
+        if request.popup {
+            if self.snapshot.popup_pane_id.is_some() {
+                let _ = self.pane_manager.remove(&pane_id);
+                return Err("a popup pane is already open".into());
             }
-        });
-        tab.focused_pane_id = Some(pane_id.clone());
+            self.snapshot.popup_pane_id = Some(pane_id.clone());
+            self.snapshot.popup_width = request.cols;
+            self.snapshot.popup_height = request.rows;
+        } else {
+            let tab = self.active_tab_mut()?;
+            let focused = tab.focused_pane_id.clone().or_else(|| {
+                tab.layout
+                    .as_ref()
+                    .and_then(|layout| layout.pane_ids().first().map(|id| (*id).to_owned()))
+            });
+            tab.layout = Some(match tab.layout.take() {
+                None => LayoutNode::pane(&pane_id),
+                Some(layout) => {
+                    match focused
+                        .as_deref()
+                        .and_then(|target| layout.clone().split_pane(target, direction, &pane_id))
+                    {
+                        Some(layout) => layout,
+                        None => layout.split(direction, 0.5, &pane_id),
+                    }
+                }
+            });
+            tab.focused_pane_id = Some(pane_id.clone());
+        }
         self.snapshot.focused_pane_id = Some(pane_id.clone());
         self.snapshot.panes.push(PaneView {
             pane_id: pane_id.clone(),
@@ -1195,6 +1216,9 @@ impl Session {
     }
 
     pub fn close_pane(&mut self, pane_id: &str) -> Result<Value, String> {
+        if self.snapshot.popup_pane_id.as_deref() == Some(pane_id) {
+            return self.close_popup_pane(pane_id);
+        }
         let active_space_id = self.snapshot.active_space_id.clone();
         let space = self
             .snapshot
@@ -1288,6 +1312,21 @@ impl Session {
         self.snapshot.panes.retain(|pane| pane.pane_id != pane_id);
         self.snapshot.focused_pane_id = focused_pane_id;
         Ok(serde_json::json!({ "pane_id": pane_id }))
+    }
+
+    pub fn close_popup_pane(&mut self, pane_id: &str) -> Result<Value, String> {
+        if self.snapshot.popup_pane_id.as_deref() != Some(pane_id) {
+            return Err(format!("popup pane '{pane_id}' is not open"));
+        }
+        self.pane_manager
+            .remove(pane_id)
+            .map_err(|error| format!("{error:?}"))?;
+        self.snapshot.panes.retain(|pane| pane.pane_id != pane_id);
+        self.snapshot.popup_pane_id = None;
+        self.snapshot.popup_width = 0;
+        self.snapshot.popup_height = 0;
+        self.sync_focus_to_active_tab()?;
+        Ok(serde_json::json!({ "pane_id": pane_id, "closed_popup": true }))
     }
 
     pub fn send_input(&mut self, pane_id: &str, bytes: &[u8]) -> Result<(), String> {
@@ -1663,6 +1702,22 @@ impl Session {
                 pane.bracketed_paste = terminal.bracketed_paste;
             }
         }
+        let popup_exited = self
+            .snapshot
+            .popup_pane_id
+            .as_deref()
+            .is_some_and(|pane_id| {
+                self.snapshot
+                    .panes
+                    .iter()
+                    .find(|pane| pane.pane_id == pane_id)
+                    .is_some_and(|pane| !matches!(pane.status, PaneStatus::Running))
+            });
+        if popup_exited {
+            if let Some(pane_id) = self.snapshot.popup_pane_id.clone() {
+                let _ = self.close_popup_pane(&pane_id);
+            }
+        }
     }
 }
 
@@ -1845,6 +1900,52 @@ mod tests {
     }
 
     #[test]
+    fn popup_pane_does_not_change_layout_or_background_focus() {
+        let mut session = Session::default();
+        let request = |popup| {
+            serde_json::from_value::<CreatePaneRequest>(serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/c", "ping", "127.0.0.1", "-n", "20"],
+                "cwd": "C:/",
+                "cols": if popup { 40 } else { 80 },
+                "rows": if popup { 12 } else { 24 },
+                "popup": popup
+            }))
+            .unwrap()
+        };
+
+        let background = session.create_pane(request(false)).unwrap();
+        let background_id = background["pane_id"].as_str().unwrap().to_owned();
+        let background_layout = session.snapshot.spaces[0].workspaces[0].tabs[0]
+            .layout
+            .clone();
+        let popup = session.create_pane(request(true)).unwrap();
+        let popup_id = popup["pane_id"].as_str().unwrap().to_owned();
+
+        assert_eq!(
+            session.snapshot.popup_pane_id.as_deref(),
+            Some(popup_id.as_str())
+        );
+        assert_eq!(
+            session.snapshot.focused_pane_id.as_deref(),
+            Some(popup_id.as_str())
+        );
+        assert_eq!(
+            session.snapshot.spaces[0].workspaces[0].tabs[0].layout,
+            background_layout
+        );
+        assert_eq!(
+            session.close_pane(&popup_id).unwrap()["closed_popup"],
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            session.snapshot.focused_pane_id.as_deref(),
+            Some(background_id.as_str())
+        );
+        let _ = session.close_pane(&background_id);
+    }
+
+    #[test]
     fn default_workspace_context_is_filled_without_overwriting_metadata() {
         let mut session = Session::default();
         session.set_default_workspace_context("C:/repo".into(), Some("main".into()));
@@ -1908,6 +2009,7 @@ mod tests {
             env: Default::default(),
             cols: 80,
             rows: 24,
+            popup: false,
         });
 
         assert!(result.is_err(), "must try to create a replacement shell");

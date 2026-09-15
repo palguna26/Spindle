@@ -216,6 +216,28 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
             frame.set_cursor_position(position);
         }
     }
+    if let Some(popup_id) = snapshot.popup_pane_id.as_deref() {
+        if let Some(pane) = snapshot.panes.iter().find(|pane| pane.pane_id == popup_id) {
+            let popup = popup_rect(main.panes, snapshot.popup_width, snapshot.popup_height);
+            frame.render_widget(Clear, popup);
+            let border = Block::default()
+                .borders(Borders::ALL)
+                .title("Popup")
+                .border_style(Style::default().fg(theme.focused_border));
+            frame.render_widget(
+                Paragraph::new(pane.screen.lines().map(Line::from).collect::<Vec<_>>())
+                    .block(border),
+                popup,
+            );
+            if show_host_cursor && pane.cursor_visible {
+                let inner = Block::default().borders(Borders::ALL).inner(popup);
+                let (col, row) = pane.cursor;
+                if col < inner.width && row < inner.height {
+                    frame.set_cursor_position((inner.x + col, inner.y + row));
+                }
+            }
+        }
+    }
     let focused = snapshot.focused_pane_id.as_deref().unwrap_or("none");
     let chrome = if let Some((space_id, workspace_id)) = navigation_workspace {
         let name = snapshot
@@ -661,6 +683,27 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     }
 }
 
+pub(crate) fn popup_rect(area: Rect, width: u16, height: u16) -> Rect {
+    let width = if width == 0 {
+        (area.width / 2).max(4)
+    } else {
+        width
+    }
+    .min(area.width);
+    let height = if height == 0 {
+        (area.height / 2).max(4)
+    } else {
+        height
+    }
+    .min(area.height);
+    Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    }
+}
+
 fn active_workspace(snapshot: &SessionSnapshot) -> Option<&WorkspaceView> {
     let space = snapshot
         .spaces
@@ -979,6 +1022,9 @@ mod tests {
                 hyperlinks: Vec::new(),
             }],
             focused_pane_id: Some("pane-1".into()),
+            popup_pane_id: None,
+            popup_width: 0,
+            popup_height: 0,
             event_sequence: 0,
         };
         let backend = TestBackend::new(80, 24);

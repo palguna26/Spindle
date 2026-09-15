@@ -413,6 +413,8 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     let plugin_id = required_option(args, "--plugin")?;
     let entrypoint = required_option(args, "--entrypoint")?;
     let requested_placement = optional_option(args, "--placement")?;
+    let requested_width = optional_option(args, "--width")?;
+    let requested_height = optional_option(args, "--height")?;
     let cwd = optional_option(args, "--cwd")?;
     let caller_env = repeated_option(args, "--env")?;
     let no_focus = args.iter().any(|arg| arg == "--no-focus");
@@ -450,9 +452,21 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         ));
     }
     let placement = requested_placement.as_deref().unwrap_or(&pane.placement);
-    if !matches!(placement, "split" | "tab" | "zoomed") {
-        return usage("plugin pane placement must be split, tab, or zoomed");
+    if !matches!(placement, "split" | "tab" | "zoomed" | "popup") {
+        return usage("plugin pane placement must be split, tab, zoomed, or popup");
     }
+    let popup_width = requested_width
+        .as_deref()
+        .map(str::parse::<u16>)
+        .transpose()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "--width must be a number"))?
+        .unwrap_or(40);
+    let popup_height = requested_height
+        .as_deref()
+        .map(str::parse::<u16>)
+        .transpose()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "--height must be a number"))?
+        .unwrap_or(12);
     let Some(command) = pane.command.first() else {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -526,7 +540,7 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     let response = super::send_command_with_payload(
         &project,
         "create_pane",
-        serde_json::json!({ "command": command, "args": pane.command.iter().skip(1).collect::<Vec<_>>(), "cwd": cwd, "label": pane.title, "env": env, "cols": 80, "rows": 24 }),
+        serde_json::json!({ "command": command, "args": pane.command.iter().skip(1).collect::<Vec<_>>(), "cwd": cwd, "label": pane.title, "env": env, "cols": if placement == "popup" { popup_width } else { 80 }, "rows": if placement == "popup" { popup_height } else { 24 }, "popup": placement == "popup" }),
     )?;
     if !response.ok {
         return Err(io::Error::other(
@@ -542,7 +556,7 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         .and_then(|payload| payload.get("pane_id"))
         .and_then(serde_json::Value::as_str)
         .unwrap_or("unknown");
-    if placement != "tab" {
+    if placement != "tab" && placement != "popup" {
         if let Some(previous_focus) = previous_focus {
             super::send_command_with_payload(
                 &project,

@@ -1681,7 +1681,9 @@ fn forward_mouse_to_pane(
         return Ok(false);
     };
 
-    if matches!(mouse.kind, MouseEventKind::Down(_)) {
+    if matches!(mouse.kind, MouseEventKind::Down(_))
+        && snapshot.popup_pane_id.as_deref() != Some(pane_id.as_str())
+    {
         request_action(
             client,
             "mouse-focus-terminal-pane",
@@ -1729,6 +1731,26 @@ fn pane_mouse_target(
             .as_ref()
             .filter(|capture| capture.button == button)
             .map(|capture| (capture.pane_id.clone(), capture.rect));
+    }
+    if let Some(popup_id) = snapshot.popup_pane_id.as_deref() {
+        let popup = renderer::popup_rect(
+            renderer::pane_content_area_with_sidebar(area, sidebar_collapsed),
+            snapshot.popup_width,
+            snapshot.popup_height,
+        );
+        let inner = Rect::new(
+            popup.x.saturating_add(1),
+            popup.y.saturating_add(1),
+            popup.width.saturating_sub(2),
+            popup.height.saturating_sub(2),
+        );
+        if mouse.column >= inner.x
+            && mouse.column < inner.right()
+            && mouse.row >= inner.y
+            && mouse.row < inner.bottom()
+        {
+            return Some((popup_id.to_owned(), popup));
+        }
     }
     renderer::pane_rectangles(
         snapshot,
@@ -2136,6 +2158,9 @@ fn snapshot_has_focused_pane(snapshot: &SessionSnapshot) -> bool {
     let Some(focused) = snapshot.focused_pane_id.as_deref() else {
         return false;
     };
+    if snapshot.popup_pane_id.as_deref() == Some(focused) {
+        return snapshot.panes.iter().any(|pane| pane.pane_id == focused);
+    }
     let Some(workspace) = active_workspace(snapshot) else {
         return false;
     };
