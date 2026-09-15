@@ -27,7 +27,9 @@ pub(crate) fn deliver(
         crate::config::NotificationDelivery::Herdr => enqueue(queue, events, now),
         crate::config::NotificationDelivery::System => {
             for event in events {
-                let _ = crate::platform::show_desktop_notification(&message(&event), None);
+                let notification = message(&event);
+                let (title, body) = crate::terminal_notify::split_message(&notification);
+                let _ = crate::platform::show_desktop_notification(title, body);
             }
         }
         crate::config::NotificationDelivery::Terminal => {

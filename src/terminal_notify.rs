@@ -48,7 +48,7 @@ pub(crate) fn show(message: &str) -> io::Result<bool> {
     Ok(true)
 }
 
-fn split_message(message: &str) -> (&str, Option<&str>) {
+pub(crate) fn split_message(message: &str) -> (&str, Option<&str>) {
     match message.split_once(": ") {
         Some((title, body)) if !title.is_empty() && !body.is_empty() => (title, Some(body)),
         _ => (message, None),
