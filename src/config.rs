@@ -147,7 +147,31 @@ pub fn load_from(path: &std::path::Path) -> Config {
 }
 
 pub fn default_document() -> &'static str {
-    "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\nopen_notification_target = \"prefix+o\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n\n[theme]\nname = \"terminal\"\n\n[notifications]\nenabled = true\ndelivery = \"herdr\"\ndelay_seconds = 1\nsound = true\n"
+    r#"[keys]
+prefix = "ctrl+b"
+new_tab = "prefix+c"
+close_pane = "prefix+x"
+close_tab = "prefix+shift+x"
+next_tab = ["prefix+n", "prefix+right"]
+previous_tab = ["prefix+p", "prefix+left"]
+workspace_picker = "prefix+w"
+session_navigator = "prefix+g"
+settings = "prefix+s"
+reload_config = "prefix+shift+r"
+open_notification_target = "prefix+o"
+create_workspace = "prefix+shift+n"
+rename_workspace = "prefix+shift+w"
+delete_workspace = "prefix+shift+d"
+
+[theme]
+name = "terminal"
+
+[notifications]
+enabled = true
+delivery = "herdr"
+delay_seconds = 1
+sound = true
+"#
 }
 
 pub(crate) fn write_theme(name: &str) -> Result<(), String> {
@@ -307,5 +331,12 @@ mod tests {
         assert!(updated.contains("name = \"nord\""));
         assert!(updated.contains("prefix = \"ctrl+b\""));
         assert!(updated.contains("[notifications]"));
+    }
+
+    #[test]
+    fn default_document_exposes_settings_and_reload_bindings() {
+        let document = super::default_document();
+        assert!(document.contains("settings = \"prefix+s\""));
+        assert!(document.contains("reload_config = \"prefix+shift+r\""));
     }
 }
