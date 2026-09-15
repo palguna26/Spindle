@@ -11,6 +11,7 @@ pub enum RenameTarget {
     DeleteWorkspace,
     DeleteSpace,
     SwitchWorkspace,
+    PluginAction,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

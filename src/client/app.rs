@@ -356,6 +356,7 @@ fn event_loop(
                         RenameTarget::DeleteWorkspace => "Delete workspace: type its name",
                         RenameTarget::DeleteSpace => "Delete space: type its name",
                         RenameTarget::SwitchWorkspace => "Switch workspace: type its name",
+                        RenameTarget::PluginAction => "Run plugin action: type its ID",
                     };
                     renderer::render_prompt(frame, title, &prompt.input);
                 }
@@ -574,11 +575,20 @@ fn event_loop(
                 PromptResult::Submit(name) => {
                     let target = prompt.target;
                     rename_prompt = None;
-                    record_action_error(
-                        &mut action_error,
-                        "save name",
-                        submit_rename(client, &snapshot, target, name, terminal_size),
-                    );
+                    if target == RenameTarget::PluginAction {
+                        record_action_error(
+                            &mut action_error,
+                            "run plugin action",
+                            super::plugins::launch_action(&name, &snapshot)
+                                .map_err(ClientError::Io),
+                        );
+                    } else {
+                        record_action_error(
+                            &mut action_error,
+                            "save name",
+                            submit_rename(client, &snapshot, target, name, terminal_size),
+                        );
+                    }
                 }
             }
             continue;
@@ -1289,7 +1299,8 @@ fn event_loop(
             | Action::RenameActiveSpace
             | Action::CreateSpace
             | Action::DeleteActiveSpace
-            | Action::SwitchWorkspaceByName => {}
+            | Action::SwitchWorkspaceByName
+            | Action::PluginAction => {}
         }
         prefix_active = false;
     }
@@ -2217,6 +2228,7 @@ fn rename_target(action: Action) -> Option<RenameTarget> {
         Action::DeleteActiveWorkspace => Some(RenameTarget::DeleteWorkspace),
         Action::DeleteActiveSpace => Some(RenameTarget::DeleteSpace),
         Action::SwitchWorkspaceByName => Some(RenameTarget::SwitchWorkspace),
+        Action::PluginAction => Some(RenameTarget::PluginAction),
         _ => None,
     }
 }
@@ -2318,6 +2330,7 @@ fn submit_rename(
             }
             return Ok(());
         }
+        RenameTarget::PluginAction => unreachable!(),
     };
     if let Some(id) = id {
         let action_name = match operation {

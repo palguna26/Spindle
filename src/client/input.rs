@@ -54,6 +54,7 @@ pub enum Action {
     Help,
     CommandPalette,
     OpenNotificationTarget,
+    PluginAction,
     Send(KeyEvent),
 }
 

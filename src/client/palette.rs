@@ -41,10 +41,11 @@ pub enum Command {
     Detach,
     ToggleRightClickPassthrough,
     OpenNotificationTarget,
+    PluginAction,
 }
 
 impl Command {
-    pub const ALL: [Self; 38] = [
+    pub const ALL: [Self; 39] = [
         Self::NewTab,
         Self::NewPane,
         Self::CloseTab,
@@ -83,6 +84,7 @@ impl Command {
         Self::Detach,
         Self::ToggleRightClickPassthrough,
         Self::OpenNotificationTarget,
+        Self::PluginAction,
     ];
 
     pub fn label(self) -> &'static str {
@@ -125,6 +127,7 @@ impl Command {
             Self::Detach => "Detach",
             Self::ToggleRightClickPassthrough => "Toggle right-click passthrough",
             Self::OpenNotificationTarget => "Open notification target",
+            Self::PluginAction => "Run plugin action (type ID)",
         }
     }
 
@@ -168,6 +171,7 @@ impl Command {
             Self::Detach => Action::Detach,
             Self::ToggleRightClickPassthrough => Action::ToggleRightClickPassthrough,
             Self::OpenNotificationTarget => Action::OpenNotificationTarget,
+            Self::PluginAction => Action::PluginAction,
         }
     }
 }
@@ -211,6 +215,14 @@ mod tests {
         let command = Command::ClearPaneName;
         assert_eq!(command.label(), "Clear focused pane name");
         assert_eq!(command.action(), super::Action::ClearPaneName);
+        assert!(Command::ALL.contains(&command));
+    }
+
+    #[test]
+    fn plugin_action_is_available_as_a_keyboard_command() {
+        let command = Command::PluginAction;
+        assert_eq!(command.label(), "Run plugin action (type ID)");
+        assert_eq!(command.action(), super::Action::PluginAction);
         assert!(Command::ALL.contains(&command));
     }
 }

@@ -187,7 +187,10 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   workspace, tab, and focused-pane identity/cwd, and exports Herdr-compatible
   context environment variables. Plugin actions and link handlers now use a
   Herdr-style Windows command launcher so relative executables and `.cmd`/
-  `.bat` entrypoints work from the plugin directory;
+  `.bat` entrypoints work from the plugin directory. The command palette now
+  exposes a Herdr-style plugin action entry point that accepts an action ID,
+  supports `plugin.id.action` disambiguation, and passes active workspace/tab/
+  pane context to the launched process;
 - [x] Route keyboard input to an open plugin popup before the background pane,
   and make the normal close-pane binding close that popup first, matching
   Herdr's popup input ownership.
