@@ -935,6 +935,23 @@ impl Session {
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
+    pub fn delete_workspace_anywhere(&mut self, workspace_id: &str) -> Result<Value, String> {
+        let space_id = self
+            .snapshot
+            .spaces
+            .iter()
+            .find(|space| {
+                space
+                    .workspaces
+                    .iter()
+                    .any(|workspace| workspace.workspace_id == workspace_id)
+            })
+            .map(|space| space.space_id.clone())
+            .ok_or_else(|| format!("workspace '{workspace_id}' does not exist"))?;
+        self.close_workspace(&space_id, workspace_id)?;
+        Ok(serde_json::json!({ "workspace_id": workspace_id }))
+    }
+
     pub fn create_tab(&mut self, name: String) -> Result<Value, String> {
         let workspace = self.active_workspace_mut()?;
         let workspace_id = workspace.workspace_id.clone();
@@ -2796,6 +2813,20 @@ mod tests {
             .workspaces
             .iter()
             .all(|workspace| workspace.workspace_id != "workspace-2"));
+    }
+
+    #[test]
+    fn workspace_deletion_resolves_ids_across_spaces() {
+        let mut session = Session::default();
+        session.create_space("Other project".into()).unwrap();
+        let workspace_id = session.snapshot.spaces[1].workspaces[0]
+            .workspace_id
+            .clone();
+        session.switch_space("space-1").unwrap();
+
+        session.delete_workspace_anywhere(&workspace_id).unwrap();
+        assert!(session.snapshot.spaces[1].workspaces.is_empty());
+        assert_eq!(session.snapshot.active_space_id, "space-1");
     }
 
     #[test]

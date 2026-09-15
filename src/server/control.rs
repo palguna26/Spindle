@@ -584,7 +584,7 @@ pub(crate) fn response_for_with_interactive(
             };
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
-                session.delete_workspace(&payload.id)
+                session.delete_workspace_anywhere(&payload.id)
             })
         }
         "create_tab" => {
