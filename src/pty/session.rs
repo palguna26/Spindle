@@ -20,6 +20,8 @@ pub struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     output: Receiver<Vec<u8>>,
+    #[cfg(windows)]
+    job: Option<WindowsJob>,
 }
 
 #[derive(Debug)]
@@ -60,6 +62,10 @@ impl PtySession {
             .slave
             .spawn_command(command)
             .map_err(PtySessionError::from)?;
+        #[cfg(windows)]
+        let job = child
+            .process_id()
+            .and_then(|process_id| WindowsJob::attach(process_id).ok());
         drop(pair.slave);
         let reader = pair
             .master
@@ -89,6 +95,8 @@ impl PtySession {
             master: pair.master,
             writer,
             output,
+            #[cfg(windows)]
+            job,
         })
     }
 
@@ -146,8 +154,89 @@ impl PtySession {
             }
             thread::sleep(std::time::Duration::from_millis(10));
         }
+        #[cfg(windows)]
+        if let Some(job) = &self.job {
+            if job.terminate() {
+                return Ok(());
+            }
+        }
         self.child.kill().map_err(PtySessionError::from)?;
         Ok(())
+    }
+}
+
+#[cfg(windows)]
+struct WindowsJob(windows_sys::Win32::Foundation::HANDLE);
+
+// The handle is owned by one PtySession and all access is synchronized by the
+// session manager. Moving the owning handle with the PTY is safe.
+#[cfg(windows)]
+unsafe impl Send for WindowsJob {}
+#[cfg(windows)]
+unsafe impl Sync for WindowsJob {}
+
+#[cfg(windows)]
+impl WindowsJob {
+    fn attach(process_id: u32) -> Result<Self, ()> {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+            SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+        };
+
+        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if job.is_null() {
+            return Err(());
+        }
+        let mut limits = unsafe { std::mem::zeroed::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() };
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let configured = unsafe {
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast::<std::ffi::c_void>(),
+                std::mem::size_of_val(&limits) as u32,
+            )
+        } != 0;
+        let process = unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_QUOTA | PROCESS_TERMINATE,
+                0,
+                process_id,
+            )
+        };
+        let assigned = configured
+            && !process.is_null()
+            && unsafe { AssignProcessToJobObject(job, process) } != 0;
+        if !process.is_null() {
+            unsafe {
+                CloseHandle(process);
+            }
+        }
+        if !assigned {
+            unsafe {
+                CloseHandle(job);
+            }
+            return Err(());
+        }
+        Ok(Self(job))
+    }
+
+    fn terminate(&self) -> bool {
+        unsafe { windows_sys::Win32::System::JobObjects::TerminateJobObject(self.0, 1) != 0 }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for WindowsJob {
+    fn drop(&mut self) {
+        unsafe {
+            windows_sys::Win32::Foundation::CloseHandle(self.0);
+        }
     }
 }
 
