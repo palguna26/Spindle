@@ -91,6 +91,9 @@ attention or finish. Notifications for the active tab are suppressed, like
 Herdr's default behavior. Multiple background events are queued and shown in
 arrival order. Set `[notifications] enabled = false` in the config to disable
 these toasts; the setting reloads while the client is running.
+Set `[notifications] delivery = "terminal"` to emit Herdr-compatible OSC 9
+desktop notifications, or `"off"` to disable them. `"system"` currently uses
+the in-app fallback on Windows because Spindle has no native OS notifier yet.
 
 Tabs can also be automated with `spindle tab list`, `create [label]`,
 `get <id>`, `focus <id>`, `rename <id> <label>`, and `close <id>`.
