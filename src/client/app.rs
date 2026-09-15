@@ -1305,7 +1305,12 @@ fn handle_mouse(
             mouse.column,
             mouse.row,
         ) {
-            let _ = super::links::open_web_url(&url);
+            match super::plugins::launch_for_url(&url) {
+                Ok(true) => return Ok(()),
+                Ok(false) | Err(_) => {
+                    super::links::open_web_url(&url).map_err(ClientError::Io)?;
+                }
+            }
             return Ok(());
         }
     }

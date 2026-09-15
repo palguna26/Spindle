@@ -8,6 +8,7 @@ mod links;
 mod navigator;
 mod notifications;
 pub mod palette;
+mod plugins;
 mod preferences;
 pub mod prompt;
 pub mod renderer;
