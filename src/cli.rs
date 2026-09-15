@@ -12,6 +12,7 @@ use serde_json::Value;
 const APP_DIR: &str = "Spindle";
 
 mod api;
+mod agent;
 mod completion;
 mod pane;
 mod plugin;
@@ -46,6 +47,12 @@ pub fn run() -> io::Result<()> {
         }
         "api" => {
             return api::run(&env::args().skip(2).collect::<Vec<_>>());
+        }
+        "agent" => {
+            return agent::run_agent_command(
+                &Project::from_current_dir()?,
+                &env::args().skip(2).collect::<Vec<_>>(),
+            );
         }
         "plugin" => {
             return plugin::run(&env::args().skip(2).collect::<Vec<_>>());
@@ -209,7 +216,7 @@ fn send_command_with_payload(
 fn print_help() {
     println!("Spindle - persistent parallel coding-agent sessions");
     println!();
-    println!("Usage: spindle [start|attach|stop|list|doctor|workspace|tab|pane|help]");
+    println!("Usage: spindle [start|attach|stop|list|doctor|workspace|tab|pane|agent|help]");
     println!();
     println!("Commands:");
     println!("  start    start a server for the current project");
@@ -232,6 +239,7 @@ fn print_help() {
     println!("  tab create      create a tab in the active workspace");
     println!("  tab get/focus/rename/close  manage tabs by ID");
     println!("  pane list/current/get/focus/neighbor/edges/layout/process-info/input/rename/stop/restart/zoom/close/send-text/send-keys/run/read/swap/move/wait-output/split/resize  manage panes");
+    println!("  agent list  list detected agents and their pane state");
     println!("Options:");
     println!("  --help, -h       show this help");
     println!("  --version, -V    print the version");

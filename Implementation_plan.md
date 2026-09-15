@@ -298,6 +298,9 @@ Terminal verification is still pending.
   blocked/done/working/idle/unknown in priority mode. The selected view is
   saved per client. Richer
   lifecycle transitions remain.
+- [x] Provide a scriptable agent report. `spindle agent list` reports every
+  detected agent across spaces with pane, workspace, tab, focus, state, cwd,
+  and terminal title, following Herdr's agent-listing direction.
 - [ ] Keep state associated with the correct pane, tab, and workspace through
   switches, restarts, and recovery. A session test now verifies status remains
   attached to its pane across tab and workspace switches; a restart test now
