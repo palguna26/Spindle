@@ -5,6 +5,7 @@ use std::io;
 pub(super) fn run_agent_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
         [command] if command == "list" => agent_list(project),
+        [command, pane_id] if command == "get" => agent_get(project, pane_id),
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -13,7 +14,7 @@ pub(super) fn run_agent_command(project: &Project, args: &[String]) -> io::Resul
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle agent list",
+                "usage: spindle agent <list|get PANE_ID>",
             ))
         }
     }
@@ -25,6 +26,24 @@ fn agent_list(project: &Project) -> io::Result<()> {
     println!(
         "{}",
         serde_json::to_string_pretty(&agents).map_err(io::Error::other)?
+    );
+    Ok(())
+}
+
+fn agent_get(project: &Project, pane_id: &str) -> io::Result<()> {
+    let snapshot = get_snapshot(project)?;
+    let row = agent_rows(&snapshot)
+        .into_iter()
+        .find(|row| row["pane_id"].as_str() == Some(pane_id))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("no detected agent in pane '{pane_id}'"),
+            )
+        })?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&row).map_err(io::Error::other)?
     );
     Ok(())
 }
@@ -79,7 +98,7 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
 }
 
 fn print_help() {
-    println!("Usage: spindle agent list");
+    println!("Usage: spindle agent <list|get PANE_ID>");
 }
 
 #[cfg(test)]
