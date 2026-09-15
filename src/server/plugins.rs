@@ -43,15 +43,19 @@ pub(super) fn run_event_hook(
     snapshot: &SessionSnapshot,
     endpoint: &str,
 ) {
-    if event.event != "pane_status"
-        || event
-            .payload
-            .get("status")
-            .and_then(|status| status.get("Running"))
-            .is_some()
-    {
-        return;
-    }
+    let hook_name = match event.event.as_str() {
+        "pane_created" => "pane.created",
+        "pane_status"
+            if event
+                .payload
+                .get("status")
+                .and_then(|status| status.get("Running"))
+                .is_none() =>
+        {
+            "pane.exited"
+        }
+        _ => return,
+    };
     let Ok(plugins) = plugin::installed() else {
         return;
     };
@@ -63,7 +67,7 @@ pub(super) fn run_event_hook(
             continue;
         }
         for (index, hook) in manifest.events.iter().enumerate() {
-            if hook.on != "pane.exited" || !plugin::supports_windows(hook.platforms.as_deref()) {
+            if hook.on != hook_name || !plugin::supports_windows(hook.platforms.as_deref()) {
                 continue;
             }
             if let Err(error) = launch_event(
@@ -73,6 +77,7 @@ pub(super) fn run_event_hook(
                 event,
                 snapshot,
                 endpoint,
+                hook_name,
             ) {
                 eprintln!(
                     "Spindle plugin event hook {}.{} failed: {error}",
@@ -91,6 +96,7 @@ fn launch_event(
     event: &Event<serde_json::Value>,
     snapshot: &SessionSnapshot,
     endpoint: &str,
+    hook_name: &str,
 ) -> std::io::Result<()> {
     let Some(program) = argv.first() else {
         return Err(std::io::Error::new(
@@ -103,7 +109,7 @@ fn launch_event(
         serde_json::from_str::<serde_json::Value>(&startup_context(&manifest.id, snapshot)?)
             .map_err(std::io::Error::other)?;
     context["source"] = serde_json::json!("event");
-    context["event"] = serde_json::json!(event.event);
+    context["event"] = serde_json::json!(hook_name);
     context["event_payload"] = event.payload.clone();
     let context = context.to_string();
     let args = argv.iter().skip(1).cloned().collect::<Vec<_>>();
@@ -116,13 +122,13 @@ fn launch_event(
             &context,
             endpoint,
         ))
-        .env("SPINDLE_PLUGIN_EVENT", "pane.exited")
-        .env("HERDR_PLUGIN_EVENT", "pane.exited")
+        .env("SPINDLE_PLUGIN_EVENT", hook_name)
+        .env("HERDR_PLUGIN_EVENT", hook_name)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()?;
-    let _ = plugin::record_launch(&manifest.id, "event", "pane.exited", child.id());
+    let _ = plugin::record_launch(&manifest.id, "event", hook_name, child.id());
     Ok(())
 }
 

@@ -673,6 +673,7 @@ impl Session {
             right_click_passthrough: false,
             hyperlinks: Vec::new(),
         });
+        self.record_event("pane_created", serde_json::json!({ "pane_id": pane_id }));
         self.record_pane_events(vec![PaneEvent::Status {
             pane_id: pane_id.clone(),
             status: PaneStatus::Running,
@@ -1575,28 +1576,32 @@ impl Session {
                     serde_json::json!({ "pane_id": pane_id, "status": status }),
                 ),
             };
-            self.snapshot.event_sequence += 1;
-            self.events.push_back(Event {
-                version: crate::protocol::PROTOCOL_VERSION,
-                sequence: self.snapshot.event_sequence,
-                event: name.into(),
-                payload,
-            });
-            if let Some(event) = self.events.back() {
-                self.event_bytes += serde_json::to_vec(event)
+            self.record_event(name, payload);
+        }
+    }
+
+    fn record_event(&mut self, name: &str, payload: Value) {
+        self.snapshot.event_sequence += 1;
+        self.events.push_back(Event {
+            version: crate::protocol::PROTOCOL_VERSION,
+            sequence: self.snapshot.event_sequence,
+            event: name.into(),
+            payload,
+        });
+        if let Some(event) = self.events.back() {
+            self.event_bytes += serde_json::to_vec(event)
+                .map(|bytes| bytes.len())
+                .unwrap_or(0);
+        }
+        while self.event_bytes > MAX_EVENT_HISTORY_BYTES {
+            let Some(event) = self.events.pop_front() else {
+                break;
+            };
+            self.event_bytes = self.event_bytes.saturating_sub(
+                serde_json::to_vec(&event)
                     .map(|bytes| bytes.len())
-                    .unwrap_or(0);
-            }
-            while self.event_bytes > MAX_EVENT_HISTORY_BYTES {
-                let Some(event) = self.events.pop_front() else {
-                    break;
-                };
-                self.event_bytes = self.event_bytes.saturating_sub(
-                    serde_json::to_vec(&event)
-                        .map(|bytes| bytes.len())
-                        .unwrap_or(0),
-                );
-            }
+                    .unwrap_or(0),
+            );
         }
     }
 
