@@ -112,6 +112,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Click spaces, workspaces, tabs, and panes to switch/focus them.
 - [x] Keep client mouse state and pane hit models in the dedicated
   `src/client/mouse.rs` module, following Herdr's focused shell mouse module.
+- [x] Keep mouse hit-testing, routing decisions, and URL target lookup in the
+  same dedicated module, while leaving request-producing handlers in `app.rs`.
 - [x] Open the visible notification target with Herdr's `Ctrl-b o` binding;
   global pane focus activates its space, workspace, and tab first.
 - [x] Toggle a compact four-column sidebar from the Herdr `prefix+b` binding
