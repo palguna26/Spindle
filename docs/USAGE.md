@@ -53,6 +53,26 @@ spindle list     Show project identity and state path
 spindle doctor   Show client/server identity and flag stale endpoint metadata
 ```
 
+## Configuration
+
+Spindle reads optional keybindings from `%APPDATA%\Spindle\config.toml`.
+Bindings use Herdr's `prefix+key` format; missing or invalid entries keep the
+built-in defaults.
+
+```toml
+[keys]
+prefix = "ctrl+b"
+new_tab = "prefix+c"
+next_tab = ["prefix+n", "ctrl+alt+right"]
+rename_workspace = "prefix+shift+w"
+```
+
+The config is read when the client starts. Supported action names include
+`new_tab`, `close_pane`, `close_tab`, `next_tab`, `previous_tab`,
+`workspace_picker`, `session_navigator`, `create_workspace`,
+`rename_workspace`, `delete_workspace`, pane focus directions, splits, resize,
+zoom, sidebar, copy mode, help, and the command palette.
+
 ## Keybindings
 
 `Ctrl-b` is the command prefix. Press `Ctrl-b`, then `?` for the in-app guide

@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod client;
+pub mod config;
 pub mod detect;
 pub mod logging;
 pub mod model;

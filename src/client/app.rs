@@ -1,6 +1,6 @@
 use super::context_menu::{ContextMenu, ContextMenuAction, ContextMenuTarget};
 use super::copy_mode::{CopyMode, KeyResult};
-use super::input::{action, is_prefix, Action};
+use super::input::{is_prefix, Action, Keymap};
 use super::navigator::{Navigator, Outcome as NavigatorOutcome, Target as NavigatorTarget};
 use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
@@ -179,6 +179,7 @@ fn event_loop(
     preferences_path: &std::path::Path,
 ) -> Result<(), ClientError> {
     let mut prefix_active = false;
+    let keymap = Keymap::from_config(&crate::config::load());
     let mut palette_selected = 0;
     let mut palette_open = false;
     let mut navigator: Option<Navigator> = None;
@@ -608,7 +609,7 @@ fn event_loop(
             continue;
         }
         if mouse_state.copy_mode.is_some() {
-            if is_prefix(key) {
+            if keymap.is_prefix(key) {
                 prefix_active = true;
                 continue;
             }
@@ -647,7 +648,7 @@ fn event_loop(
                 continue;
             }
         }
-        if is_prefix(key) {
+        if keymap.is_prefix(key) {
             prefix_active = true;
             continue;
         }
@@ -676,7 +677,7 @@ fn event_loop(
                 }
             }
         }
-        let pressed = action(prefix_active, key);
+        let pressed = keymap.action(prefix_active, key);
         if pressed == Action::CommandPalette {
             palette_open = true;
             palette_selected = 0;
