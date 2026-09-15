@@ -824,7 +824,9 @@ pub(crate) fn response_for_with_interactive(
                 }
             };
             let mut session = session.lock().expect("session lock poisoned");
-            save_after(&mut session, |session| session.close_pane(&payload.pane_id))
+            save_after(&mut session, |session| {
+                session.close_pane_anywhere(&payload.pane_id)
+            })
         }
         "close_popup" => {
             let mut session = session.lock().expect("session lock poisoned");

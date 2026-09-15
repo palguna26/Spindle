@@ -2100,6 +2100,109 @@ impl Session {
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
+    pub fn close_pane_anywhere(&mut self, pane_id: &str) -> Result<Value, String> {
+        if self.snapshot.popup_pane_id.as_deref() == Some(pane_id)
+            || self.snapshot.overlay_pane_id.as_deref() == Some(pane_id)
+        {
+            return self.close_pane(pane_id);
+        }
+        let active_space_id = self.snapshot.active_space_id.clone();
+        let active_workspace_id = self
+            .snapshot
+            .spaces
+            .iter()
+            .find(|space| space.space_id == active_space_id)
+            .and_then(|space| space.active_workspace_id.clone());
+        let Some((space_id, workspace_id, tab_id, tab_index, pane_count, tab_count)) =
+            self.snapshot.spaces.iter().find_map(|space| {
+                space.workspaces.iter().find_map(|workspace| {
+                    workspace
+                        .tabs
+                        .iter()
+                        .enumerate()
+                        .find_map(|(tab_index, tab)| {
+                            tab.layout
+                                .as_ref()
+                                .filter(|layout| layout.pane_ids().contains(&pane_id))
+                                .map(|layout| {
+                                    (
+                                        space.space_id.clone(),
+                                        workspace.workspace_id.clone(),
+                                        tab.tab_id.clone(),
+                                        tab_index,
+                                        layout.pane_ids().len(),
+                                        workspace.tabs.len(),
+                                    )
+                                })
+                        })
+                })
+            })
+        else {
+            return Err(format!("pane '{pane_id}' does not exist"));
+        };
+        if active_space_id == space_id
+            && active_workspace_id.as_deref() == Some(workspace_id.as_str())
+        {
+            let active_tab_id = self
+                .snapshot
+                .spaces
+                .iter()
+                .find(|space| space.space_id == space_id)
+                .and_then(|space| {
+                    space
+                        .workspaces
+                        .iter()
+                        .find(|workspace| workspace.workspace_id == workspace_id)
+                })
+                .map(|workspace| workspace.active_tab_id.clone());
+            if active_tab_id.as_deref() == Some(tab_id.as_str()) {
+                return self.close_pane(pane_id);
+            }
+        }
+        if pane_count == 1 && tab_count == 1 {
+            self.close_workspace(&space_id, &workspace_id)?;
+            self.record_event("pane_closed", serde_json::json!({ "pane_id": pane_id }));
+            return Ok(serde_json::json!({ "pane_id": pane_id, "closed_workspace": true }));
+        }
+        self.pane_manager
+            .remove(pane_id)
+            .map_err(|error| format!("{error:?}"))?;
+        self.snapshot.panes.retain(|pane| pane.pane_id != pane_id);
+        let workspace = self
+            .snapshot
+            .spaces
+            .iter_mut()
+            .find(|space| space.space_id == space_id)
+            .unwrap()
+            .workspaces
+            .iter_mut()
+            .find(|workspace| workspace.workspace_id == workspace_id)
+            .unwrap();
+        if pane_count == 1 {
+            workspace.tabs.remove(tab_index);
+            if workspace.active_tab_id == tab_id {
+                workspace.active_tab_id = workspace.tabs[tab_index.min(workspace.tabs.len() - 1)]
+                    .tab_id
+                    .clone();
+            }
+        } else {
+            let tab = &mut workspace.tabs[tab_index];
+            tab.layout = tab
+                .layout
+                .take()
+                .and_then(|layout| layout.close_pane(pane_id));
+            if tab.focused_pane_id.as_deref() == Some(pane_id) {
+                tab.focused_pane_id = tab
+                    .layout
+                    .as_ref()
+                    .and_then(|layout| layout.pane_ids().first().map(|id| (*id).to_owned()));
+            }
+        }
+        self.sync_focus_to_active_tab()?;
+        self.record_event("pane_closed", serde_json::json!({ "pane_id": pane_id }));
+        Ok(serde_json::json!({ "pane_id": pane_id }))
+    }
+
     pub fn close_popup_pane(&mut self, pane_id: &str) -> Result<Value, String> {
         if self.snapshot.popup_pane_id.as_deref() != Some(pane_id) {
             return Err(format!("popup pane '{pane_id}' is not open"));
@@ -2826,6 +2929,33 @@ mod tests {
 
         session.delete_workspace_anywhere(&workspace_id).unwrap();
         assert!(session.snapshot.spaces[1].workspaces.is_empty());
+        assert_eq!(session.snapshot.active_space_id, "space-1");
+    }
+
+    #[test]
+    fn pane_close_resolves_a_pane_in_an_inactive_workspace() {
+        let mut session = Session::default();
+        session.create_space("Other project".into()).unwrap();
+        let workspace_id = session.snapshot.spaces[1].workspaces[0]
+            .workspace_id
+            .clone();
+        session.snapshot.spaces[1].workspaces[0].tabs[0].layout = Some(LayoutNode::pane("pane-1"));
+        session.snapshot.spaces[1].workspaces[0].tabs[0].focused_pane_id = Some("pane-1".into());
+        session.snapshot.panes.push(
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-1", "command": "powershell.exe", "args": [], "cwd": "C:/",
+                "status": "Running", "scrollback_bytes": 0
+            }))
+            .unwrap(),
+        );
+        session.switch_space("space-1").unwrap();
+
+        session.close_pane_anywhere("pane-1").unwrap();
+        assert!(session.snapshot.panes.is_empty());
+        assert!(session.snapshot.spaces[1]
+            .workspaces
+            .iter()
+            .all(|workspace| workspace.workspace_id != workspace_id));
         assert_eq!(session.snapshot.active_space_id, "space-1");
     }
 
