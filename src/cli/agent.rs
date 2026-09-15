@@ -11,6 +11,7 @@ pub(super) fn run_agent_command(project: &Project, args: &[String]) -> io::Resul
         [command, args @ ..] if command == "wait" => agent_wait(project, args),
         [command, args @ ..] if command == "read" => agent_read(project, args),
         [command, args @ ..] if command == "send-keys" => agent_send_keys(project, args),
+        [command, args @ ..] if command == "prompt" => agent_prompt(project, args),
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -203,6 +204,42 @@ fn agent_send_keys(project: &Project, args: &[String]) -> io::Result<()> {
     super::pane::run_pane_command(project, &pane_args)
 }
 
+fn agent_prompt(project: &Project, args: &[String]) -> io::Result<()> {
+    let Some(pane_id) = args.first() else {
+        return Err(io::Error::other(
+            "usage: spindle agent prompt <pane-id> <text>...",
+        ));
+    };
+    if args.len() < 2 {
+        return Err(io::Error::other(
+            "usage: spindle agent prompt <pane-id> <text>...",
+        ));
+    }
+    if args.iter().skip(1).any(|arg| arg.starts_with("--")) {
+        return Err(io::Error::other(
+            "agent prompt options are not supported; use agent wait separately",
+        ));
+    }
+    let snapshot = get_snapshot(project)?;
+    let row = agent_rows(&snapshot)
+        .into_iter()
+        .find(|row| row["pane_id"].as_str() == Some(pane_id.as_str()))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("no detected agent in pane '{pane_id}'"),
+            )
+        })?;
+    if row["state"].as_str() == Some("blocked") {
+        return Err(io::Error::other(format!(
+            "agent in pane '{pane_id}' is blocked and needs interactive input"
+        )));
+    }
+    let mut pane_args = vec!["run".to_owned(), pane_id.clone()];
+    pane_args.extend(args.iter().skip(1).cloned());
+    super::pane::run_pane_command(project, &pane_args)
+}
+
 fn get_snapshot(project: &Project) -> io::Result<SessionSnapshot> {
     let response = super::send_command(project, "get_snapshot")?;
     if !response.ok {
@@ -253,7 +290,7 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
 }
 
 fn print_help() {
-    println!("Usage: spindle agent <list|get|focus|wait|read|send-keys PANE_ID [OPTIONS]>");
+    println!("Usage: spindle agent <list|get|focus|wait|read|send-keys|prompt PANE_ID [OPTIONS]>");
 }
 
 #[cfg(test)]
