@@ -172,6 +172,12 @@ Use `--no-focus` to return focus to the previous pane after a split. Plugin
 panes can be controlled with `spindle plugin pane focus|close <pane_id>`.
 If no handler matches, or a plugin cannot start, Spindle opens the URL normally.
 
+GitHub plugins can be installed with `spindle plugin install owner/repo --yes`
+or `spindle plugin install owner/repo/subdir --ref REF --yes`. Spindle uses a
+shallow checkout under the per-user plugin directory, validates the Herdr
+manifest, and registers it globally. Existing managed checkouts are refused
+so an installed plugin cannot be overwritten accidentally.
+
 ## State and recovery
 
 State is stored per project under:
