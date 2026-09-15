@@ -44,6 +44,11 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
                 .collect::<io::Result<Vec<_>>>()?
                 .concat(),
         ),
+        [command, options @ ..]
+            if command == "split" && options.first().is_some_and(|arg| arg.starts_with('-')) =>
+        {
+            pane_split_options(project, options)
+        }
         [command, direction] if command == "split" => pane_split(project, direction, None),
         [command, direction, command_args @ ..] if command == "split" => {
             pane_split(project, direction, Some(command_args))
@@ -1183,7 +1188,7 @@ fn pane_split(
     direction: &str,
     command_args: Option<&[String]>,
 ) -> io::Result<()> {
-    if !matches!(direction, "horizontal" | "vertical") {
+    if split_direction(direction).is_none() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "split direction must be horizontal or vertical",
@@ -1201,7 +1206,7 @@ fn pane_split(
         project,
         "split_pane",
         serde_json::json!({
-            "direction": direction,
+            "direction": split_direction(direction).expect("validated split direction"),
             "command": command,
             "args": args,
             "cwd": cwd,
@@ -1209,6 +1214,102 @@ fn pane_split(
             "rows": 24
         }),
     )
+}
+
+fn pane_split_options(project: &Project, args: &[String]) -> io::Result<()> {
+    let env_pane_id = std::env::var("SPINDLE_PANE_ID")
+        .ok()
+        .or_else(|| std::env::var("HERDR_PANE_ID").ok())
+        .filter(|value| !value.trim().is_empty());
+    let mut pane_id = None;
+    let mut direction = None;
+    let mut cwd = None;
+    let mut env = serde_json::Map::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--pane" => {
+                if pane_id.is_some() {
+                    return Err(io::Error::other("provide only one pane selector"));
+                }
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --pane"));
+                };
+                pane_id = Some(value.clone());
+                index += 2;
+            }
+            "--current" => {
+                if pane_id.is_some() {
+                    return Err(io::Error::other("provide only one pane selector"));
+                }
+                pane_id = Some(env_pane_id.clone().ok_or_else(|| {
+                    io::Error::other("--current requires a pane ID environment variable")
+                })?);
+                index += 1;
+            }
+            "--direction" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --direction"));
+                };
+                if !matches!(value.as_str(), "right" | "down" | "horizontal" | "vertical") {
+                    return Err(io::Error::other(format!(
+                        "invalid split direction: {value}"
+                    )));
+                }
+                direction = Some(value.clone());
+                index += 2;
+            }
+            "--cwd" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --cwd"));
+                };
+                cwd = Some(value.clone());
+                index += 2;
+            }
+            "--env" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(io::Error::other("missing value for --env"));
+                };
+                let (key, value) = value.split_once('=').ok_or_else(|| {
+                    io::Error::other(format!("environment must use KEY=VALUE: {value}"))
+                })?;
+                if key.is_empty() {
+                    return Err(io::Error::other("environment key cannot be empty"));
+                }
+                env.insert(key.to_owned(), serde_json::Value::String(value.to_owned()));
+                index += 2;
+            }
+            other => return Err(io::Error::other(format!("unknown option: {other}"))),
+        }
+    }
+    let direction = direction.ok_or_else(|| {
+        io::Error::other(
+            "usage: spindle pane split [--pane ID|--current] --direction right|down [--cwd PATH] [--env KEY=VALUE]",
+        )
+    })?;
+    let cwd = cwd.unwrap_or(std::env::current_dir()?.to_string_lossy().into_owned());
+    pane_mutation_with_payload(
+        project,
+        "split_pane",
+        serde_json::json!({
+            "direction": split_direction(&direction).expect("validated split direction"),
+            "pane_id": pane_id,
+            "command": "powershell.exe",
+            "args": ["-NoLogo", "-NoProfile"],
+            "cwd": cwd,
+            "env": env,
+            "cols": 80,
+            "rows": 24
+        }),
+    )
+}
+
+fn split_direction(value: &str) -> Option<&'static str> {
+    match value {
+        "right" | "horizontal" => Some("horizontal"),
+        "down" | "vertical" => Some("vertical"),
+        _ => None,
+    }
 }
 
 fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
@@ -1273,8 +1374,8 @@ mod tests {
         all_pane_ids, direction_name, format_pane_list, parse_current_pane, parse_focus_options,
         parse_layout_direction, parse_list_workspace, parse_move_options, parse_neighbor_options,
         parse_optional_pane_selector, parse_pane_input_options, parse_read_options,
-        parse_read_target, parse_swap_options, parse_zoom_options, read_line_limit, strip_ansi,
-        MoveOptions, ReadFormat, ReadSource, SwapOptions, ZoomMode,
+        parse_read_target, parse_swap_options, parse_zoom_options, read_line_limit,
+        split_direction, strip_ansi, MoveOptions, ReadFormat, ReadSource, SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -1355,6 +1456,13 @@ mod tests {
         assert_eq!(parse_pane_input_options(&args), Ok(("pane-2".into(), true)));
         let invalid = vec!["--right-click".to_string(), "mouse".to_string()];
         assert!(parse_pane_input_options(&invalid).is_err());
+    }
+
+    #[test]
+    fn split_direction_accepts_herdr_names() {
+        assert_eq!(split_direction("right"), Some("horizontal"));
+        assert_eq!(split_direction("down"), Some("vertical"));
+        assert_eq!(split_direction("sideways"), None);
     }
 
     #[test]

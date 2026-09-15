@@ -93,6 +93,8 @@ fn default_move_direction() -> String {
 #[derive(Debug, Deserialize)]
 struct SplitRequest {
     direction: String,
+    #[serde(default)]
+    pane_id: Option<String>,
     #[serde(flatten)]
     pane: CreatePaneRequest,
 }
@@ -397,6 +399,9 @@ pub(crate) fn response_for_with_interactive(
             };
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
+                if let Some(pane_id) = payload.pane_id.as_deref() {
+                    session.focus_pane(pane_id)?;
+                }
                 session.split_pane(payload.pane, direction)
             })
         }
