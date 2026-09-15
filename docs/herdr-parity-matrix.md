@@ -6,7 +6,7 @@ Latest CLI parity: `spindle pane move <id>` preserves the live pane process
 while moving it to a new tab or an existing tab in the active workspace. The
 existing-tab form supports an optional target pane and right/down split.
 Plugin lifecycle parity now also covers the Herdr `tab.closed` and
-`workspace.focused`, and `workspace.created` event hooks;
+`workspace.focused`, `workspace.created`, and `workspace.renamed` event hooks;
 the lifecycle row below records the remaining workspace and layout gaps.
 Statuses describe the current Spindle checkout, not the target. “Partial” means
 some server/model support exists but the user-facing behavior is missing or

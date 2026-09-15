@@ -867,7 +867,11 @@ impl Session {
 
     pub fn rename_workspace(&mut self, workspace_id: &str, name: String) -> Result<Value, String> {
         let workspace = self.workspace_mut(workspace_id)?;
-        workspace.name = name;
+        workspace.name = name.clone();
+        self.record_event(
+            "workspace_renamed",
+            serde_json::json!({ "workspace_id": workspace_id, "label": name }),
+        );
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
@@ -2593,12 +2597,18 @@ mod tests {
             .clone();
         session.switch_space("space-1").unwrap();
 
+        let sequence = session.snapshot.event_sequence;
         session
             .rename_workspace(&workspace_id, "Review".into())
             .unwrap();
 
         assert_eq!(session.snapshot.active_space_id, "space-1");
         assert_eq!(session.snapshot.spaces[1].workspaces[0].name, "Review");
+        assert!(session.events_since(sequence).iter().any(|event| {
+            event.event == "workspace_renamed"
+                && event.payload["workspace_id"] == workspace_id
+                && event.payload["label"] == "Review"
+        }));
     }
 
     #[test]
