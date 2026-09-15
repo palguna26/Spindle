@@ -6,8 +6,14 @@ use std::time::{Duration, Instant};
 pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
         [command] if command == "list" => pane_list(project),
-        [command] if command == "current" => pane_current(project),
+        [command] if command == "current" => pane_current(project, None),
+        [command, id] if command == "current" => pane_current(project, Some(id)),
         [command, id] if command == "get" => pane_get(project, id),
+        [command, options @ ..]
+            if command == "focus" && options.first().is_some_and(|arg| arg.starts_with('-')) =>
+        {
+            pane_focus(project, options)
+        }
         [command, id] if command == "focus" => pane_mutation(project, "focus_pane", id),
         [command, id, label @ ..] if command == "rename" && !label.is_empty() => {
             pane_rename(project, id, &label.join(" "))
@@ -156,12 +162,31 @@ fn format_pane_list(panes: &[PaneView], pane_ids: &[String], focused_id: Option<
     output
 }
 
-fn pane_current(project: &Project) -> io::Result<()> {
+fn pane_current(project: &Project, requested_id: Option<&str>) -> io::Result<()> {
     let snapshot = get_snapshot(project)?;
-    let Some(id) = snapshot.focused_pane_id.as_deref() else {
+    let Some(id) = requested_id.or(snapshot.focused_pane_id.as_deref()) else {
         return Err(io::Error::new(io::ErrorKind::NotFound, "no focused pane"));
     };
     pane_get(project, id)
+}
+
+fn pane_focus(project: &Project, args: &[String]) -> io::Result<()> {
+    let direction = parse_focus_direction(args).map_err(io::Error::other)?;
+    pane_mutation_with_payload(
+        project,
+        "focus_direction",
+        serde_json::json!({ "direction": direction }),
+    )
+}
+
+fn parse_focus_direction(args: &[String]) -> Result<&str, String> {
+    if args.len() != 2 || args[0] != "--direction" {
+        return Err("usage: spindle pane focus --direction left|right|up|down".into());
+    }
+    if !matches!(args[1].as_str(), "left" | "right" | "up" | "down") {
+        return Err(format!("invalid focus direction: {}", args[1]));
+    }
+    Ok(args[1].as_str())
 }
 
 fn pane_get(project: &Project, id: &str) -> io::Result<()> {
@@ -433,9 +458,10 @@ fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
 fn print_help() {
     println!("Usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|wait-output|split|resize>");
     println!("  list             list panes in the active tab");
-    println!("  current          show the focused pane");
+    println!("  current [<id>]   show the focused or requested pane");
     println!("  get <id>         show a pane as JSON");
     println!("  focus <id>       focus a pane");
+    println!("  focus --direction left|right|up|down  focus a neighboring pane");
     println!("  rename <id> ...  rename a pane");
     println!("  stop <id>        stop a pane process");
     println!("  restart <id>     restart a pane process");
@@ -453,7 +479,7 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::format_pane_list;
+    use super::{format_pane_list, parse_focus_direction};
     use crate::server::session::Session;
     use std::time::Duration;
 
@@ -479,5 +505,13 @@ mod tests {
         assert_eq!(options.needle, "ready");
         assert_eq!(options.timeout, Duration::from_millis(250));
         assert_eq!(options.lines, Some(3));
+    }
+
+    #[test]
+    fn focus_direction_matches_herdr_cli_shape() {
+        let args = vec!["--direction".into(), "right".into()];
+        assert_eq!(parse_focus_direction(&args), Ok("right"));
+        let invalid = vec!["--direction".into(), "diagonal".into()];
+        assert!(parse_focus_direction(&invalid).is_err());
     }
 }
