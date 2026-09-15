@@ -20,7 +20,8 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         [command, options @ ..] if command == "input" => pane_input(project, options),
         [command, id] if command == "focus" => pane_mutation(project, "focus_pane", id),
         [command, id, label @ ..] if command == "rename" && !label.is_empty() => {
-            pane_rename(project, id, &label.join(" "))
+            let label = rename_label(label);
+            pane_rename(project, id, &label)
         }
         [command, id] if command == "stop" => pane_mutation(project, "stop_pane", id),
         [command, id] if command == "restart" => pane_mutation(project, "restart_pane", id),
@@ -1117,6 +1118,14 @@ fn pane_rename(project: &Project, id: &str, label: &str) -> io::Result<()> {
     )
 }
 
+fn rename_label(args: &[String]) -> String {
+    if args.len() == 1 && args[0] == "--clear" {
+        String::new()
+    } else {
+        args.join(" ")
+    }
+}
+
 fn pane_mutation(project: &Project, operation: &str, id: &str) -> io::Result<()> {
     pane_mutation_with_payload(project, operation, serde_json::json!({ "pane_id": id }))
 }
@@ -1390,7 +1399,7 @@ fn print_help() {
     println!(
         "  input [<id>|--pane ID|--current] --right-click herdr|pane  set right-click routing"
     );
-    println!("  rename <id> ...  rename a pane");
+    println!("  rename <id> <label>|--clear  rename or clear a pane label");
     println!("  stop <id>        stop a pane process");
     println!("  restart <id>     restart a pane process");
     println!("  zoom [<id>] [--toggle|--on|--off]  control pane zoom");
@@ -1416,7 +1425,7 @@ mod tests {
         all_pane_ids, direction_name, format_pane_list, parse_current_pane, parse_focus_options,
         parse_layout_direction, parse_list_workspace, parse_move_options, parse_neighbor_options,
         parse_optional_pane_selector, parse_pane_input_options, parse_read_options,
-        parse_read_target, parse_swap_options, parse_zoom_options, read_line_limit,
+        parse_read_target, parse_swap_options, parse_zoom_options, read_line_limit, rename_label,
         split_direction, strip_ansi, MoveOptions, ReadFormat, ReadSource, SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
@@ -1505,6 +1514,12 @@ mod tests {
         assert_eq!(split_direction("right"), Some("horizontal"));
         assert_eq!(split_direction("down"), Some("vertical"));
         assert_eq!(split_direction("sideways"), None);
+    }
+
+    #[test]
+    fn rename_clear_matches_herdr_cli() {
+        assert_eq!(rename_label(&["--clear".into()]), "");
+        assert_eq!(rename_label(&["Build".into(), "logs".into()]), "Build logs");
     }
 
     #[test]

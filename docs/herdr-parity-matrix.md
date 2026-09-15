@@ -24,6 +24,7 @@ passthrough for scripts, matching Herdr's pane input API.
 Pane split also accepts Herdr's `--pane`/`--current`, `right|down`, `--cwd`,
 and repeated `--env` options.
 Its ratio, focus, and right-click controls are also supported.
+Pane rename also supports Herdr's `--clear` form.
 
 Latest CLI parity: `spindle pane move <id>` preserves the live pane process
 while moving it to a new tab or an existing tab in the active workspace. The
