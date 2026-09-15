@@ -271,6 +271,8 @@ approved design changes it.
   start/attach recovery hint for stale metadata, matching Herdr's explicit
   running/not-running server status. It also prints the client version, binary
   path, and protocol so users can identify which build they launched.
+  Windows PTY children now use kill-on-close Job Objects so child tools do not
+  outlive their pane; assignment safely falls back when Windows denies it.
 - [x] Make `spindle stop` wait for endpoint cleanup and retry Windows named-pipe
   wakeups through the listener handoff race, following Herdr's bounded server
   stop wait. The Windows and installer smoke scripts pass after stale-endpoint
