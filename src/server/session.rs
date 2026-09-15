@@ -1699,7 +1699,12 @@ impl Session {
                 self.snapshot.spaces[space_index].active_workspace_id = None;
             }
         }
-        self.sync_focus_to_active_tab()
+        self.sync_focus_to_active_tab()?;
+        self.record_event(
+            "workspace_closed",
+            serde_json::json!({ "workspace_id": workspace_id, "space_id": space_id }),
+        );
+        Ok(())
     }
 
     fn active_workspace_mut(&mut self) -> Result<&mut WorkspaceView, String> {
@@ -2376,10 +2381,16 @@ mod tests {
     fn closing_last_tab_leaves_an_empty_recoverable_space() {
         let mut session = Session::default();
         assert!(session.delete_space("space-1").is_err());
+        let sequence = session.snapshot.event_sequence;
         session.close_tab("tab-1").unwrap();
         assert!(session.snapshot().spaces[0].workspaces.is_empty());
         assert_eq!(session.snapshot().spaces[0].active_workspace_id, None);
         assert_eq!(session.snapshot().focused_pane_id, None);
+        assert!(session.events_since(sequence).iter().any(|event| {
+            event.event == "workspace_closed"
+                && event.payload["workspace_id"] == "workspace-1"
+                && event.payload["space_id"] == "space-1"
+        }));
 
         let restored = session.create_workspace("Restored".into()).unwrap();
         assert_eq!(
