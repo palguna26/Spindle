@@ -118,9 +118,15 @@ pub fn run() -> io::Result<()> {
 }
 
 fn start_server(project: &Project) -> io::Result<()> {
+    start_server_with_output(project, true)
+}
+
+fn start_server_with_output(project: &Project, show_status: bool) -> io::Result<()> {
     project.ensure_state_dir()?;
     if ping_server(project).is_ok() {
-        println!("server already running for {}", project.describe());
+        if show_status {
+            println!("server already running for {}", project.describe());
+        }
         return Ok(());
     }
     let executable = env::current_exe()?;
@@ -132,7 +138,9 @@ fn start_server(project: &Project) -> io::Result<()> {
         .spawn()?;
     for _ in 0..20 {
         if ping_server(project).is_ok() {
-            println!("server started for {}", project.describe());
+            if show_status {
+                println!("server started for {}", project.describe());
+            }
             return Ok(());
         }
         std::thread::sleep(Duration::from_millis(25));
@@ -160,7 +168,7 @@ fn wait_for_server_stop(project: &Project) -> io::Result<()> {
 fn attach_server(project: &Project) -> io::Result<()> {
     project.ensure_state_dir()?;
     if ping_server(project).is_err() {
-        start_server(project)?;
+        start_server_with_output(project, false)?;
     }
     let address = fs::read_to_string(project.endpoint_path())?;
     crate::client::app::run(address.trim(), &project.state_dir)
