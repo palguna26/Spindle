@@ -603,6 +603,16 @@ pub fn render_notification(frame: &mut Frame<'_>, message: &str) {
     );
 }
 
+pub(crate) fn render_resize_mode(frame: &mut Frame<'_>) {
+    let area = frame.area();
+    let bar = Rect::new(0, area.height.saturating_sub(1), area.width, 1);
+    frame.render_widget(
+        Paragraph::new(" RESIZE  h/j/k/l or arrows · Enter/Esc exit")
+            .style(Style::default().fg(Color::Black).bg(Color::Yellow)),
+        bar,
+    );
+}
+
 pub fn render_prompt(frame: &mut Frame<'_>, title: &str, input: &str) {
     let area = centered_rect(60, 25, frame.area());
     frame.render_widget(

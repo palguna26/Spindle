@@ -313,6 +313,7 @@ fn event_loop(
             && !help_open
             && rename_prompt.is_none()
             && context_menu.is_none()
+            && !resize_mode
             && startup_error.is_none();
         terminal
             .draw(|frame| {
@@ -329,6 +330,9 @@ fn event_loop(
                         .as_ref()
                         .map(|(space, workspace)| (space.as_str(), workspace.as_str())),
                 );
+                if resize_mode {
+                    renderer::render_resize_mode(frame);
+                }
                 if let Some(selection) = &mouse_state.selection {
                     renderer::render_selection_with_sidebar(
                         frame,
