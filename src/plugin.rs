@@ -20,6 +20,8 @@ pub(crate) struct Manifest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Action {
     pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) title: String,
     pub(crate) command: Vec<String>,
 }
 
