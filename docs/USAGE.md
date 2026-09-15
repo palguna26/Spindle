@@ -159,6 +159,10 @@ The matching action command runs without a shell, from the plugin directory,
 with plugin id/root and clicked-URL environment variables set. Use
 `spindle plugin list`, `enable`, `disable`, or `unlink` to manage it. `unlink`
 only unregisters the plugin; it does not remove the plugin files.
+Manifest actions can be inspected or started with `spindle plugin action list`
+and `spindle plugin action invoke <action_id> [--plugin ID]`. Qualified action
+IDs such as `plugin.id.action` avoid ambiguity. Actions run without a shell
+from the plugin directory.
 If no handler matches, or a plugin cannot start, Spindle opens the URL normally.
 
 ## State and recovery
