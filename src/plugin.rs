@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Manifest {
@@ -53,6 +54,15 @@ pub(crate) struct Registration {
     pub(crate) managed: bool,
     #[serde(default)]
     pub(crate) source: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct LaunchLog {
+    pub(crate) timestamp: u64,
+    pub(crate) plugin_id: String,
+    pub(crate) kind: String,
+    pub(crate) command_id: String,
+    pub(crate) pid: u32,
 }
 
 fn default_enabled() -> bool {
@@ -117,6 +127,45 @@ pub(crate) fn write_registry(registrations: &[Registration]) -> io::Result<()> {
     std::fs::create_dir_all(&root)?;
     let content = serde_json::to_vec_pretty(registrations).map_err(io::Error::other)?;
     std::fs::write(root.join("registry.json"), content)
+}
+
+pub(crate) fn record_launch(
+    plugin_id: &str,
+    kind: &str,
+    command_id: &str,
+    pid: u32,
+) -> io::Result<()> {
+    let root = root()?;
+    std::fs::create_dir_all(&root)?;
+    let path = root.join("launch-log.json");
+    let mut entries = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|content| serde_json::from_str::<Vec<LaunchLog>>(&content).ok())
+        .unwrap_or_default();
+    entries.push(LaunchLog {
+        timestamp: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        plugin_id: plugin_id.into(),
+        kind: kind.into(),
+        command_id: command_id.into(),
+        pid,
+    });
+    if entries.len() > 200 {
+        entries.drain(..entries.len() - 200);
+    }
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&entries).map_err(io::Error::other)?,
+    )
+}
+
+pub(crate) fn launch_log() -> io::Result<Vec<LaunchLog>> {
+    let Ok(content) = std::fs::read_to_string(root()?.join("launch-log.json")) else {
+        return Ok(Vec::new());
+    };
+    serde_json::from_str(&content).map_err(io::Error::other)
 }
 
 pub(crate) fn manifest_path(path: &Path) -> PathBuf {

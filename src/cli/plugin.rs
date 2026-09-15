@@ -12,6 +12,7 @@ pub(crate) fn run(args: &[String]) -> io::Result<()> {
         Some("action") => action(&args[1..]),
         Some("config-dir") => config_dir(&args[1..]),
         Some("pane") => pane(&args[1..]),
+        Some("log") | Some("logs") => log(&args[1..]),
         Some("enable") => set_enabled(&args[1..], true),
         Some("disable") => set_enabled(&args[1..], false),
         Some("help") | Some("--help") | Some("-h") | None => {
@@ -669,7 +670,53 @@ fn action_invoke(args: &[String]) -> io::Result<()> {
         .env("HERDR_PLUGIN_CONTEXT_JSON", &context)
         .env("HERDR_PLUGIN_ACTION_ID", &action.id)
         .spawn()?;
+    let _ = crate::plugin::record_launch(&manifest_id, "action", &action.id, child.id());
     println!("started {}.{} (pid {})", manifest_id, action.id, child.id());
+    Ok(())
+}
+
+fn log(args: &[String]) -> io::Result<()> {
+    if args.first().map(String::as_str) != Some("list") {
+        return usage("usage: spindle plugin log list [--plugin ID] [--limit N]");
+    }
+    let mut plugin_id = None;
+    let mut limit = 50usize;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--plugin" => {
+                plugin_id = args.get(index + 1).cloned();
+                if plugin_id.is_none() {
+                    return usage("missing value for --plugin");
+                }
+                index += 2;
+            }
+            "--limit" => {
+                let Some(value) = args.get(index + 1) else {
+                    return usage("missing value for --limit");
+                };
+                limit = value.parse().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "invalid --limit value")
+                })?;
+                index += 2;
+            }
+            other => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unknown option: {other}"),
+                ))
+            }
+        }
+    }
+    let mut entries = crate::plugin::launch_log()?;
+    entries.retain(|entry| plugin_id.as_ref().is_none_or(|id| id == &entry.plugin_id));
+    let start = entries.len().saturating_sub(limit);
+    for entry in &entries[start..] {
+        println!(
+            "{}\t{}\t{}\t{}\t{}",
+            entry.timestamp, entry.plugin_id, entry.kind, entry.command_id, entry.pid
+        );
+    }
     Ok(())
 }
 
@@ -703,6 +750,7 @@ fn help() {
     println!("  config-dir <id>           print and create the plugin config directory");
     println!("  pane open --plugin ID --entrypoint ID  open a manifest pane");
     println!("  pane focus|close <pane_id>              manage a plugin pane");
+    println!("  log list [--plugin ID] [--limit N]       show plugin launches");
     println!("  action list [--plugin ID] list manifest actions");
     println!("  action invoke <id>        start a manifest action without a shell");
 }

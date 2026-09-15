@@ -26,7 +26,7 @@ pub(crate) fn launch_for_url(url: &str) -> io::Result<bool> {
                 "url": url,
             })
             .to_string();
-            std::process::Command::new(command)
+            let child = std::process::Command::new(command)
                 .args(action.command.iter().skip(1))
                 .current_dir(&registration.path)
                 .env("SPINDLE_PLUGIN_ID", &manifest.id)
@@ -44,6 +44,7 @@ pub(crate) fn launch_for_url(url: &str) -> io::Result<bool> {
                 .env("HERDR_PLUGIN_CLICKED_URL", url)
                 .env("HERDR_PLUGIN_LINK_HANDLER_ID", &handler.id)
                 .spawn()?;
+            let _ = crate::plugin::record_launch(&manifest.id, "link", &handler.id, child.id());
             return Ok(true);
         }
     }
