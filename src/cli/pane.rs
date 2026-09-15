@@ -45,9 +45,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
                 .collect::<io::Result<Vec<_>>>()?
                 .concat(),
         ),
-        [command, options @ ..]
-            if command == "split" && options.first().is_some_and(|arg| arg.starts_with('-')) =>
-        {
+        [command, options @ ..] if command == "split" && is_split_option_form(options) => {
             pane_split_options(project, options)
         }
         [command, direction] if command == "split" => pane_split(project, direction, None),
@@ -1238,6 +1236,10 @@ fn pane_split_options(project: &Project, args: &[String]) -> io::Result<()> {
     let mut focus = false;
     let mut right_click_passthrough = false;
     let mut index = 0;
+    if args.first().is_some_and(|value| !value.starts_with('-')) {
+        pane_id = args.first().cloned();
+        index = 1;
+    }
     while index < args.len() {
         match args[index].as_str() {
             "--pane" => {
@@ -1363,6 +1365,11 @@ fn split_direction(value: &str) -> Option<&'static str> {
     }
 }
 
+fn is_split_option_form(args: &[String]) -> bool {
+    args.first().is_some_and(|arg| arg.starts_with('-'))
+        || args.iter().any(|arg| arg == "--direction")
+}
+
 fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
     let delta = raw_delta.parse::<f32>().map_err(|_| {
         io::Error::new(
@@ -1422,11 +1429,12 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        all_pane_ids, direction_name, format_pane_list, parse_current_pane, parse_focus_options,
-        parse_layout_direction, parse_list_workspace, parse_move_options, parse_neighbor_options,
-        parse_optional_pane_selector, parse_pane_input_options, parse_read_options,
-        parse_read_target, parse_swap_options, parse_zoom_options, read_line_limit, rename_label,
-        split_direction, strip_ansi, MoveOptions, ReadFormat, ReadSource, SwapOptions, ZoomMode,
+        all_pane_ids, direction_name, format_pane_list, is_split_option_form, parse_current_pane,
+        parse_focus_options, parse_layout_direction, parse_list_workspace, parse_move_options,
+        parse_neighbor_options, parse_optional_pane_selector, parse_pane_input_options,
+        parse_read_options, parse_read_target, parse_swap_options, parse_zoom_options,
+        read_line_limit, rename_label, split_direction, strip_ansi, MoveOptions, ReadFormat,
+        ReadSource, SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -1520,6 +1528,16 @@ mod tests {
     fn rename_clear_matches_herdr_cli() {
         assert_eq!(rename_label(&["--clear".into()]), "");
         assert_eq!(rename_label(&["Build".into(), "logs".into()]), "Build logs");
+    }
+
+    #[test]
+    fn split_positional_pane_uses_herdr_option_form() {
+        assert!(is_split_option_form(&[
+            "pane-1".into(),
+            "--direction".into(),
+            "right".into(),
+        ]));
+        assert!(!is_split_option_form(&["right".into()]));
     }
 
     #[test]
