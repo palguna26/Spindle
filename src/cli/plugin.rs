@@ -68,15 +68,33 @@ fn install(args: &[String]) -> io::Result<()> {
     let repo = parts[1];
     let subdir = parts[2..].join("/");
     let checkout = crate::plugin::managed_path(source)?;
-    if checkout.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            format!(
-                "managed plugin checkout already exists: {}",
-                checkout.display()
-            ),
-        ));
-    }
+    let mut registrations = crate::plugin::read_registry()?;
+    let replacing = checkout.exists();
+    let backup = if replacing {
+        let allowed = registrations.iter().any(|registration| {
+            registration.managed && registration.source.as_deref() == Some(source)
+        });
+        if !allowed {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!(
+                    "plugin checkout exists but is not a managed install: {}",
+                    checkout.display()
+                ),
+            ));
+        }
+        let backup = checkout.with_extension(format!("backup-{}", std::process::id()));
+        if backup.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "plugin install backup already exists",
+            ));
+        }
+        std::fs::rename(&checkout, &backup)?;
+        Some(backup)
+    } else {
+        None
+    };
     let parent = checkout
         .parent()
         .ok_or_else(|| io::Error::other("invalid plugin checkout path"))?;
@@ -96,6 +114,9 @@ fn install(args: &[String]) -> io::Result<()> {
     let status = command.args([&url, &temporary_string]).status()?;
     if !status.success() {
         let _ = std::fs::remove_dir_all(&temporary);
+        if let Some(backup) = &backup {
+            let _ = std::fs::rename(backup, &checkout);
+        }
         return Err(io::Error::other("git clone failed"));
     }
     let manifest_root = if subdir.is_empty() {
@@ -107,6 +128,9 @@ fn install(args: &[String]) -> io::Result<()> {
         Ok(manifest) => manifest,
         Err(error) => {
             let _ = std::fs::remove_dir_all(&temporary);
+            if let Some(backup) = &backup {
+                let _ = std::fs::rename(backup, &checkout);
+            }
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("invalid plugin manifest: {error}"),
@@ -115,18 +139,25 @@ fn install(args: &[String]) -> io::Result<()> {
     };
     if checkout.exists() {
         let _ = std::fs::remove_dir_all(&temporary);
+        if let Some(backup) = &backup {
+            let _ = std::fs::rename(backup, &checkout);
+        }
         return Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
             "plugin checkout appeared during install",
         ));
     }
-    std::fs::rename(&temporary, &checkout)?;
+    if let Err(error) = std::fs::rename(&temporary, &checkout) {
+        if let Some(backup) = &backup {
+            let _ = std::fs::rename(backup, &checkout);
+        }
+        return Err(error);
+    }
     let path = if subdir.is_empty() {
         checkout.clone()
     } else {
         checkout.join(subdir.replace('/', std::path::MAIN_SEPARATOR_STR))
     };
-    let mut registrations = crate::plugin::read_registry()?;
     registrations.retain(|registration| registration.id != manifest.id);
     registrations.push(crate::plugin::Registration {
         id: manifest.id.clone(),
@@ -137,7 +168,13 @@ fn install(args: &[String]) -> io::Result<()> {
     });
     if let Err(error) = crate::plugin::write_registry(&registrations) {
         let _ = std::fs::remove_dir_all(&checkout);
+        if let Some(backup) = &backup {
+            let _ = std::fs::rename(backup, &checkout);
+        }
         return Err(error);
+    }
+    if let Some(backup) = backup {
+        std::fs::remove_dir_all(backup)?;
     }
     println!("installed plugin {}", manifest.id);
     Ok(())
