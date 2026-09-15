@@ -254,7 +254,7 @@ fn print_help() {
     println!("  workspace get <id>  show a workspace by ID");
     println!("  workspace focus <id>  focus a workspace by ID");
     println!("  workspace rename <id> <label>  rename a workspace");
-    println!("  worktree list [--workspace ID | --cwd PATH]  list Git worktrees");
+    println!("  worktree list/create/open/remove  manage Git worktree workspaces");
     println!("  tab list        list tabs in the active workspace");
     println!("  tab create      create a tab in the active workspace");
     println!("  tab get/focus/rename/close  manage tabs by ID");

@@ -60,7 +60,15 @@ const BASH: &str = r#"_spindle() {
       COMPREPLY=( $(compgen -W "list create get focus rename close" -- "$cur") )
     fi
   elif [[ "$COMP_WORDS[1]" == "worktree" ]]; then
-    COMPREPLY=( $(compgen -W "list help --workspace --cwd" -- "$cur") )
+    if [[ "$COMP_WORDS[2]" == "list" ]]; then
+      COMPREPLY=( $(compgen -W "--workspace --cwd" -- "$cur") )
+    elif [[ "$COMP_WORDS[2]" == "create" ]]; then
+      COMPREPLY=( $(compgen -W "--workspace --cwd --branch --base --path --label --focus --no-focus" -- "$cur") )
+    elif [[ "$COMP_WORDS[2]" == "open" ]]; then
+      COMPREPLY=( $(compgen -W "--workspace --cwd --path --branch --label --focus --no-focus" -- "$cur") )
+    else
+      COMPREPLY=( $(compgen -W "list create open remove help" -- "$cur") )
+    fi
   elif [[ "$COMP_WORDS[1]" == "api" ]]; then
     COMPREPLY=( $(compgen -W "schema help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "agent" ]]; then
@@ -75,8 +83,11 @@ complete -F _spindle spindle
 const FISH: &str = r#"complete -c spindle -f -n '__fish_use_subcommand' -a 'start attach stop list doctor config workspace worktree tab pane agent completion api help'
 complete -c spindle -f -n '__fish_seen_subcommand_from completion' -a 'bash elvish fish powershell zsh'
 complete -c spindle -f -n '__fish_seen_subcommand_from workspace' -a 'list create get focus rename close'
-complete -c spindle -f -n '__fish_seen_subcommand_from worktree' -a 'list help'
+complete -c spindle -f -n '__fish_seen_subcommand_from worktree' -a 'list create open remove help'
 complete -c spindle -f -n '__fish_seen_subcommand_from worktree; and __fish_seen_subcommand_from list' -l workspace -r -l cwd -r
+complete -c spindle -f -n '__fish_seen_subcommand_from worktree; and __fish_seen_subcommand_from create' -l workspace -r -l cwd -r -l branch -r -l base -r -l path -r -l label -r -l focus -l no-focus
+complete -c spindle -f -n '__fish_seen_subcommand_from worktree; and __fish_seen_subcommand_from open' -l workspace -r -l cwd -r -l path -r -l branch -r -l label -r -l focus -l no-focus
+complete -c spindle -f -n '__fish_seen_subcommand_from worktree; and __fish_seen_subcommand_from remove' -l workspace -r -l force
 complete -c spindle -f -n '__fish_seen_subcommand_from tab' -a 'list create get focus rename close'
 complete -c spindle -f -n '__fish_seen_subcommand_from workspace; and __fish_seen_subcommand_from create' -l cwd -r
 complete -c spindle -f -n '__fish_seen_subcommand_from workspace; and __fish_seen_subcommand_from create' -l label -r
@@ -99,7 +110,7 @@ _spindle() {
   case $words[2] in
     completion) _arguments '1:shell:(bash elvish fish powershell zsh)' ;;
     workspace) _arguments '1:command:(list create get focus rename close)' '2:options:(--cwd --label --env --focus --no-focus)' ;;
-    worktree) _arguments '1:command:(list help)' '2:options:(--workspace --cwd)' ;;
+    worktree) _arguments '1:command:(list create open remove help)' '2:options:(--workspace --cwd --branch --base --path --label --focus --no-focus --force)' ;;
     tab) _arguments '1:command:(list create get focus rename close)' '2:options:(--label --workspace --cwd --env --focus --no-focus)' ;;
     pane) _arguments '1:command:(list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize)' ;;
     api) _arguments '1:command:(schema help)' ;;
@@ -116,7 +127,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq 'completion') { 'bash elvish fish powershell zsh' }
     elseif ($words[1] -eq 'workspace' -and $words[2] -eq 'create') { '--cwd --label --env --focus --no-focus' }
     elseif ($words[1] -eq 'workspace') { 'list create get focus rename close' }
-    elseif ($words[1] -eq 'worktree') { 'list help --workspace --cwd' }
+    elseif ($words[1] -eq 'worktree') { 'list create open remove help --workspace --cwd --branch --base --path --label --focus --no-focus --force' }
     elseif ($words[1] -eq 'tab' -and $words[2] -eq 'list') { '--workspace' }
     elseif ($words[1] -eq 'tab' -and $words[2] -eq 'create') { '--label --workspace --cwd --env --focus --no-focus' }
     elseif ($words[1] -eq 'tab') { 'list create get focus rename close' }
@@ -129,8 +140,11 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
 const ELVISH: &str = r#"# Add to ~/.elvish/rc.elv:
 edit:completion:argadd spindle (start attach stop list doctor config workspace worktree tab pane agent completion api help)
 edit:completion:argadd 'spindle workspace' (list create get focus rename close)
-edit:completion:argadd 'spindle worktree' (list help)
+edit:completion:argadd 'spindle worktree' (list create open remove help)
 edit:completion:argadd 'spindle worktree list' (--workspace --cwd)
+edit:completion:argadd 'spindle worktree create' (--workspace --cwd --branch --base --path --label --focus --no-focus)
+edit:completion:argadd 'spindle worktree open' (--workspace --cwd --path --branch --label --focus --no-focus)
+edit:completion:argadd 'spindle worktree remove' (--workspace --force)
 edit:completion:argadd 'spindle workspace create' (--cwd --label --env --focus --no-focus)
 edit:completion:argadd 'spindle tab list' (--workspace)
 edit:completion:argadd 'spindle tab create' (--label --workspace --cwd --env --focus --no-focus)
