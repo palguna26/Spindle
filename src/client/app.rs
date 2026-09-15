@@ -962,20 +962,29 @@ fn event_loop(
                 );
             }
             Action::SwapLeft | Action::SwapRight | Action::SwapUp | Action::SwapDown => {
-                record_action_error(
-                    &mut action_error,
-                    "swap panes",
-                    request_action(
-                        client,
-                        "swap-direction",
-                        "swap_panes",
-                        json!({
-                            "source_pane_id": snapshot.focused_pane_id,
-                            "direction": swap_direction_name(pressed),
-                        }),
-                        "swap panes",
-                    ),
-                );
+                let result = snapshot
+                    .focused_pane_id
+                    .as_deref()
+                    .and_then(|source| {
+                        directional_pane_id(&snapshot, source, swap_direction_name(pressed))
+                            .map(|target| (source.to_owned(), target.to_owned()))
+                    })
+                    .map_or_else(
+                        || Err(ClientError::Server("no pane in that direction".into())),
+                        |(source, target)| {
+                            request_action(
+                                client,
+                                "swap-direction",
+                                "swap_panes",
+                                json!({
+                                    "source_pane_id": source,
+                                    "target_pane_id": target,
+                                }),
+                                "swap panes",
+                            )
+                        },
+                    );
+                record_action_error(&mut action_error, "swap panes", result);
             }
             Action::SplitHorizontal | Action::SplitVertical => {
                 let direction = if matches!(pressed, Action::SplitHorizontal) {
@@ -2360,6 +2369,29 @@ fn swap_direction_name(action: Action) -> &'static str {
     }
 }
 
+fn directional_pane_id<'a>(
+    snapshot: &'a SessionSnapshot,
+    source_pane_id: &str,
+    direction: &str,
+) -> Option<&'a str> {
+    let target = match direction {
+        "left" => crate::model::layout::FocusDirection::Left,
+        "right" => crate::model::layout::FocusDirection::Right,
+        "up" => crate::model::layout::FocusDirection::Up,
+        "down" => crate::model::layout::FocusDirection::Down,
+        _ => return None,
+    };
+    active_workspace(snapshot)
+        .and_then(|workspace| {
+            workspace
+                .tabs
+                .iter()
+                .find(|tab| tab.tab_id == workspace.active_tab_id)
+        })
+        .and_then(|tab| tab.layout.as_ref())
+        .and_then(|layout| layout.directional_pane(source_pane_id, target))
+}
+
 fn execute_action(
     pressed: Action,
     client: &ControlClient,
@@ -2519,13 +2551,19 @@ fn execute_action(
             Ok(false)
         }
         Action::SwapLeft | Action::SwapRight | Action::SwapUp | Action::SwapDown => {
+            let source = snapshot
+                .focused_pane_id
+                .as_deref()
+                .ok_or_else(|| ClientError::Server("no focused pane".into()))?;
+            let target = directional_pane_id(snapshot, source, swap_direction_name(pressed))
+                .ok_or_else(|| ClientError::Server("no pane in that direction".into()))?;
             request_action(
                 client,
                 "palette-swap-direction",
                 "swap_panes",
                 json!({
-                    "source_pane_id": snapshot.focused_pane_id,
-                    "direction": swap_direction_name(pressed),
+                    "source_pane_id": source,
+                    "target_pane_id": target,
                 }),
                 "swap panes",
             )?;
