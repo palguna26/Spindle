@@ -196,6 +196,7 @@ fn event_loop(
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
     let mut action_error: Option<(String, Instant)> = None;
+    let mut notification: Option<(String, Instant)> = None;
     loop {
         if action_error
             .as_ref()
@@ -203,9 +204,21 @@ fn event_loop(
         {
             action_error = None;
         }
+        if notification
+            .as_ref()
+            .is_some_and(|(_, expires_at)| Instant::now() >= *expires_at)
+        {
+            notification = None;
+        }
         let terminal_size = size().map_err(ClientError::Io)?;
         let mut connected = match current_snapshot(client) {
             Ok(current) => {
+                if let Some(event) = crate::client::notifications::observe(&snapshot, &current) {
+                    notification = Some((
+                        crate::client::notifications::message(&event),
+                        Instant::now() + Duration::from_secs(5),
+                    ));
+                }
                 snapshot = current;
                 true
             }
@@ -351,6 +364,9 @@ fn event_loop(
                     renderer::render_startup_error(frame, error);
                 } else if let Some((error, _)) = &action_error {
                     renderer::render_action_error(frame, error);
+                }
+                if let Some((message, _)) = &notification {
+                    renderer::render_notification(frame, message);
                 }
             })
             .map_err(ClientError::Io)?;

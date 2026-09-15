@@ -540,6 +540,31 @@ pub fn render_action_error(frame: &mut Frame<'_>, error: &str) {
     );
 }
 
+pub fn render_notification(frame: &mut Frame<'_>, message: &str) {
+    let frame_area = frame.area();
+    let height = 3;
+    let width = frame_area.width.min(72);
+    if frame_area.height < height || width < 5 {
+        return;
+    }
+    let area = Rect::new(
+        frame_area.x + frame_area.width.saturating_sub(width) / 2,
+        frame_area.bottom().saturating_sub(height + 1),
+        width,
+        height,
+    );
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(message).wrap(Wrap { trim: true }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Agent notification")
+                .border_style(Style::default().fg(Color::Yellow)),
+        ),
+        area,
+    );
+}
+
 pub fn render_prompt(frame: &mut Frame<'_>, title: &str, input: &str) {
     let area = centered_rect(60, 25, frame.area());
     frame.render_widget(

@@ -6,6 +6,7 @@ mod copy_mode;
 pub mod input;
 mod links;
 mod navigator;
+mod notifications;
 pub mod palette;
 mod preferences;
 pub mod prompt;
