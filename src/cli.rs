@@ -11,6 +11,7 @@ use serde_json::Value;
 
 const APP_DIR: &str = "Spindle";
 
+mod api;
 mod completion;
 mod pane;
 mod tab;
@@ -41,6 +42,9 @@ pub fn run() -> io::Result<()> {
         }
         "completion" => {
             return completion::run(&env::args().skip(2).collect::<Vec<_>>());
+        }
+        "api" => {
+            return api::run(&env::args().skip(2).collect::<Vec<_>>());
         }
         _ => {}
     }
@@ -206,6 +210,7 @@ fn print_help() {
     println!(
         "  completion <shell>  generate shell completions (bash, elvish, fish, powershell, zsh)"
     );
+    println!("  api schema [--json|--output PATH]  inspect the control API schema");
     println!("  workspace list  list workspaces in the current project session");
     println!("  workspace get <id>  show a workspace by ID");
     println!("  workspace focus <id>  focus a workspace by ID");

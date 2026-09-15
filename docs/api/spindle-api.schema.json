@@ -1,0 +1,18 @@
+{
+  "name": "spindle-control-api",
+  "protocol": 1,
+  "schema_version": 1,
+  "transport": "newline-delimited JSON over the local control endpoint",
+  "request": { "version": "u16", "request_id": "string", "op": "string", "payload": "object" },
+  "response": { "version": "u16", "request_id": "string", "ok": "boolean", "payload": "object|null", "error": "{code:string,message:string}|null" },
+  "operations": {
+    "ping": {}, "attach": {}, "detach": {}, "get_snapshot": {}, "stream_events": {}, "subscribe_events": {},
+    "create_space": {}, "switch_space": {}, "rename_space": {}, "delete_space": {},
+    "create_workspace": {}, "switch_workspace": {}, "focus_workspace": {}, "rename_workspace": {}, "delete_workspace": {},
+    "create_tab": {}, "switch_tab": {}, "rename_tab": {}, "close_tab": {},
+    "create_pane": {}, "ensure_active_pane": {}, "split_pane": {}, "send_input": {}, "resize_pty": {},
+    "stop_pane": {}, "restart_pane": {}, "focus_pane": {}, "swap_panes": {}, "rename_pane": {},
+    "toggle_pane_zoom": {}, "toggle_right_click_passthrough": {}, "focus_next": {}, "focus_previous": {},
+    "focus_direction": {}, "resize_pane": {}, "set_split_ratio": {}, "close_pane": {}, "stop_server": {}
+  }
+}
