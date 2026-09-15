@@ -165,7 +165,10 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   with plugin config/state/context variables; shallow GitHub install is now
   available, with bounded plugin launch logs, Windows platform filtering, and
   pane environment overrides;
-  popup panes remain.
+  popup panes now use a transient server popup slot, preserve the tiled
+  background focus, render centered terminal content, accept popup placement
+  from the plugin CLI, and close when the process exits. Popup mouse routing is
+  implemented; native popup actions and richer overlay placements remain.
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior. Tests now cover pane edge hits, captured drags outside
   pane bounds, event-mode routing, and right-click passthrough; existing tests

@@ -173,7 +173,9 @@ from the plugin directory. Launches are retained in a bounded per-user log;
 view them with `spindle plugin log list [--plugin ID] [--limit N]`.
 Manifest terminal panes can be opened with
 `spindle plugin pane open --plugin ID --entrypoint ID`; Spindle supports
-`split`, `tab`, and `zoomed` placements and keeps them as normal panes.
+`split`, `tab`, `zoomed`, and session-modal `popup` placements. Popup panes use
+`--width` and `--height` in terminal cells, do not change the tiled layout, and
+close automatically when their process exits.
 Repeat `--env KEY=VALUE` to pass plugin-specific environment values; Spindle's
 managed plugin variables cannot be overridden.
 Use `--no-focus` to return focus to the previous pane after a split. Plugin
