@@ -179,7 +179,7 @@ fn event_loop(
     preferences_path: &std::path::Path,
 ) -> Result<(), ClientError> {
     let mut prefix_active = false;
-    let keymap = Keymap::from_config(&crate::config::load());
+    let mut keymap;
     let mut palette_selected = 0;
     let mut palette_open = false;
     let mut navigator: Option<Navigator> = None;
@@ -198,6 +198,7 @@ fn event_loop(
     let mut action_error: Option<(String, Instant)> = None;
     let mut notification: Option<(String, Instant)> = None;
     loop {
+        keymap = Keymap::from_config(&crate::config::load());
         if action_error
             .as_ref()
             .is_some_and(|(_, expires_at)| Instant::now() >= *expires_at)
