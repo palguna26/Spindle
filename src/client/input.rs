@@ -159,6 +159,8 @@ fn default_bindings() -> Vec<Binding> {
         (Action::NextTab, 'n', false),
         (Action::NextTab, ']', false),
         (Action::PreviousTab, 'p', false),
+        (Action::RenameActiveTab, 'T', true),
+        (Action::RenameFocusedPane, 'P', true),
         (Action::ClosePane, 'x', false),
         (Action::CloseTab, 'X', true),
         (Action::EnterCopyMode, '[', false),
@@ -280,6 +282,9 @@ fn action_name(name: &str) -> Option<Action> {
         "close_tab" => Action::CloseTab,
         "next_tab" => Action::NextTab,
         "previous_tab" => Action::PreviousTab,
+        "rename_tab" => Action::RenameActiveTab,
+        "rename_pane" => Action::RenameFocusedPane,
+        "clear_pane_name" => Action::ClearPaneName,
         "next_space" => Action::NextSpace,
         "previous_space" => Action::PreviousSpace,
         "next_workspace" => Action::NextWorkspace,
@@ -486,6 +491,14 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Tab, KeyModifiers::SHIFT)),
             Action::FocusPrevious
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('T'), KeyModifiers::SHIFT)),
+            Action::RenameActiveTab
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('P'), KeyModifiers::SHIFT)),
+            Action::RenameFocusedPane
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)),
