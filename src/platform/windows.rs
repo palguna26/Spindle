@@ -21,12 +21,13 @@ pub(crate) fn show_desktop_notification(title: &str, body: Option<&str>) -> io::
     ready_rx
         .recv_timeout(Duration::from_secs(2))
         .map_err(|error| match error {
-            std::sync::mpsc::RecvTimeoutError::Timeout => {
-                io::Error::new(io::ErrorKind::TimedOut, "Windows notification setup timed out")
-            }
-            std::sync::mpsc::RecvTimeoutError::Disconnected => io::Error::other(
-                "Windows notification thread exited before reporting readiness",
+            std::sync::mpsc::RecvTimeoutError::Timeout => io::Error::new(
+                io::ErrorKind::TimedOut,
+                "Windows notification setup timed out",
             ),
+            std::sync::mpsc::RecvTimeoutError::Disconnected => {
+                io::Error::other("Windows notification thread exited before reporting readiness")
+            }
         })?
 }
 
@@ -73,7 +74,9 @@ fn show_on_thread(
         let _ = ready_tx.send(Err(io::Error::other(
             "failed to add Spindle notification-area icon",
         )));
-        unsafe { DestroyWindow(hwnd); }
+        unsafe {
+            DestroyWindow(hwnd);
+        }
         return;
     }
 
@@ -86,7 +89,9 @@ fn show_on_thread(
             Shell_NotifyIconW(NIM_DELETE, &notification);
             DestroyWindow(hwnd);
         }
-        let _ = ready_tx.send(Err(io::Error::other("failed to show Spindle desktop notification")));
+        let _ = ready_tx.send(Err(io::Error::other(
+            "failed to show Spindle desktop notification",
+        )));
         return;
     }
 

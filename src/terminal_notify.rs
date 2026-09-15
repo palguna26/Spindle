@@ -100,11 +100,14 @@ fn wrap_tmux(sequence: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_osc99, build_osc9, sanitize, split_message, wrap_tmux};
+    use super::{build_osc9, build_osc99, sanitize, split_message, wrap_tmux};
 
     #[test]
     fn splits_title_and_body_like_herdr() {
-        assert_eq!(split_message("codex finished: pane-1"), ("codex finished", Some("pane-1")));
+        assert_eq!(
+            split_message("codex finished: pane-1"),
+            ("codex finished", Some("pane-1"))
+        );
         assert_eq!(split_message("codex finished"), ("codex finished", None));
     }
 
@@ -115,7 +118,10 @@ mod tests {
 
     #[test]
     fn builds_herdr_notification_sequences() {
-        assert_eq!(build_osc9("done", Some("pane-1")), b"\x1b]9;done: pane-1\x1b\\");
+        assert_eq!(
+            build_osc9("done", Some("pane-1")),
+            b"\x1b]9;done: pane-1\x1b\\"
+        );
         assert_eq!(
             build_osc99("done", Some("pane-1")),
             b"\x1b]99;i=1:d=0;done\x1b\\\x1b]99;i=1:p=body;pane-1\x1b\\"
@@ -124,6 +130,9 @@ mod tests {
 
     #[test]
     fn wraps_and_escapes_tmux_passthrough() {
-        assert_eq!(wrap_tmux(b"\x1b]9;hi\x1b\\"), b"\x1bPtmux;\x1b\x1b]9;hi\x1b\x1b\\\x1b\\");
+        assert_eq!(
+            wrap_tmux(b"\x1b]9;hi\x1b\\"),
+            b"\x1bPtmux;\x1b\x1b]9;hi\x1b\x1b\\\x1b\\"
+        );
     }
 }

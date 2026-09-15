@@ -1392,10 +1392,9 @@ impl Session {
                         .as_deref()
                         .is_some_and(|focused| focused == pane_id)
                     {
-                        tab.focused_pane_id = tab
-                            .layout
-                            .as_ref()
-                            .and_then(|layout| layout.pane_ids().first().map(|id| (*id).to_owned()));
+                        tab.focused_pane_id = tab.layout.as_ref().and_then(|layout| {
+                            layout.pane_ids().first().map(|id| (*id).to_owned())
+                        });
                     }
                 }
             }
@@ -1409,11 +1408,9 @@ impl Session {
             for space in &mut self.snapshot.spaces {
                 for workspace in &mut space.workspaces {
                     for tab in &mut workspace.tabs {
-                        if tab
-                            .layout
-                            .as_ref()
-                            .is_some_and(|layout| layout.pane_ids().contains(&previous_focus.as_str()))
-                        {
+                        if tab.layout.as_ref().is_some_and(|layout| {
+                            layout.pane_ids().contains(&previous_focus.as_str())
+                        }) {
                             tab.focused_pane_id = Some(previous_focus.clone());
                             tab.zoomed = previous_zoomed;
                         }
@@ -1723,9 +1720,12 @@ fn active_layout_focus(snapshot: &SessionSnapshot) -> Option<String> {
         .iter()
         .find(|tab| tab.tab_id == workspace.active_tab_id)?;
     tab.focused_pane_id.clone().or_else(|| {
-        tab.layout
-            .as_ref()
-            .and_then(|layout| layout.pane_ids().first().map(|pane_id| (*pane_id).to_owned()))
+        tab.layout.as_ref().and_then(|layout| {
+            layout
+                .pane_ids()
+                .first()
+                .map(|pane_id| (*pane_id).to_owned())
+        })
     })
 }
 
@@ -1877,7 +1877,10 @@ mod tests {
         session.snapshot.focused_pane_id = Some("popup-1".into());
         session.snapshot.popup_pane_id = Some("popup-1".into());
 
-        assert_eq!(active_layout_focus(&session.snapshot).as_deref(), Some("pane-1"));
+        assert_eq!(
+            active_layout_focus(&session.snapshot).as_deref(),
+            Some("pane-1")
+        );
     }
 
     #[test]
@@ -2111,13 +2114,22 @@ mod tests {
         let tab = &session.snapshot.spaces[0].workspaces[0].tabs[0];
         assert!(tab.zoomed);
         assert_eq!(tab.focused_pane_id.as_deref(), Some(overlay_id.as_str()));
-        assert_eq!(session.snapshot.overlay_pane_id.as_deref(), Some(overlay_id.as_str()));
+        assert_eq!(
+            session.snapshot.overlay_pane_id.as_deref(),
+            Some(overlay_id.as_str())
+        );
 
-        assert_eq!(session.close_pane(&overlay_id).unwrap()["closed_overlay"], true);
+        assert_eq!(
+            session.close_pane(&overlay_id).unwrap()["closed_overlay"],
+            true
+        );
         let tab = &session.snapshot.spaces[0].workspaces[0].tabs[0];
         assert!(!tab.zoomed);
         assert_eq!(tab.focused_pane_id.as_deref(), Some(background_id.as_str()));
-        assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some(background_id.as_str()));
+        assert_eq!(
+            session.snapshot.focused_pane_id.as_deref(),
+            Some(background_id.as_str())
+        );
         let _ = session.close_pane(&background_id);
     }
 
