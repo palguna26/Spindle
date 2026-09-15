@@ -678,6 +678,9 @@ impl Session {
             pane_id: pane_id.clone(),
             status: PaneStatus::Running,
         }]);
+        if !request.popup {
+            self.record_active_layout_event();
+        }
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
@@ -962,6 +965,7 @@ impl Session {
                 "tab_id": tab_id,
             }),
         );
+        self.record_active_layout_event();
         Ok(serde_json::json!({ "pane_id": pane_id, "tab_id": tab_id }))
     }
 
@@ -1054,6 +1058,7 @@ impl Session {
                 "tab_id": target_tab_id,
             }),
         );
+        self.record_active_layout_event();
         Ok(serde_json::json!({
             "pane_id": pane_id,
             "tab_id": target_tab_id,
@@ -1218,6 +1223,7 @@ impl Session {
         }
         tab.focused_pane_id = Some(source_pane_id.to_owned());
         self.snapshot.focused_pane_id = Some(source_pane_id.to_owned());
+        self.record_active_layout_event();
         Ok(serde_json::json!({
             "source_pane_id": source_pane_id,
             "target_pane_id": target_pane_id
@@ -1239,6 +1245,7 @@ impl Session {
             tab.zoomed
         };
         self.snapshot.focused_pane_id = Some(pane_id.into());
+        self.record_active_layout_event();
         Ok(serde_json::json!({ "pane_id": pane_id, "zoomed": zoomed }))
     }
 
@@ -1328,6 +1335,7 @@ impl Session {
         if !layout.resize_pane(pane_id, delta) {
             return Err(format!("pane '{pane_id}' does not exist in the active tab"));
         }
+        self.record_active_layout_event();
         Ok(serde_json::json!({ "pane_id": pane_id, "delta": delta }))
     }
 
@@ -1340,6 +1348,7 @@ impl Session {
         if !layout.set_split_ratio(path, ratio) {
             return Err("split path does not identify a split".into());
         }
+        self.record_active_layout_event();
         Ok(serde_json::json!({
             "path": path,
             "ratio": crate::model::layout::clamp_ratio(ratio),
@@ -1666,6 +1675,60 @@ impl Session {
                     .unwrap_or(0),
             );
         }
+    }
+
+    fn record_active_layout_event(&mut self) {
+        let Some((workspace_id, tab_id, zoomed, pane_ids)) = self
+            .snapshot
+            .spaces
+            .iter()
+            .find(|space| space.space_id == self.snapshot.active_space_id)
+            .and_then(|space| {
+                space
+                    .active_workspace_id
+                    .as_deref()
+                    .and_then(|workspace_id| {
+                        space
+                            .workspaces
+                            .iter()
+                            .find(|workspace| workspace.workspace_id == workspace_id)
+                    })
+            })
+            .and_then(|workspace| {
+                workspace
+                    .tabs
+                    .iter()
+                    .find(|tab| tab.tab_id == workspace.active_tab_id)
+                    .map(|tab| {
+                        (
+                            workspace.workspace_id.clone(),
+                            tab.tab_id.clone(),
+                            tab.zoomed,
+                            tab.layout
+                                .as_ref()
+                                .map(|layout| {
+                                    layout
+                                        .pane_ids()
+                                        .into_iter()
+                                        .map(str::to_owned)
+                                        .collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default(),
+                        )
+                    })
+            })
+        else {
+            return;
+        };
+        self.record_event(
+            "layout_updated",
+            serde_json::json!({
+                "workspace_id": workspace_id,
+                "tab_id": tab_id,
+                "zoomed": zoomed,
+                "pane_ids": pane_ids,
+            }),
+        );
     }
 
     fn close_workspace(&mut self, space_id: &str, workspace_id: &str) -> Result<(), String> {
@@ -2693,9 +2756,16 @@ mod tests {
                 .split(crate::model::layout::Direction::Horizontal, 0.5, "two")
                 .split(crate::model::layout::Direction::Vertical, 0.5, "three"),
         );
+        let sequence = session.snapshot.event_sequence;
         session
             .set_split_ratio(&[false], 0.7)
             .expect("nested split path should be valid");
+        assert!(session.events_since(sequence).iter().any(|event| {
+            event.event == "layout_updated"
+                && event.payload["workspace_id"] == "workspace-1"
+                && event.payload["tab_id"] == "tab-1"
+                && event.payload["pane_ids"] == serde_json::json!(["one", "two", "three"])
+        }));
         let Some(LayoutNode::Split { first, .. }) =
             &session.snapshot.spaces[0].workspaces[0].tabs[0].layout
         else {
