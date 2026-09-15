@@ -92,6 +92,7 @@ fn event_hook_name(event: &Event<serde_json::Value>) -> Option<&'static str> {
         "workspace_closed" => "workspace.closed",
         "pane_focused" => "pane.focused",
         "pane_moved" => "pane.moved",
+        "pane_updated" => "pane.updated",
         "layout_updated" => "layout.updated",
         "pane_agent_detected" => "pane.agent_detected",
         "pane_agent_status_changed" => "pane.agent_status_changed",
@@ -319,5 +320,16 @@ mod tests {
             payload: serde_json::json!({ "tab_id": "tab-1" }),
         };
         assert_eq!(event_hook_name(&event), Some("tab.renamed"));
+    }
+
+    #[test]
+    fn pane_update_events_use_herdr_hook_names() {
+        let event = Event {
+            version: crate::protocol::PROTOCOL_VERSION,
+            sequence: 1,
+            event: "pane_updated".into(),
+            payload: serde_json::json!({ "pane_id": "pane-1", "label": "Shell" }),
+        };
+        assert_eq!(event_hook_name(&event), Some("pane.updated"));
     }
 }

@@ -1947,14 +1947,21 @@ impl Session {
     }
 
     pub fn rename_pane(&mut self, pane_id: &str, label: String) -> Result<Value, String> {
-        let pane = self
-            .snapshot
-            .panes
-            .iter_mut()
-            .find(|pane| pane.pane_id == pane_id)
-            .ok_or_else(|| format!("pane '{pane_id}' does not exist"))?;
-        pane.label = (!label.trim().is_empty()).then_some(label);
-        Ok(serde_json::json!({ "pane_id": pane_id, "label": pane.label }))
+        let updated_label = {
+            let pane = self
+                .snapshot
+                .panes
+                .iter_mut()
+                .find(|pane| pane.pane_id == pane_id)
+                .ok_or_else(|| format!("pane '{pane_id}' does not exist"))?;
+            pane.label = (!label.trim().is_empty()).then_some(label);
+            pane.label.clone()
+        };
+        self.record_event(
+            "pane_updated",
+            serde_json::json!({ "pane_id": pane_id, "label": updated_label }),
+        );
+        Ok(serde_json::json!({ "pane_id": pane_id, "label": updated_label }))
     }
 
     pub fn focus_next(&mut self) -> Result<Value, String> {
@@ -3463,6 +3470,10 @@ mod tests {
         });
         session.rename_pane("pane-1", "Shell".into()).unwrap();
         assert_eq!(session.snapshot.panes[0].label.as_deref(), Some("Shell"));
+        assert_eq!(
+            session.events_since(0).last().map(|event| event.event.as_str()),
+            Some("pane_updated")
+        );
         session.rename_pane("pane-1", " ".into()).unwrap();
         assert!(session.snapshot.panes[0].label.is_none());
         let toggled = session.toggle_right_click_passthrough("pane-1").unwrap();
