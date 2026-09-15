@@ -11,6 +11,7 @@ use serde_json::Value;
 
 const APP_DIR: &str = "Spindle";
 
+mod tab;
 mod workspace;
 
 pub fn run() -> io::Result<()> {
@@ -89,6 +90,7 @@ pub fn run() -> io::Result<()> {
         "workspace" => {
             workspace::run_workspace_command(&project, &env::args().skip(2).collect::<Vec<_>>())?
         }
+        "tab" => tab::run_tab_command(&project, &env::args().skip(2).collect::<Vec<_>>())?,
         other => {
             print_help();
             return Err(io::Error::new(
@@ -199,6 +201,9 @@ fn print_help() {
     println!("  workspace get <id>  show a workspace by ID");
     println!("  workspace focus <id>  focus a workspace by ID");
     println!("  workspace rename <id> <label>  rename a workspace");
+    println!("  tab list        list tabs in the active workspace");
+    println!("  tab create      create a tab in the active workspace");
+    println!("  tab get/focus/rename/close  manage tabs by ID");
     println!("Options:");
     println!("  --help, -h       show this help");
     println!("  --version, -V    print the version");

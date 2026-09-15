@@ -76,6 +76,9 @@ zoom, sidebar, copy mode, help, and the command palette.
 Use `spindle config path` to print the path or `spindle config default` to
 print a starter file.
 
+Tabs can also be automated with `spindle tab list`, `create [label]`,
+`get <id>`, `focus <id>`, `rename <id> <label>`, and `close <id>`.
+
 ## Keybindings
 
 `Ctrl-b` is the command prefix. Press `Ctrl-b`, then `?` for the in-app guide

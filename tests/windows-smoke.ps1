@@ -38,6 +38,26 @@ try {
     if ($LASTEXITCODE -ne 0 -or $renamedWorkspaces -notmatch '(?m)^\*\s+workspace-1\s+Smoke test\s+\[Default\]$') {
         throw "workspace rename did not update the workspace label: $renamedWorkspaces"
     }
+    $createdTab = ((& $Binary tab create Logs) -join "`n") | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($createdTab.tab_id)) {
+        throw "tab create did not return a tab ID: $createdTab"
+    }
+    $tabId = $createdTab.tab_id
+    $tabs = (& $Binary tab list) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $tabs -notmatch "(?m)^\*\s+$([regex]::Escape($tabId))\s+Logs\s+\[workspace-1\]$") {
+        throw "tab list did not mark the created tab: $tabs"
+    }
+    $tab = (& $Binary tab get $tabId) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $tab -notmatch '(?m)^name: Logs$') {
+        throw "tab get did not return the created tab: $tab"
+    }
+    Invoke-Spindle @("tab", "rename", $tabId, "Build logs")
+    Invoke-Spindle @("tab", "focus", $tabId)
+    $renamedTabs = (& $Binary tab list) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $renamedTabs -notmatch "(?m)^\*\s+$([regex]::Escape($tabId))\s+Build logs\s+\[workspace-1\]$") {
+        throw "tab rename/focus did not update the active tab: $renamedTabs"
+    }
+    Invoke-Spindle @("tab", "close", $tabId)
     Invoke-Spindle @("workspace", "focus", "workspace-1")
     Invoke-Spindle @("list")
     $doctor = (& $Binary doctor) -join "`n"
