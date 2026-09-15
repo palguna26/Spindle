@@ -6,8 +6,7 @@ use std::time::{Duration, Instant};
 pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
         [command, args @ ..] if command == "list" => pane_list_command(project, args),
-        [command] if command == "current" => pane_current(project, None),
-        [command, id] if command == "current" => pane_current(project, Some(id)),
+        [command, args @ ..] if command == "current" => pane_current(project, args),
         [command, id] if command == "get" => pane_get(project, id),
         [command, options @ ..]
             if command == "focus" && options.first().is_some_and(|arg| arg.starts_with('-')) =>
@@ -189,12 +188,45 @@ fn format_pane_list(panes: &[PaneView], pane_ids: &[String], focused_id: Option<
     output
 }
 
-fn pane_current(project: &Project, requested_id: Option<&str>) -> io::Result<()> {
+fn pane_current(project: &Project, args: &[String]) -> io::Result<()> {
     let snapshot = get_snapshot(project)?;
-    let Some(id) = requested_id.or(snapshot.focused_pane_id.as_deref()) else {
+    let env_pane_id = std::env::var("SPINDLE_PANE_ID")
+        .ok()
+        .or_else(|| std::env::var("HERDR_PANE_ID").ok());
+    let requested_id =
+        parse_current_pane(args, env_pane_id.as_deref()).map_err(io::Error::other)?;
+    let Some(id) = requested_id
+        .as_deref()
+        .or(snapshot.focused_pane_id.as_deref())
+    else {
         return Err(io::Error::new(io::ErrorKind::NotFound, "no focused pane"));
     };
     pane_get(project, id)
+}
+
+fn parse_current_pane(
+    args: &[String],
+    env_pane_id: Option<&str>,
+) -> Result<Option<String>, String> {
+    let mut pane_id = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--pane" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --pane".into());
+                };
+                pane_id = Some(value.clone());
+                index += 2;
+            }
+            "--current" => {
+                pane_id = env_pane_id.map(str::to_owned);
+                index += 1;
+            }
+            other => return Err(format!("unknown option: {other}")),
+        }
+    }
+    Ok(pane_id.or_else(|| env_pane_id.map(str::to_owned)))
 }
 
 fn pane_focus(project: &Project, args: &[String]) -> io::Result<()> {
@@ -816,9 +848,9 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        format_pane_list, parse_focus_direction, parse_list_workspace, parse_move_options,
-        parse_read_options, parse_swap_options, parse_zoom_options, MoveOptions, ReadSource,
-        SwapOptions, ZoomMode,
+        format_pane_list, parse_current_pane, parse_focus_direction, parse_list_workspace,
+        parse_move_options, parse_read_options, parse_swap_options, parse_zoom_options,
+        MoveOptions, ReadSource, SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -876,6 +908,19 @@ mod tests {
             Ok(Some("workspace-2".into()))
         );
         assert!(parse_list_workspace(&["--workspace".into()]).is_err());
+    }
+
+    #[test]
+    fn current_pane_accepts_herdr_selector_forms() {
+        assert_eq!(
+            parse_current_pane(&["--pane".into(), "pane-2".into()], Some("pane-1")),
+            Ok(Some("pane-2".into()))
+        );
+        assert_eq!(
+            parse_current_pane(&["--current".into()], Some("pane-1")),
+            Ok(Some("pane-1".into()))
+        );
+        assert!(parse_current_pane(&["pane-2".into()], None).is_err());
     }
 
     #[test]
