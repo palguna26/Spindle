@@ -6,6 +6,7 @@ pub(super) fn run_agent_command(project: &Project, args: &[String]) -> io::Resul
     match args {
         [command] if command == "list" => agent_list(project),
         [command, pane_id] if command == "get" => agent_get(project, pane_id),
+        [command, pane_id] if command == "focus" => agent_focus(project, pane_id),
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -41,6 +42,39 @@ fn agent_get(project: &Project, pane_id: &str) -> io::Result<()> {
                 format!("no detected agent in pane '{pane_id}'"),
             )
         })?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&row).map_err(io::Error::other)?
+    );
+    Ok(())
+}
+
+fn agent_focus(project: &Project, pane_id: &str) -> io::Result<()> {
+    let snapshot = get_snapshot(project)?;
+    let row = agent_rows(&snapshot)
+        .into_iter()
+        .find(|row| row["pane_id"].as_str() == Some(pane_id))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("no detected agent in pane '{pane_id}'"),
+            )
+        })?;
+    let response = super::send_command_with_payload(
+        project,
+        "focus_pane",
+        serde_json::json!({ "pane_id": pane_id }),
+    )?;
+    if !response.ok {
+        return Err(io::Error::other(
+            response
+                .error
+                .map(|error| error.message)
+                .unwrap_or_else(|| "server rejected the agent focus request".into()),
+        ));
+    }
+    let mut row = row;
+    row["focused"] = serde_json::json!(true);
     println!(
         "{}",
         serde_json::to_string_pretty(&row).map_err(io::Error::other)?
@@ -98,7 +132,7 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
 }
 
 fn print_help() {
-    println!("Usage: spindle agent <list|get PANE_ID>");
+    println!("Usage: spindle agent <list|get|focus PANE_ID>");
 }
 
 #[cfg(test)]
