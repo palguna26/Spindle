@@ -19,6 +19,11 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
             let text = text.join(" ");
             pane_send_input(project, id, text.as_bytes())
         }
+        [command, id, text @ ..] if command == "run" && !text.is_empty() => {
+            let mut bytes = text.join(" ").into_bytes();
+            bytes.push(b'\r');
+            pane_send_input(project, id, &bytes)
+        }
         [command, id, keys @ ..] if command == "send-keys" && !keys.is_empty() => pane_send_input(
             project,
             id,
@@ -33,6 +38,21 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
             pane_split(project, direction, Some(command_args))
         }
         [command, id, delta] if command == "resize" => pane_resize(project, id, delta),
+        [command, id] if command == "read" => pane_read(project, id, None),
+        [command, id, flag, lines] if command == "read" && flag == "--lines" => {
+            let lines = lines.parse::<usize>().map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("invalid line count: {lines}"),
+                )
+            })?;
+            pane_read(project, id, Some(lines))
+        }
+        [command, source, target] if command == "swap" => pane_mutation_with_payload(
+            project,
+            "swap_panes",
+            serde_json::json!({ "source_pane_id": source, "target_pane_id": target }),
+        ),
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -41,7 +61,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|split|resize>",
+                "usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|split|resize>",
             ))
         }
     }
@@ -156,6 +176,31 @@ fn pane_get(project: &Project, id: &str) -> io::Result<()> {
         "{}",
         serde_json::to_string_pretty(pane).map_err(io::Error::other)?
     );
+    Ok(())
+}
+
+fn pane_read(project: &Project, id: &str, lines: Option<usize>) -> io::Result<()> {
+    let snapshot = get_snapshot(project)?;
+    let pane = snapshot
+        .panes
+        .iter()
+        .find(|pane| pane.pane_id == id)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("pane '{id}' does not exist"),
+            )
+        })?;
+    if let Some(lines) = lines {
+        let content: Vec<_> = pane.screen.lines().collect();
+        let start = content.len().saturating_sub(lines);
+        println!("{}", content[start..].join("\n"));
+    } else {
+        print!("{}", pane.screen);
+        if !pane.screen.ends_with('\n') {
+            println!();
+        }
+    }
     Ok(())
 }
 
@@ -287,7 +332,7 @@ fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|split|resize>");
+    println!("Usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|split|resize>");
     println!("  list             list panes in the active tab");
     println!("  current          show the focused pane");
     println!("  get <id>         show a pane as JSON");
@@ -299,6 +344,9 @@ fn print_help() {
     println!("  close <id>       close a pane");
     println!("  send-text <id> <text>  send text to a pane");
     println!("  send-keys <id> <key>...  send keys (Enter, arrows, ctrl-x)");
+    println!("  run <id> <command>  send a command followed by Enter");
+    println!("  read <id> [--lines N]  read visible pane output");
+    println!("  swap <source> <target>  swap two panes");
     println!("  split <direction> [command args...]  split with a new pane");
     println!("  resize <id> <delta>  resize the pane layout by a ratio delta");
 }
