@@ -24,8 +24,12 @@ pub(crate) fn deliver(
 ) {
     match delivery {
         crate::config::NotificationDelivery::Off => {}
-        crate::config::NotificationDelivery::Herdr
-        | crate::config::NotificationDelivery::System => enqueue(queue, events, now),
+        crate::config::NotificationDelivery::Herdr => enqueue(queue, events, now),
+        crate::config::NotificationDelivery::System => {
+            for event in events {
+                let _ = crate::platform::show_desktop_notification(&message(&event), None);
+            }
+        }
         crate::config::NotificationDelivery::Terminal => {
             for event in events {
                 let message = message(&event);
