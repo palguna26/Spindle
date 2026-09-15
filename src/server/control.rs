@@ -94,6 +94,8 @@ struct MovePaneRequest {
     workspace_name: String,
     #[serde(default)]
     tab_name: String,
+    #[serde(default)]
+    target_workspace_id: Option<String>,
 }
 
 fn default_move_direction() -> String {
@@ -680,9 +682,10 @@ pub(crate) fn response_for_with_interactive(
                         payload.focus.unwrap_or(true),
                     )
                 } else {
-                    session.move_pane_to_new_tab_with_focus(
+                    session.move_pane_to_new_tab_in_workspace(
                         &payload.pane_id,
                         payload.name,
+                        payload.target_workspace_id.as_deref(),
                         payload.focus.unwrap_or(true),
                     )
                 }

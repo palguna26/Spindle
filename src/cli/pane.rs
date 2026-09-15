@@ -560,6 +560,9 @@ fn pane_move_command(project: &Project, args: &[String]) -> io::Result<()> {
     } else {
         payload["focus"] = serde_json::json!(options.focus);
     }
+    if let Some(workspace_id) = options.workspace_id {
+        payload["target_workspace_id"] = serde_json::json!(workspace_id);
+    }
     pane_mutation_with_payload(project, "move_pane", payload)
 }
 
@@ -574,6 +577,7 @@ struct MoveOptions {
     focus: bool,
     new_workspace: bool,
     tab_label: Option<String>,
+    workspace_id: Option<String>,
 }
 
 fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
@@ -593,14 +597,20 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
                 focus,
                 new_workspace: false,
                 tab_label: None,
+                workspace_id: None,
             });
         }
         let mut label = None;
+        let mut workspace_id = None;
         let mut index = 2;
         while index < args.len() {
             match args[index].as_str() {
                 "--label" if index + 1 < args.len() => {
                     label = Some(args[index + 1].clone());
+                    index += 2;
+                }
+                "--workspace" if index + 1 < args.len() => {
+                    workspace_id = Some(args[index + 1].clone());
                     index += 2;
                 }
                 "--focus" => {
@@ -612,7 +622,7 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
                     index += 1;
                 }
                 _ => return Err(
-                    "usage: spindle pane move <id> --new-tab [--label TEXT] [--focus|--no-focus]"
+                    "usage: spindle pane move <id> --new-tab [--workspace ID] [--label TEXT] [--focus|--no-focus]"
                         .into(),
                 ),
             }
@@ -627,6 +637,7 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
             focus,
             new_workspace: false,
             tab_label: None,
+            workspace_id,
         });
     }
     if args.get(1).map(String::as_str) == Some("--new-workspace") {
@@ -653,6 +664,7 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
             focus,
             new_workspace: true,
             tab_label,
+            workspace_id: None,
         });
     }
     if args.get(1).map(String::as_str) != Some("--tab") || args.len() < 3 {
@@ -711,6 +723,7 @@ fn parse_move_options(args: &[String]) -> Result<MoveOptions, String> {
         focus,
         new_workspace: false,
         tab_label: None,
+        workspace_id: None,
     })
 }
 
@@ -1848,6 +1861,7 @@ mod tests {
                 focus: true,
                 new_workspace: false,
                 tab_label: None,
+                workspace_id: None,
             })
         );
         assert!(parse_move_options(&["pane-1".into()]).is_err());
@@ -1879,6 +1893,7 @@ mod tests {
                 focus: false,
                 new_workspace: false,
                 tab_label: None,
+                workspace_id: None,
             })
         );
     }
@@ -1906,7 +1921,22 @@ mod tests {
                 focus: false,
                 new_workspace: true,
                 tab_label: Some("Shell".into()),
+                workspace_id: None,
             })
+        );
+    }
+
+    #[test]
+    fn move_options_support_new_tab_workspace_target() {
+        let args = vec![
+            "pane-1".into(),
+            "--new-tab".into(),
+            "--workspace".into(),
+            "workspace-2".into(),
+        ];
+        assert_eq!(
+            parse_move_options(&args).unwrap().workspace_id.as_deref(),
+            Some("workspace-2")
         );
     }
 }

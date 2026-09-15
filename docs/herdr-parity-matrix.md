@@ -33,6 +33,7 @@ Latest CLI parity: `spindle pane move <id>` preserves the live pane process
 while moving it to a new tab, an existing tab, or a new workspace. The
 existing-tab form supports an optional target pane and right/down split; the
 new-workspace form supports workspace/tab labels and focus control.
+The new-tab form also supports Herdr's optional `--workspace` destination.
 Plugin lifecycle parity now also covers the Herdr `tab.closed` and
 `workspace.focused`, `workspace.created`, `workspace.renamed`, and
 `workspace.closed`, plus `pane.moved`, `layout.updated`, `pane.agent_detected`,
