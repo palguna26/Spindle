@@ -126,6 +126,8 @@ to mouse and keyboard controls. Press `:` for the command palette. Other keys:
 | `r` | Restart focused pane |
 | `h` / `j` / `k` / `l` or arrows | Focus pane by direction |
 | `Tab` / `Shift-Tab` | Cycle to the next or previous pane |
+| `Shift+t` | Rename the active tab |
+| `Shift+p` | Rename the focused pane |
 | `Shift+h` / `Shift+j` / `Shift+k` / `Shift+l` | Swap pane by direction |
 | `-` | Horizontal split |
 | `v` | Vertical split |
