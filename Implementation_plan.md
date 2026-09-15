@@ -268,6 +268,9 @@ approved design changes it.
 
 - [ ] Extend the parity matrix across CLI, configuration/keybindings/themes,
   notifications, session recovery, integrations, remote sessions, and plugins.
+- [x] Add a Herdr-style settings overlay from the global menu for built-in
+  themes, notification delivery, and notification sound; changes persist to
+  the user config and take effect on the next client loop iteration.
 - [x] Keep client orchestration categorized like Herdr's shell modules; startup
   failure actions now live in `src/client/startup.rs` instead of the main event
   loop module.

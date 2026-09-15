@@ -3,6 +3,7 @@ use ratatui::layout::Rect;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Action {
+    Settings,
     Help,
     CommandPalette,
     ReloadConfig,
@@ -21,7 +22,8 @@ pub(crate) struct GlobalMenu {
     pub(super) selected: usize,
 }
 
-const ITEMS: [(&str, Action); 4] = [
+const ITEMS: [(&str, Action); 5] = [
+    ("settings", Action::Settings),
     ("help", Action::Help),
     ("command palette", Action::CommandPalette),
     ("reload config", Action::ReloadConfig),
@@ -106,6 +108,7 @@ mod tests {
         let mut menu = GlobalMenu::default();
         assert_eq!(menu.handle_key(KeyCode::Down), Outcome::Continue);
         assert_eq!(menu.selected, 1);
+        assert_eq!(menu.handle_key(KeyCode::Down), Outcome::Continue);
         assert_eq!(
             menu.handle_key(KeyCode::Enter),
             Outcome::Activate(Action::CommandPalette)
@@ -121,7 +124,7 @@ mod tests {
         let mouse = MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             column: rect.x + 2,
-            row: rect.y + 2,
+            row: rect.y + 3,
             modifiers: KeyModifiers::NONE,
         };
         let mut menu = GlobalMenu::default();

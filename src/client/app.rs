@@ -11,6 +11,7 @@ use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
 use super::renderer;
 use super::selection::TextSelection;
+use super::settings::{Outcome as SettingsOutcome, Settings};
 use super::startup::{startup_error_action, StartupErrorAction};
 use super::{ClientError, ControlClient};
 use crate::model::layout::Direction as SplitDirection;
@@ -104,6 +105,7 @@ fn event_loop(
     let mut palette_open = false;
     let mut navigator: Option<Navigator> = None;
     let mut global_menu: Option<GlobalMenu> = None;
+    let mut settings: Option<Settings> = None;
     let mut rename_prompt: Option<RenamePrompt> = None;
     let mut context_menu: Option<ContextMenu> = None;
     let mut help_open = false;
@@ -356,6 +358,9 @@ fn event_loop(
                 if let Some(menu) = &global_menu {
                     renderer::render_global_menu(frame, menu);
                 }
+                if let Some(open_settings) = &settings {
+                    renderer::render_settings(frame, open_settings);
+                }
                 if let Some(error) = &startup_error {
                     renderer::render_startup_error(frame, error);
                 } else if let Some((error, _)) = &action_error {
@@ -374,6 +379,9 @@ fn event_loop(
         let input = event::read().map_err(ClientError::Io)?;
         let key = match input {
             Event::Mouse(mouse) => {
+                if settings.is_some() {
+                    continue;
+                }
                 if let Some(menu) = global_menu.as_mut() {
                     let sidebar = renderer::sidebar_area(
                         Rect::new(0, 0, terminal_size.0, terminal_size.1),
@@ -389,6 +397,7 @@ fn event_loop(
                         GlobalMenuOutcome::Activate(action) => {
                             global_menu = None;
                             match action {
+                                GlobalMenuAction::Settings => settings = Some(Settings::open()),
                                 GlobalMenuAction::Help => help_open = true,
                                 GlobalMenuAction::CommandPalette => {
                                     palette_open = true;
@@ -555,6 +564,7 @@ fn event_loop(
                 GlobalMenuOutcome::Activate(action) => {
                     global_menu = None;
                     match action {
+                        GlobalMenuAction::Settings => settings = Some(Settings::open()),
                         GlobalMenuAction::Help => help_open = true,
                         GlobalMenuAction::CommandPalette => {
                             palette_open = true;
@@ -567,6 +577,13 @@ fn event_loop(
                         }
                     }
                 }
+            }
+            continue;
+        }
+        if let Some(open_settings) = settings.as_mut() {
+            match open_settings.handle_key(key.code) {
+                SettingsOutcome::Continue => {}
+                SettingsOutcome::Close | SettingsOutcome::Saved => settings = None,
             }
             continue;
         }

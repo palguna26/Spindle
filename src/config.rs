@@ -2,6 +2,15 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+pub(crate) const THEME_NAMES: &[&str] = &[
+    "catppuccin",
+    "terminal",
+    "tokyo-night",
+    "dracula",
+    "nord",
+    "gruvbox",
+];
+
 #[derive(Debug, Deserialize, Default)]
 struct FileConfig {
     #[serde(default)]
@@ -141,9 +150,83 @@ pub fn default_document() -> &'static str {
     "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\nopen_notification_target = \"prefix+o\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n\n[theme]\nname = \"terminal\"\n\n[notifications]\nenabled = true\ndelivery = \"herdr\"\ndelay_seconds = 1\nsound = true\n"
 }
 
+pub(crate) fn write_theme(name: &str) -> Result<(), String> {
+    update_section_key(&path(), "theme", "name", &format!("\"{name}\""))
+}
+
+pub(crate) fn write_notification_delivery(delivery: NotificationDelivery) -> Result<(), String> {
+    let value = match delivery {
+        NotificationDelivery::Herdr => "\"herdr\"",
+        NotificationDelivery::Terminal => "\"terminal\"",
+        NotificationDelivery::System => "\"system\"",
+        NotificationDelivery::Off => "\"off\"",
+    };
+    update_section_key(&path(), "notifications", "delivery", value)
+}
+
+pub(crate) fn write_notification_sound(enabled: bool) -> Result<(), String> {
+    update_section_key(
+        &path(),
+        "notifications",
+        "sound",
+        if enabled { "true" } else { "false" },
+    )
+}
+
+fn update_section_key(
+    path: &std::path::Path,
+    section: &str,
+    key: &str,
+    value: &str,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create config directory: {error}"))?;
+    }
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("failed to read config before saving: {error}")),
+    };
+    std::fs::write(path, upsert_section_key(&content, section, key, value))
+        .map_err(|error| format!("failed to save config: {error}"))
+}
+
+fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> String {
+    let header = format!("[{section}]");
+    let mut lines: Vec<String> = content.lines().map(str::to_owned).collect();
+    let section_start = lines.iter().position(|line| line.trim() == header);
+    if let Some(start) = section_start {
+        let end = lines
+            .iter()
+            .enumerate()
+            .skip(start + 1)
+            .find(|(_, line)| line.trim_start().starts_with('['))
+            .map_or(lines.len(), |(index, _)| index);
+        if let Some(index) = (start + 1..end).find(|index| {
+            lines[*index]
+                .split_once('=')
+                .is_some_and(|(name, _)| name.trim() == key)
+        }) {
+            lines[index] = format!("{key} = {value}");
+        } else {
+            lines.insert(end, format!("{key} = {value}"));
+        }
+    } else {
+        if !lines.is_empty() && !lines.last().is_some_and(String::is_empty) {
+            lines.push(String::new());
+        }
+        lines.push(header);
+        lines.push(format!("{key} = {value}"));
+    }
+    let mut result = lines.join("\n");
+    result.push('\n');
+    result
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{load_from, NotificationDelivery};
+    use super::{load_from, upsert_section_key, NotificationDelivery};
 
     #[test]
     fn loads_herdr_style_key_bindings() {
@@ -215,5 +298,14 @@ mod tests {
         std::fs::write(&path, "[notifications]\ndelay_seconds = 9999\n").unwrap();
         assert_eq!(load_from(&path).notification_delay_seconds, 3600);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn upserts_values_without_removing_other_sections() {
+        let content = "[keys]\nprefix = \"ctrl+b\"\n\n[theme]\nname = \"terminal\"\n\n[notifications]\nsound = true\n";
+        let updated = upsert_section_key(content, "theme", "name", "\"nord\"");
+        assert!(updated.contains("name = \"nord\""));
+        assert!(updated.contains("prefix = \"ctrl+b\""));
+        assert!(updated.contains("[notifications]"));
     }
 }

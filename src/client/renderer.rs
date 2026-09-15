@@ -7,6 +7,7 @@ use super::copy_mode::{CopyMode, SelectionKind};
 use super::global_menu::GlobalMenu;
 use super::input::{Action, Keymap};
 use super::selection::TextSelection;
+use super::settings::Settings;
 use crate::model::status::PaneStatus;
 use crate::server::session::{SessionSnapshot, WorkspaceView};
 pub(crate) use layout::{
@@ -677,6 +678,59 @@ pub(crate) fn render_global_menu(frame: &mut Frame<'_>, menu: &GlobalMenu) {
                 .border_style(Style::default().fg(Color::Cyan)),
         ),
         rect,
+    );
+}
+
+pub(super) fn render_settings(frame: &mut Frame<'_>, settings: &Settings) {
+    let area = centered_rect(58, 68, frame.area());
+    let sections = super::settings::Section::ALL
+        .iter()
+        .map(|section| {
+            if *section == settings.section {
+                Span::styled(
+                    format!("[ {} ] ", section.title()),
+                    Style::default().fg(Color::Black).bg(Color::Cyan),
+                )
+            } else {
+                Span::styled(format!("  {}   ", section.title()), Style::default())
+            }
+        })
+        .collect::<Vec<_>>();
+    let lines = std::iter::once(Line::from(sections))
+        .chain(std::iter::once(Line::from("")))
+        .chain(
+            settings
+                .choices()
+                .iter()
+                .enumerate()
+                .map(|(index, choice)| {
+                    let marker = if index == settings.selected {
+                        "> "
+                    } else {
+                        "  "
+                    };
+                    let style = if index == settings.selected {
+                        Style::default().fg(Color::Black).bg(Color::Cyan)
+                    } else {
+                        Style::default()
+                    };
+                    Line::from(Span::styled(format!("{marker}{choice}"), style))
+                }),
+        )
+        .chain(std::iter::once(Line::from("")))
+        .chain(std::iter::once(Line::from(
+            "←/→ section  ↑/↓ choice  Enter save  Esc close",
+        )))
+        .collect::<Vec<_>>();
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Settings")
+                .border_style(Style::default().fg(Color::Cyan)),
+        ),
+        area,
     );
 }
 

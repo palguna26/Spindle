@@ -15,6 +15,7 @@ mod preferences;
 pub mod prompt;
 pub mod renderer;
 mod selection;
+mod settings;
 mod startup;
 
 pub use control::{ClientError, ControlClient, EventStream};
