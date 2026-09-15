@@ -298,6 +298,17 @@ impl Session {
             Ok(mut snapshot) => {
                 load_history(&path, &mut snapshot)?;
                 normalize_workspace_ids(&mut snapshot);
+                // Popups are transient terminals in Herdr. Do not restore a
+                // popup slot or its pane after a server restart.
+                let popup_pane_id = snapshot.popup_pane_id.take();
+                snapshot.popup_width = 0;
+                snapshot.popup_height = 0;
+                if let Some(popup_pane_id) = popup_pane_id {
+                    snapshot
+                        .panes
+                        .retain(|pane| pane.pane_id != popup_pane_id);
+                }
+                snapshot.focused_pane_id = active_layout_focus(&snapshot);
                 for pane in &mut snapshot.panes {
                     pane.agent = None;
                     pane.agent_state = None;
@@ -1612,6 +1623,27 @@ impl Session {
     }
 }
 
+fn active_layout_focus(snapshot: &SessionSnapshot) -> Option<String> {
+    let space = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)?;
+    let workspace_id = space.active_workspace_id.as_deref()?;
+    let workspace = space
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.workspace_id == workspace_id)?;
+    let tab = workspace
+        .tabs
+        .iter()
+        .find(|tab| tab.tab_id == workspace.active_tab_id)?;
+    tab.focused_pane_id.clone().or_else(|| {
+        tab.layout
+            .as_ref()
+            .and_then(|layout| layout.pane_ids().first().map(|pane_id| (*pane_id).to_owned()))
+    })
+}
+
 fn next_pane_id(snapshot: &SessionSnapshot) -> u64 {
     snapshot
         .panes
@@ -1729,11 +1761,23 @@ impl From<PaneManagerError> for String {
 
 #[cfg(test)]
 mod tests {
-    use super::{CreatePaneRequest, PaneView, Session};
+    use super::{active_layout_focus, CreatePaneRequest, PaneView, Session};
     use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
     use crate::pane::PaneEvent;
     use std::time::Duration;
+
+    #[test]
+    fn active_layout_focus_ignores_transient_popup_focus() {
+        let mut session = Session::default();
+        let tab = &mut session.snapshot.spaces[0].workspaces[0].tabs[0];
+        tab.layout = Some(LayoutNode::pane("pane-1"));
+        tab.focused_pane_id = Some("pane-1".into());
+        session.snapshot.focused_pane_id = Some("popup-1".into());
+        session.snapshot.popup_pane_id = Some("popup-1".into());
+
+        assert_eq!(active_layout_focus(&session.snapshot).as_deref(), Some("pane-1"));
+    }
 
     #[test]
     fn plain_page_keys_follow_herdr_terminal_mode_rules() {
