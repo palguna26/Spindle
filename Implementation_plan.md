@@ -158,7 +158,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   per terminal cell, carried in pane snapshots, persisted with recent history,
   and preferred by Ctrl-click. Spindle also dispatches matching local
   `herdr-plugin.toml` link-handler actions with clicked-URL environment
-  variables; plugin install/link CLI and full invocation context remain.
+  variables. Local `plugin link/list/unlink/enable/disable` registration is now
+  available; remote install, action/pane commands, and full invocation context
+  remain.
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior. Tests now cover pane edge hits, captured drags outside
   pane bounds, event-mode routing, and right-click passthrough; existing tests

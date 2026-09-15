@@ -148,11 +148,17 @@ never permits deleting the last space or workspace.
 
 ### Link plugins
 
-Ctrl-click can launch a Herdr-style link handler before opening a web URL. Put
-each trusted plugin in `%APPDATA%\Spindle\plugins\<plugin-name>\` with a
-`herdr-plugin.toml` manifest containing `[[actions]]` and `[[link_handlers]]`.
+Ctrl-click can launch a Herdr-style link handler before opening a web URL. Link
+a trusted local plugin directory (or its manifest) with:
+
+`spindle plugin link C:\path\to\plugin`
+
+The directory must contain a `herdr-plugin.toml` manifest with an `id`,
+`[[actions]]`, and `[[link_handlers]]`. The link is global for the current user.
 The matching action command runs without a shell, from the plugin directory,
-with `SPINDLE_PLUGIN_CLICKED_URL` and `SPINDLE_PLUGIN_LINK_HANDLER_ID` set.
+with plugin id/root and clicked-URL environment variables set. Use
+`spindle plugin list`, `enable`, `disable`, or `unlink` to manage it. `unlink`
+only unregisters the plugin; it does not remove the plugin files.
 If no handler matches, or a plugin cannot start, Spindle opens the URL normally.
 
 ## State and recovery
