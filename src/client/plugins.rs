@@ -18,15 +18,29 @@ pub(crate) fn launch_for_url(url: &str) -> io::Result<bool> {
             let Some(command) = action.command.first() else {
                 continue;
             };
+            let (config_dir, state_dir) = crate::plugin::ensure_user_dirs(&manifest.id)?;
+            let context = serde_json::json!({
+                "source": "link",
+                "plugin_id": &manifest.id,
+                "link_handler_id": &handler.id,
+                "url": url,
+            })
+            .to_string();
             std::process::Command::new(command)
                 .args(action.command.iter().skip(1))
                 .current_dir(&registration.path)
                 .env("SPINDLE_PLUGIN_ID", &manifest.id)
                 .env("SPINDLE_PLUGIN_ROOT", &registration.path)
+                .env("SPINDLE_PLUGIN_CONFIG_DIR", &config_dir)
+                .env("SPINDLE_PLUGIN_STATE_DIR", &state_dir)
+                .env("SPINDLE_PLUGIN_CONTEXT_JSON", &context)
                 .env("SPINDLE_PLUGIN_CLICKED_URL", url)
                 .env("SPINDLE_PLUGIN_LINK_HANDLER_ID", &handler.id)
                 .env("HERDR_PLUGIN_ID", &manifest.id)
                 .env("HERDR_PLUGIN_ROOT", &registration.path)
+                .env("HERDR_PLUGIN_CONFIG_DIR", &config_dir)
+                .env("HERDR_PLUGIN_STATE_DIR", &state_dir)
+                .env("HERDR_PLUGIN_CONTEXT_JSON", &context)
                 .env("HERDR_PLUGIN_CLICKED_URL", url)
                 .env("HERDR_PLUGIN_LINK_HANDLER_ID", &handler.id)
                 .spawn()?;

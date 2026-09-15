@@ -7,6 +7,7 @@ pub(crate) fn run(args: &[String]) -> io::Result<()> {
         Some("unlink") => unlink(&args[1..]),
         Some("list") => list(&args[1..]),
         Some("action") => action(&args[1..]),
+        Some("config-dir") => config_dir(&args[1..]),
         Some("enable") => set_enabled(&args[1..], true),
         Some("disable") => set_enabled(&args[1..], false),
         Some("help") | Some("--help") | Some("-h") | None => {
@@ -109,6 +110,18 @@ fn set_enabled(args: &[String], enabled: bool) -> io::Result<()> {
     crate::plugin::write_registry(&registrations)
 }
 
+fn config_dir(args: &[String]) -> io::Result<()> {
+    let Some(id) = args.first() else {
+        return usage("usage: spindle plugin config-dir <plugin_id>");
+    };
+    if args.len() != 1 {
+        return usage("usage: spindle plugin config-dir <plugin_id>");
+    }
+    let (config, _) = crate::plugin::ensure_user_dirs(id)?;
+    println!("{}", config.display());
+    Ok(())
+}
+
 fn action(args: &[String]) -> io::Result<()> {
     match args.first().map(String::as_str) {
         Some("list") => action_list(&args[1..]),
@@ -180,14 +193,28 @@ fn action_invoke(args: &[String]) -> io::Result<()> {
             "plugin action command is empty",
         ));
     };
+    let (config_dir, state_dir) = crate::plugin::ensure_user_dirs(&manifest_id)?;
+    let context = serde_json::json!({
+        "source": "cli",
+        "plugin_id": &manifest_id,
+        "action_id": &action.id,
+        "cwd": std::env::current_dir()?.display().to_string(),
+    })
+    .to_string();
     let child = std::process::Command::new(command)
         .args(action.command.iter().skip(1))
         .current_dir(&registration.path)
         .env("SPINDLE_PLUGIN_ID", &manifest_id)
         .env("SPINDLE_PLUGIN_ROOT", &registration.path)
+        .env("SPINDLE_PLUGIN_CONFIG_DIR", &config_dir)
+        .env("SPINDLE_PLUGIN_STATE_DIR", &state_dir)
+        .env("SPINDLE_PLUGIN_CONTEXT_JSON", &context)
         .env("SPINDLE_PLUGIN_ACTION_ID", &action.id)
         .env("HERDR_PLUGIN_ID", &manifest_id)
         .env("HERDR_PLUGIN_ROOT", &registration.path)
+        .env("HERDR_PLUGIN_CONFIG_DIR", &config_dir)
+        .env("HERDR_PLUGIN_STATE_DIR", &state_dir)
+        .env("HERDR_PLUGIN_CONTEXT_JSON", &context)
         .env("HERDR_PLUGIN_ACTION_ID", &action.id)
         .spawn()?;
     println!("started {}.{} (pid {})", manifest_id, action.id, child.id());
@@ -212,11 +239,12 @@ fn usage(message: &str) -> io::Result<()> {
 }
 
 fn help() {
-    println!("Usage: spindle plugin <link|unlink|list|enable|disable|action>");
+    println!("Usage: spindle plugin <link|unlink|list|enable|disable|config-dir|action>");
     println!("  link <path> [--disabled]  register a local Herdr manifest");
     println!("  list                      list linked plugins");
     println!("  unlink <plugin_id>        unregister a plugin, leaving files alone");
     println!("  enable|disable <id>       change a plugin's global enabled state");
+    println!("  config-dir <id>           print and create the plugin config directory");
     println!("  action list [--plugin ID] list manifest actions");
     println!("  action invoke <id>        start a manifest action without a shell");
 }

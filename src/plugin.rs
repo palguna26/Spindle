@@ -53,6 +53,34 @@ pub(crate) fn root() -> io::Result<PathBuf> {
     Ok(PathBuf::from(app_data).join("Spindle").join("plugins"))
 }
 
+pub(crate) fn config_dir(id: &str) -> io::Result<PathBuf> {
+    Ok(root()?.join("config").join(safe_component(id)))
+}
+
+pub(crate) fn state_dir(id: &str) -> io::Result<PathBuf> {
+    Ok(root()?.join("state").join(safe_component(id)))
+}
+
+pub(crate) fn ensure_user_dirs(id: &str) -> io::Result<(PathBuf, PathBuf)> {
+    let config = config_dir(id)?;
+    let state = state_dir(id)?;
+    std::fs::create_dir_all(&config)?;
+    std::fs::create_dir_all(&state)?;
+    Ok((config, state))
+}
+
+fn safe_component(id: &str) -> String {
+    id.chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 pub(crate) fn read_registry() -> io::Result<Vec<Registration>> {
     let Ok(content) = std::fs::read_to_string(root()?.join("registry.json")) else {
         return Ok(Vec::new());
