@@ -157,7 +157,7 @@ The directory must contain a `herdr-plugin.toml` manifest with an `id`,
 `[[actions]]`, and `[[link_handlers]]`. The link is global for the current user.
 The matching action command runs without a shell, from the plugin directory,
 with plugin id/root and clicked-URL environment variables set. Use
-`spindle plugin list`, `enable`, `disable`, or `unlink` to manage it. `unlink`
+`spindle plugin list [--plugin ID] [--json]`, `enable`, `disable`, or `unlink` to manage it. `unlink`
 only unregisters the plugin; it does not remove the plugin files.
 `spindle plugin config-dir <plugin_id>` prints and creates the persistent
 per-user configuration directory for a plugin.
