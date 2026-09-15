@@ -30,8 +30,9 @@ Move-to-tab also accepts Herdr's `--ratio` option.
 Move-to-tab also accepts Herdr's `--focus` and `--no-focus` controls.
 
 Latest CLI parity: `spindle pane move <id>` preserves the live pane process
-while moving it to a new tab or an existing tab in the active workspace. The
-existing-tab form supports an optional target pane and right/down split.
+while moving it to a new tab, an existing tab, or a new workspace. The
+existing-tab form supports an optional target pane and right/down split; the
+new-workspace form supports workspace/tab labels and focus control.
 Plugin lifecycle parity now also covers the Herdr `tab.closed` and
 `workspace.focused`, `workspace.created`, `workspace.renamed`, and
 `workspace.closed`, plus `pane.moved`, `layout.updated`, `pane.agent_detected`,

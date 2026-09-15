@@ -959,6 +959,15 @@ impl Session {
     }
 
     pub fn move_pane_to_new_tab(&mut self, pane_id: &str, name: String) -> Result<Value, String> {
+        self.move_pane_to_new_tab_with_focus(pane_id, name, true)
+    }
+
+    pub fn move_pane_to_new_tab_with_focus(
+        &mut self,
+        pane_id: &str,
+        name: String,
+        focus: bool,
+    ) -> Result<Value, String> {
         let workspace = self.active_workspace_mut()?;
         let source_index = workspace
             .tabs
@@ -1006,8 +1015,10 @@ impl Session {
             focused_pane_id: Some(pane_id.into()),
             zoomed: false,
         });
-        workspace.active_tab_id = tab_id.clone();
-        self.snapshot.focused_pane_id = Some(pane_id.into());
+        if focus {
+            workspace.active_tab_id = tab_id.clone();
+            self.snapshot.focused_pane_id = Some(pane_id.into());
+        }
         self.record_event(
             "pane_moved",
             serde_json::json!({
@@ -1018,6 +1029,122 @@ impl Session {
         );
         self.record_active_layout_event();
         Ok(serde_json::json!({ "pane_id": pane_id, "tab_id": tab_id }))
+    }
+
+    pub fn move_pane_to_new_workspace(
+        &mut self,
+        pane_id: &str,
+        workspace_name: String,
+        tab_name: String,
+        focus: bool,
+    ) -> Result<Value, String> {
+        let active_space_id = self.snapshot.active_space_id.clone();
+        let space_index = self
+            .snapshot
+            .spaces
+            .iter()
+            .position(|space| space.space_id == active_space_id)
+            .ok_or_else(|| "active space does not exist".to_string())?;
+        let source_workspace_id = self.snapshot.spaces[space_index]
+            .active_workspace_id
+            .clone()
+            .ok_or_else(|| "active space has no workspace".to_string())?;
+        let workspace_index = self.snapshot.spaces[space_index]
+            .workspaces
+            .iter()
+            .position(|workspace| workspace.workspace_id == source_workspace_id)
+            .ok_or_else(|| "active workspace does not exist".to_string())?;
+        let workspace = &mut self.snapshot.spaces[space_index].workspaces[workspace_index];
+        let source_index = workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.tab_id == workspace.active_tab_id)
+            .ok_or_else(|| "active tab does not exist".to_string())?;
+        let source_tab_id = workspace.tabs[source_index].tab_id.clone();
+        let source = &workspace.tabs[source_index];
+        if !source
+            .layout
+            .as_ref()
+            .is_some_and(|layout| layout.pane_ids().contains(&pane_id))
+        {
+            return Err(format!("pane '{pane_id}' does not exist in the active tab"));
+        }
+        let source_was_single = source
+            .layout
+            .as_ref()
+            .is_some_and(|layout| layout.pane_ids().len() == 1);
+        if source_was_single {
+            workspace.tabs[source_index].layout = None;
+            workspace.tabs[source_index].focused_pane_id = None;
+        } else {
+            let source = &mut workspace.tabs[source_index];
+            source.layout = source
+                .layout
+                .take()
+                .and_then(|layout| layout.close_pane(pane_id));
+            source.focused_pane_id = source
+                .layout
+                .as_ref()
+                .and_then(|layout| layout.pane_ids().first().map(|id| (*id).to_owned()));
+        }
+        let workspace_id = next_numbered_id(
+            "workspace",
+            self.snapshot
+                .spaces
+                .iter()
+                .flat_map(|space| space.workspaces.iter())
+                .map(|workspace| workspace.workspace_id.clone()),
+        );
+        let tab_id = format!("tab-{}-1", workspace_id);
+        let new_workspace_name = if workspace_name.trim().is_empty() {
+            "Moved pane".into()
+        } else {
+            workspace_name
+        };
+        let new_tab_name = if tab_name.trim().is_empty() {
+            "Main".into()
+        } else {
+            tab_name
+        };
+        self.snapshot.spaces[space_index]
+            .workspaces
+            .push(WorkspaceView {
+                workspace_id: workspace_id.clone(),
+                name: new_workspace_name,
+                repository_path: None,
+                branch: None,
+                tabs: vec![TabView {
+                    tab_id: tab_id.clone(),
+                    name: new_tab_name,
+                    layout: Some(LayoutNode::pane(pane_id)),
+                    focused_pane_id: Some(pane_id.into()),
+                    zoomed: false,
+                }],
+                active_tab_id: tab_id.clone(),
+            });
+        if focus {
+            self.snapshot.spaces[space_index].active_workspace_id = Some(workspace_id.clone());
+            self.snapshot.focused_pane_id = Some(pane_id.into());
+        } else {
+            self.sync_focus_to_active_tab()?;
+        }
+        self.record_event(
+            "workspace_created",
+            serde_json::json!({ "workspace_id": workspace_id, "space_id": active_space_id }),
+        );
+        self.record_event(
+            "pane_moved",
+            serde_json::json!({
+                "pane_id": pane_id,
+                "previous_tab_id": source_tab_id,
+                "workspace_id": workspace_id,
+                "tab_id": tab_id,
+            }),
+        );
+        self.record_active_layout_event();
+        Ok(
+            serde_json::json!({ "pane_id": pane_id, "workspace_id": workspace_id, "tab_id": tab_id }),
+        )
     }
 
     pub fn move_pane_to_tab(
@@ -2865,6 +2992,52 @@ mod tests {
             .unwrap()
             .pane_ids()
             .contains(&"pane-2"));
+        assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("pane-1"));
+    }
+
+    #[test]
+    fn moving_pane_to_new_workspace_preserves_process_and_labels() {
+        let mut session = Session::default();
+        session.snapshot.panes.push(
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-1", "command": "powershell.exe", "args": [], "cwd": "C:/",
+                "status": "Running", "scrollback_bytes": 0
+            }))
+            .unwrap(),
+        );
+        let source_workspace = session.snapshot.spaces[0].workspaces[0]
+            .workspace_id
+            .clone();
+        let source_tab = session.snapshot.spaces[0].workspaces[0].tabs[0]
+            .tab_id
+            .clone();
+        session.snapshot.spaces[0].workspaces[0].tabs[0].layout = Some(LayoutNode::pane("pane-1"));
+        session.snapshot.spaces[0].workspaces[0].tabs[0].focused_pane_id = Some("pane-1".into());
+
+        let result = session
+            .move_pane_to_new_workspace("pane-1", "Feature".into(), "Shell".into(), true)
+            .unwrap();
+        let workspace_id = result["workspace_id"].as_str().unwrap();
+        assert_eq!(session.snapshot.panes.len(), 1);
+        assert_eq!(
+            session.snapshot.spaces[0].active_workspace_id.as_deref(),
+            Some(workspace_id)
+        );
+        let source = session.snapshot.spaces[0]
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.workspace_id == source_workspace)
+            .unwrap();
+        assert_eq!(source.tabs[0].tab_id, source_tab);
+        assert!(source.tabs[0].layout.is_none());
+        let target = session.snapshot.spaces[0]
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.workspace_id == workspace_id)
+            .unwrap();
+        assert_eq!(target.name, "Feature");
+        assert_eq!(target.tabs[0].name, "Shell");
+        assert_eq!(target.tabs[0].focused_pane_id.as_deref(), Some("pane-1"));
         assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("pane-1"));
     }
 

@@ -88,6 +88,12 @@ struct MovePaneRequest {
     ratio: Option<f32>,
     #[serde(default)]
     focus: Option<bool>,
+    #[serde(default)]
+    new_workspace: bool,
+    #[serde(default)]
+    workspace_name: String,
+    #[serde(default)]
+    tab_name: String,
 }
 
 fn default_move_direction() -> String {
@@ -652,7 +658,14 @@ pub(crate) fn response_for_with_interactive(
             };
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
-                if let Some(target_tab_id) = payload.target_tab_id {
+                if payload.new_workspace {
+                    session.move_pane_to_new_workspace(
+                        &payload.pane_id,
+                        payload.workspace_name,
+                        payload.tab_name,
+                        payload.focus.unwrap_or(true),
+                    )
+                } else if let Some(target_tab_id) = payload.target_tab_id {
                     let direction = match payload.direction.as_str() {
                         "right" => crate::model::layout::Direction::Horizontal,
                         "down" => crate::model::layout::Direction::Vertical,
@@ -667,7 +680,11 @@ pub(crate) fn response_for_with_interactive(
                         payload.focus.unwrap_or(true),
                     )
                 } else {
-                    session.move_pane_to_new_tab(&payload.pane_id, payload.name)
+                    session.move_pane_to_new_tab_with_focus(
+                        &payload.pane_id,
+                        payload.name,
+                        payload.focus.unwrap_or(true),
+                    )
                 }
             })
         }
