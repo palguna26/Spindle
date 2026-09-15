@@ -1,6 +1,7 @@
 use crate::detect::AgentState;
 use crate::server::session::SessionSnapshot;
 use std::collections::VecDeque;
+use std::io::Write;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,6 +15,39 @@ pub(crate) struct Event {
     pub pane_id: String,
     pub agent: String,
     pub kind: Kind,
+}
+
+pub(crate) fn deliver(
+    queue: &mut VecDeque<(String, Instant)>,
+    events: impl IntoIterator<Item = Event>,
+    delivery: crate::config::NotificationDelivery,
+    now: Instant,
+) {
+    match delivery {
+        crate::config::NotificationDelivery::Off => {}
+        crate::config::NotificationDelivery::Herdr
+        | crate::config::NotificationDelivery::System => enqueue(queue, events, now),
+        crate::config::NotificationDelivery::Terminal => {
+            for event in events {
+                let message = message(&event);
+                let _ = write_terminal_notification(&message);
+            }
+        }
+    }
+}
+
+fn write_terminal_notification(message: &str) -> std::io::Result<()> {
+    let sanitized = message
+        .chars()
+        .filter(|ch| *ch != '\u{1b}' && *ch != '\u{7}' && *ch != '\u{9c}')
+        .map(|ch| match ch {
+            '\n' | '\r' | '\t' => ' ',
+            _ => ch,
+        })
+        .collect::<String>();
+    let mut stdout = std::io::stdout();
+    write!(stdout, "\x1b]9;{sanitized}\x1b\\")?;
+    stdout.flush()
 }
 
 pub(crate) fn observe_all(previous: &SessionSnapshot, current: &SessionSnapshot) -> Vec<Event> {

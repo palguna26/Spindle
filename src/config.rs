@@ -22,11 +22,24 @@ struct ThemeConfig {
 #[serde(default)]
 struct NotificationsConfig {
     enabled: bool,
+    delivery: NotificationDelivery,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum NotificationDelivery {
+    Herdr,
+    Terminal,
+    System,
+    Off,
 }
 
 impl Default for NotificationsConfig {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            delivery: NotificationDelivery::Herdr,
+        }
     }
 }
 
@@ -60,6 +73,7 @@ pub struct Config {
     pub bindings: BTreeMap<String, Vec<String>>,
     pub theme_name: Option<String>,
     pub notifications_enabled: bool,
+    pub(crate) notification_delivery: NotificationDelivery,
 }
 
 impl Default for Config {
@@ -69,6 +83,7 @@ impl Default for Config {
             bindings: BTreeMap::new(),
             theme_name: None,
             notifications_enabled: true,
+            notification_delivery: NotificationDelivery::Herdr,
         }
     }
 }
@@ -108,16 +123,17 @@ pub fn load_from(path: &std::path::Path) -> Config {
             .collect(),
         theme_name: file.theme.name,
         notifications_enabled: file.notifications.enabled,
+        notification_delivery: file.notifications.delivery,
     }
 }
 
 pub fn default_document() -> &'static str {
-    "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n\n[theme]\nname = \"terminal\"\n\n[notifications]\nenabled = true\n"
+    "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n\n[theme]\nname = \"terminal\"\n\n[notifications]\nenabled = true\ndelivery = \"herdr\"\n"
 }
 
 #[cfg(test)]
 mod tests {
-    use super::load_from;
+    use super::{load_from, NotificationDelivery};
 
     #[test]
     fn loads_herdr_style_key_bindings() {
@@ -161,6 +177,20 @@ mod tests {
             std::env::temp_dir().join(format!("spindle-notifications-{}.toml", std::process::id()));
         std::fs::write(&path, "[notifications]\nenabled = false\n").unwrap();
         assert!(!load_from(&path).notifications_enabled);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_herdr_notification_delivery_modes() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-notification-delivery-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[notifications]\ndelivery = \"terminal\"\n").unwrap();
+        assert_eq!(
+            load_from(&path).notification_delivery,
+            NotificationDelivery::Terminal
+        );
         std::fs::remove_file(path).unwrap();
     }
 }

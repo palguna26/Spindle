@@ -216,9 +216,10 @@ fn event_loop(
         let mut connected = match current_snapshot(client) {
             Ok(current) => {
                 if config.notifications_enabled {
-                    crate::client::notifications::enqueue(
+                    crate::client::notifications::deliver(
                         &mut notifications,
                         crate::client::notifications::observe_all(&snapshot, &current),
+                        config.notification_delivery,
                         Instant::now(),
                     );
                 }
