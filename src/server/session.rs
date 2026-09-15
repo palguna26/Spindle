@@ -821,6 +821,10 @@ impl Session {
         }
         space.active_workspace_id = Some(workspace_id.into());
         self.sync_focus_to_active_tab()?;
+        self.record_event(
+            "workspace_focused",
+            serde_json::json!({ "workspace_id": workspace_id }),
+        );
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
@@ -847,6 +851,10 @@ impl Session {
             .expect("workspace's space was found above");
         space.active_workspace_id = Some(workspace_id.into());
         self.sync_focus_to_active_tab()?;
+        self.record_event(
+            "workspace_focused",
+            serde_json::json!({ "workspace_id": workspace_id, "space_id": space_id }),
+        );
         Ok(serde_json::json!({
             "space_id": space_id,
             "workspace_id": workspace_id
@@ -2444,12 +2452,18 @@ mod tests {
 
         session.focus_workspace("workspace-1").unwrap();
         assert_eq!(session.snapshot.active_space_id, "space-1");
+        let sequence = session.snapshot.event_sequence;
         session.focus_workspace(&other_workspace_id).unwrap();
         assert_eq!(session.snapshot.active_space_id, other_space_id);
         assert_eq!(
             session.snapshot.spaces[1].active_workspace_id.as_deref(),
             Some(other_workspace_id.as_str())
         );
+        assert!(session.events_since(sequence).iter().any(|event| {
+            event.event == "workspace_focused"
+                && event.payload["workspace_id"] == other_workspace_id
+                && event.payload["space_id"] == other_space_id
+        }));
 
         let active_space = session.snapshot.active_space_id.clone();
         assert!(session.focus_workspace("missing-workspace").is_err());

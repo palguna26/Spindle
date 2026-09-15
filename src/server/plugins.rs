@@ -48,6 +48,7 @@ pub(super) fn run_event_hook(
         "tab_created" => "tab.created",
         "tab_closed" => "tab.closed",
         "tab_focused" => "tab.focused",
+        "workspace_focused" => "workspace.focused",
         "pane_focused" => "pane.focused",
         "pane_closed" => "pane.closed",
         "pane_status"
