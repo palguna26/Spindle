@@ -136,9 +136,10 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   navigator is implemented; searches now auto-expand collapsed branches to
   expose matches and select the matching workspace/pane rather than Spindle's
   extra parent-space row. The workspace preview accepts Herdr's `1`–`9` direct
-  workspace selection keys. Windows checks verified `Ctrl-b w`, direct `1`
-  selection, `Ctrl-b g`, search-to-workspace activation, and `Esc`. Live filter
-  and collapsed-branch checks remain before marking parity complete.
+  workspace selection keys and now cycles across all local spaces. Windows
+  checks verified `Ctrl-b w`, direct `1` selection, `Ctrl-b g`,
+  search-to-workspace activation, and `Esc`. Live filter and collapsed-branch
+  checks remain before marking parity complete.
 - [x] Support drag-select/copy and terminal mouse passthrough without stealing
   input from applications that request it. Wheel and mode-aware PageUp/PageDown
   now browse recent PTY history, which the same selection/copy path can read;
