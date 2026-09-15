@@ -154,8 +154,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Add in-app help that explains both keyboard shortcuts and mouse controls.
 - [x] Ctrl-click visible `http://` and `https://` URLs in panes to open them;
   use terminal display columns for hit testing and trim sentence punctuation.
-- [ ] Add OSC 8 hyperlink metadata and Herdr-style plugin link handlers; the
-  current `vt100` screen snapshot exposes visible text only.
+- [ ] Add Herdr-style plugin link handlers. OSC 8 hyperlink metadata is now
+  tracked per terminal cell, carried in pane snapshots, persisted with recent
+  history, and preferred by Ctrl-click; plugin dispatch remains.
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior. Tests now cover pane edge hits, captured drags outside
   pane bounds, event-mode routing, and right-click passthrough; existing tests
