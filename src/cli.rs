@@ -11,6 +11,7 @@ use serde_json::Value;
 
 const APP_DIR: &str = "Spindle";
 
+mod completion;
 mod pane;
 mod tab;
 mod workspace;
@@ -37,6 +38,9 @@ pub fn run() -> io::Result<()> {
         }
         "config" => {
             return run_config_command(&env::args().skip(2).collect::<Vec<_>>());
+        }
+        "completion" => {
+            return completion::run(&env::args().skip(2).collect::<Vec<_>>());
         }
         _ => {}
     }
@@ -199,6 +203,9 @@ fn print_help() {
     println!("  doctor   check local Spindle state");
     println!("  config path     show the user config path");
     println!("  config default  print a starter config");
+    println!(
+        "  completion <shell>  generate shell completions (bash, elvish, fish, powershell, zsh)"
+    );
     println!("  workspace list  list workspaces in the current project session");
     println!("  workspace get <id>  show a workspace by ID");
     println!("  workspace focus <id>  focus a workspace by ID");
