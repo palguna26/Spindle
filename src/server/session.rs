@@ -2002,13 +2002,49 @@ impl Session {
     }
 
     pub fn resize_pane(&mut self, pane_id: &str, delta: f32) -> Result<Value, String> {
-        let tab = self.active_tab_mut()?;
+        let Some((space_index, workspace_index, tab_index)) = self
+            .snapshot
+            .spaces
+            .iter()
+            .enumerate()
+            .find_map(|(space_index, space)| {
+                space
+                    .workspaces
+                    .iter()
+                    .enumerate()
+                    .find_map(|(workspace_index, workspace)| {
+                        workspace
+                            .tabs
+                            .iter()
+                            .enumerate()
+                            .find_map(|(tab_index, tab)| {
+                                tab.layout
+                                    .as_ref()
+                                    .filter(|layout| layout.pane_ids().contains(&pane_id))
+                                    .map(|_| (space_index, workspace_index, tab_index))
+                            })
+                    })
+            })
+        else {
+            return Err(format!("pane '{pane_id}' does not exist"));
+        };
+        let space_id = self.snapshot.spaces[space_index].space_id.clone();
+        let workspace_id = self.snapshot.spaces[space_index].workspaces[workspace_index]
+            .workspace_id
+            .clone();
+        let tab_id = self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index]
+            .tab_id
+            .clone();
+        self.snapshot.active_space_id = space_id;
+        self.snapshot.spaces[space_index].active_workspace_id = Some(workspace_id);
+        self.snapshot.spaces[space_index].workspaces[workspace_index].active_tab_id = tab_id;
+        let tab = &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
         let layout = tab
             .layout
             .as_mut()
             .ok_or_else(|| "active tab has no panes".to_string())?;
         if !layout.resize_pane(pane_id, delta) {
-            return Err(format!("pane '{pane_id}' does not exist in the active tab"));
+            return Err(format!("pane '{pane_id}' could not be resized"));
         }
         self.record_active_layout_event();
         Ok(serde_json::json!({ "pane_id": pane_id, "delta": delta }))
@@ -3806,6 +3842,28 @@ mod tests {
         assert!(matches!(first.as_ref(), LayoutNode::Split { ratio, .. }
             if (*ratio - 0.7).abs() < f32::EPSILON));
         assert!(session.set_split_ratio(&[true], 0.6).is_err());
+    }
+
+    #[test]
+    fn resizing_a_pane_resolves_it_in_an_inactive_workspace() {
+        let mut session = Session::default();
+        session.create_space("Other project".into()).unwrap();
+        let tab = &mut session.snapshot.spaces[1].workspaces[0].tabs[0];
+        tab.layout = Some(
+            LayoutNode::pane("one")
+                .split(crate::model::layout::Direction::Horizontal, 0.5, "two"),
+        );
+        session.switch_space("space-1").unwrap();
+
+        session.resize_pane("one", 0.1).unwrap();
+
+        let Some(LayoutNode::Split { ratio, .. }) =
+            &session.snapshot.spaces[1].workspaces[0].tabs[0].layout
+        else {
+            panic!("expected root split");
+        };
+        assert!((*ratio - 0.6).abs() < f32::EPSILON);
+        assert_eq!(session.snapshot.active_space_id, "space-2");
     }
 
     #[test]
