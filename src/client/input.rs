@@ -487,6 +487,7 @@ mod tests {
         let keymap = Keymap::from_config(&Config {
             prefix: Some("ctrl+a".into()),
             bindings: BTreeMap::from([(String::from("new_tab"), vec![String::from("prefix+t")])]),
+            ..Config::default()
         });
         assert!(keymap.is_prefix(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)));
         assert_eq!(

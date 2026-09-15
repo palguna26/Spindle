@@ -6,6 +6,14 @@ use std::path::PathBuf;
 struct FileConfig {
     #[serde(default)]
     keys: KeysConfig,
+    #[serde(default)]
+    theme: ThemeConfig,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ThemeConfig {
+    #[serde(default)]
+    name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +44,7 @@ struct KeysConfig {
 pub struct Config {
     pub prefix: Option<String>,
     pub bindings: BTreeMap<String, Vec<String>>,
+    pub theme_name: Option<String>,
 }
 
 pub fn path() -> PathBuf {
@@ -71,11 +80,12 @@ pub fn load_from(path: &std::path::Path) -> Config {
             .into_iter()
             .map(|(name, values)| (name, values.values().map(str::to_owned).collect()))
             .collect(),
+        theme_name: file.theme.name,
     }
 }
 
 pub fn default_document() -> &'static str {
-    "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n"
+    "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n\n[theme]\nname = \"terminal\"\n"
 }
 
 #[cfg(test)]
@@ -105,6 +115,16 @@ mod tests {
         ));
         std::fs::write(&path, "not = [valid").unwrap();
         assert!(load_from(&path).bindings.is_empty());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_theme_name_without_affecting_key_defaults() {
+        let path = std::env::temp_dir().join(format!("spindle-theme-{}.toml", std::process::id()));
+        std::fs::write(&path, "[theme]\nname = \"nord\"\n").unwrap();
+        let config = load_from(&path);
+        assert_eq!(config.theme_name.as_deref(), Some("nord"));
+        assert!(config.bindings.is_empty());
         std::fs::remove_file(path).unwrap();
     }
 }

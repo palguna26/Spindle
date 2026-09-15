@@ -27,6 +27,43 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
+#[derive(Debug, Clone, Copy)]
+struct ThemePalette {
+    accent: Color,
+    focused_border: Color,
+}
+
+impl ThemePalette {
+    fn from_name(name: Option<&str>) -> Self {
+        match name.unwrap_or("terminal").to_ascii_lowercase().as_str() {
+            "catppuccin" => Self {
+                accent: Color::Rgb(203, 166, 247),
+                focused_border: Color::Rgb(245, 224, 220),
+            },
+            "dracula" => Self {
+                accent: Color::Rgb(189, 147, 249),
+                focused_border: Color::Rgb(248, 248, 242),
+            },
+            "gruvbox" => Self {
+                accent: Color::Rgb(250, 189, 47),
+                focused_border: Color::Rgb(251, 73, 52),
+            },
+            "nord" => Self {
+                accent: Color::Rgb(136, 192, 208),
+                focused_border: Color::Rgb(236, 239, 244),
+            },
+            "tokyo-night" | "tokyonight" => Self {
+                accent: Color::Rgb(122, 162, 247),
+                focused_border: Color::Rgb(192, 202, 245),
+            },
+            _ => Self {
+                accent: Color::Cyan,
+                focused_border: Color::White,
+            },
+        }
+    }
+}
+
 pub fn render(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
     render_with_connection(frame, snapshot, true);
 }
@@ -112,6 +149,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
     agent_priority_sort: bool,
     navigation_workspace: Option<(&str, &str)>,
 ) {
+    let theme = ThemePalette::from_name(crate::config::load().theme_name.as_deref());
     let main = layout::main_areas_with_sidebar(frame.area(), sidebar_collapsed);
     navigation::render_sidebar_with_scroll_sort_and_navigation(
         frame,
@@ -150,7 +188,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
             let title = pane_title(pane);
             let lines = pane.screen.lines().map(Line::from).collect::<Vec<_>>();
             let border_color = if snapshot.focused_pane_id.as_deref() == Some(&pane_rect.pane_id) {
-                Color::White
+                theme.focused_border
             } else {
                 status_color(&pane.status)
             };
@@ -195,13 +233,13 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
         Line::from(vec![
             Span::styled(
                 " NAVIGATE ",
-                Style::default().fg(Color::Black).bg(Color::Cyan),
+                Style::default().fg(Color::Black).bg(theme.accent),
             ),
             Span::raw(format!("  {name}  ↑/↓ choose  Enter open  Esc cancel")),
         ])
     } else {
         Line::from(vec![
-            Span::styled(" Spindle ", Style::default().fg(Color::Cyan)),
+            Span::styled(" Spindle ", Style::default().fg(theme.accent)),
             Span::styled(
                 if connected {
                     "connected"
