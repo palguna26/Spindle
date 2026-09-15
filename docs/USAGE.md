@@ -125,6 +125,7 @@ to mouse and keyboard controls. Press `:` for the command palette. Other keys:
 | `s` | Stop focused pane |
 | `r` | Restart focused pane |
 | `h` / `j` / `k` / `l` or arrows | Focus pane by direction |
+| `Tab` / `Shift-Tab` | Cycle to the next or previous pane |
 | `Shift+h` / `Shift+j` / `Shift+k` / `Shift+l` | Swap pane by direction |
 | `-` | Horizontal split |
 | `v` | Vertical split |

@@ -202,6 +202,18 @@ fn default_bindings() -> Vec<Binding> {
     .collect();
     bindings.extend([
         Binding {
+            action: Action::FocusNext,
+            code: KeyCode::Tab,
+            modifiers: KeyModifiers::NONE,
+            prefix: true,
+        },
+        Binding {
+            action: Action::FocusPrevious,
+            code: KeyCode::BackTab,
+            modifiers: KeyModifiers::SHIFT,
+            prefix: true,
+        },
+        Binding {
             action: Action::FocusPrevious,
             code: KeyCode::Char('O'),
             modifiers: KeyModifiers::NONE,
@@ -450,6 +462,14 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE)),
             Action::FocusNext
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)),
+            Action::FocusNext
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)),
+            Action::FocusPrevious
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)),
