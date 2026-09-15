@@ -49,6 +49,7 @@ pub enum Action {
     ToggleZoom,
     ToggleSidebar,
     ToggleRightClickPassthrough,
+    Settings,
     Help,
     CommandPalette,
     OpenNotificationTarget,
@@ -173,7 +174,7 @@ fn default_bindings() -> Vec<Binding> {
         (Action::WorkspacePicker, 'w', false),
         (Action::RenameActiveWorkspace, 'W', true),
         (Action::SessionNavigator, 'g', false),
-        (Action::StopFocusedPane, 's', false),
+        (Action::Settings, 's', false),
         (Action::EnterResizeMode, 'r', false),
         (Action::EditScrollback, 'e', false),
         (Action::OpenNotificationTarget, 'o', false),
@@ -325,6 +326,7 @@ fn action_name(name: &str) -> Option<Action> {
         "toggle_sidebar" => Action::ToggleSidebar,
         "toggle_right_click_passthrough" => Action::ToggleRightClickPassthrough,
         "help" => Action::Help,
+        "settings" => Action::Settings,
         "command_palette" => Action::CommandPalette,
         "open_notification_target" => Action::OpenNotificationTarget,
         "enter_copy_mode" => Action::EnterCopyMode,
@@ -526,7 +528,7 @@ mod tests {
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE)),
-            Action::StopFocusedPane
+            Action::Settings
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE)),

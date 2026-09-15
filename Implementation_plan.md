@@ -274,6 +274,8 @@ approved design changes it.
 - [x] Add a Herdr-style settings overlay from the global menu for built-in
   themes, notification delivery, and notification sound; changes persist to
   the user config and take effect on the next client loop iteration.
+- [x] Match Herdr's default `Ctrl-b s` Settings binding; stop-pane remains
+  available through the command palette and explicit `stop_pane` bindings.
 - [x] Keep client orchestration categorized like Herdr's shell modules; startup
   failure actions now live in `src/client/startup.rs` instead of the main event
   loop module.

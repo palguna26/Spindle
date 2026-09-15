@@ -810,6 +810,11 @@ fn event_loop(
             prefix_active = false;
             continue;
         }
+        if pressed == Action::Settings {
+            settings = Some(Settings::open());
+            prefix_active = false;
+            continue;
+        }
         if pressed == Action::ToggleSidebar {
             mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
             mouse_state.selection = None;
@@ -1211,6 +1216,7 @@ fn event_loop(
             }
             Action::None => {}
             Action::Help => {}
+            Action::Settings => {}
             Action::CommandPalette => {}
             Action::OpenNotificationTarget => {
                 let target =
