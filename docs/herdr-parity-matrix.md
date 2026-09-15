@@ -2,9 +2,9 @@
 
 Reference: `C:\Users\Palguna\.opensrc\repos\github.com\herdrdev\herdr\master`.
 
-Latest CLI parity: `spindle pane move <id> --new-tab [--label TEXT]` now
-preserves the live pane process while moving it to a new tab in the active
-workspace. Herdr's other move destinations remain pending.
+Latest CLI parity: `spindle pane move <id>` preserves the live pane process
+while moving it to a new tab or an existing tab in the active workspace. The
+existing-tab form supports an optional target pane and right/down split.
 Statuses describe the current Spindle checkout, not the target. “Partial” means
 some server/model support exists but the user-facing behavior is missing or
 does not yet match Herdr.
