@@ -816,7 +816,7 @@ fn pane_read(project: &Project, id: &str, options: ReadOptions) -> io::Result<()
         ReadFormat::Text => strip_ansi(&output),
         ReadFormat::Ansi => output,
     };
-    if let Some(lines) = options.lines {
+    if let Some(lines) = read_line_limit(options.source, options.lines) {
         let content: Vec<_> = output.lines().collect();
         let start = content.len().saturating_sub(lines);
         println!("{}", content[start..].join("\n"));
@@ -827,6 +827,12 @@ fn pane_read(project: &Project, id: &str, options: ReadOptions) -> io::Result<()
         }
     }
     Ok(())
+}
+
+fn read_line_limit(source: ReadSource, requested: Option<usize>) -> Option<usize> {
+    requested.or_else(|| {
+        matches!(source, ReadSource::Recent | ReadSource::RecentUnwrapped).then_some(80)
+    })
 }
 
 struct WaitOptions {
@@ -1128,7 +1134,8 @@ mod tests {
         all_pane_ids, direction_name, format_pane_list, parse_current_pane, parse_focus_direction,
         parse_layout_direction, parse_list_workspace, parse_move_options, parse_neighbor_options,
         parse_optional_pane_selector, parse_read_options, parse_read_target, parse_swap_options,
-        parse_zoom_options, strip_ansi, MoveOptions, ReadFormat, ReadSource, SwapOptions, ZoomMode,
+        parse_zoom_options, read_line_limit, strip_ansi, MoveOptions, ReadFormat, ReadSource,
+        SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -1228,6 +1235,14 @@ mod tests {
         assert_eq!(options.source, ReadSource::Recent);
         assert_eq!(options.lines, None);
         assert_eq!(options.format, ReadFormat::Text);
+        assert_eq!(read_line_limit(options.source, options.lines), Some(80));
+    }
+
+    #[test]
+    fn read_line_limits_match_herdr_defaults_by_source() {
+        assert_eq!(read_line_limit(ReadSource::Visible, None), None);
+        assert_eq!(read_line_limit(ReadSource::Detection, None), None);
+        assert_eq!(read_line_limit(ReadSource::Recent, Some(4)), Some(4));
     }
 
     #[test]

@@ -10,6 +10,8 @@ narrows the result to one workspace.
 Pane reads default to Herdr's `recent` source and accept explicit `visible`
 or `recent` selection, plus the `recent-unwrapped`, `detection`, `--format`,
 `--ansi`, and `--raw` forms; text output strips terminal escape sequences.
+Recent reads default to the last 80 lines, matching Herdr; visible and
+detection reads stay unbounded unless a line limit is requested.
 `pane neighbor` and `pane edges` now expose directional layout metadata with
 Herdr-style pane selectors.
 `pane layout` exposes the active tab's layout tree as JSON.

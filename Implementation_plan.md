@@ -196,6 +196,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   explicit `--source visible` reads;
   pane reads also accept Herdr's `recent-unwrapped`, `detection`, `--format`,
   `--ansi`, and `--raw` forms, stripping terminal escapes for text output;
+  recent and recent-unwrapped reads default to Herdr's last 80 lines, while
+  visible and detection reads remain unbounded unless `--lines` is supplied;
   `spindle pane neighbor` and `spindle pane edges` expose Herdr-style
   directional layout metadata for scripts;
   `spindle pane layout` exposes the active tab's layout tree as JSON;
