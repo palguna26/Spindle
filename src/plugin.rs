@@ -15,6 +15,8 @@ pub(crate) struct Manifest {
     pub(crate) actions: Vec<Action>,
     #[serde(default)]
     pub(crate) link_handlers: Vec<LinkHandler>,
+    #[serde(default)]
+    pub(crate) panes: Vec<Pane>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -33,6 +35,16 @@ pub(crate) struct LinkHandler {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct Pane {
+    pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) title: String,
+    pub(crate) command: Vec<String>,
+    #[serde(default = "default_pane_placement")]
+    pub(crate) placement: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Registration {
     pub(crate) id: String,
     pub(crate) path: PathBuf,
@@ -41,6 +53,10 @@ pub(crate) struct Registration {
 
 fn default_enabled() -> bool {
     true
+}
+
+fn default_pane_placement() -> String {
+    "split".into()
 }
 
 pub(crate) fn root() -> io::Result<PathBuf> {
