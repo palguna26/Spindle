@@ -76,6 +76,9 @@ zoom, sidebar, copy mode, help, and the command palette.
 Use `spindle config path` to print the path or `spindle config default` to
 print a starter file.
 
+Use `spindle completion <shell>` to generate completions for Bash, Elvish,
+Fish, PowerShell, or Zsh.
+
 Set `[theme] name` to `terminal`, `catppuccin`, `dracula`, `gruvbox`, `nord`,
 or `tokyo-night` to change the main UI accent and focused-pane colors.
 
