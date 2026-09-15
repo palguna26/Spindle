@@ -510,6 +510,10 @@ mod tests {
             Action::RenameFocusedPane
         );
         assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE)),
+            Action::SwitchTab(0)
+        );
+        assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)),
             Action::NextTab
         );
