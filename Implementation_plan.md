@@ -198,7 +198,7 @@ Terminal verification is still pending.
 
 - [ ] Port process/terminal agent detection using Herdr's manifests and state
   transitions as behavioral references, not copied implementation. Partial:
-  Recent Amp, Antigravity, Cline, Cursor, Devin, Droid, Grok, Hermes, Kilo, Kiro, Kimi, Maki, Muse, Qoder CLI, and Qwen rule functions are now grouped under
+  Recent Amp, Antigravity, Cline, Copilot, Cursor, Devin, Gemini, Droid, Grok, Hermes, Kilo, Kiro, Kimi, Maki, Muse, OpenCode, Qoder CLI, and Qwen rule functions are now grouped under
   `src/detect/agents/`, matching Herdr's per-agent manifest organization.
   direct and wrapped Pi/Qoder CLI/Droid/Grok/Hermes/Kilo/Kiro/Kimi/Maki/Muse/Qwen/Cline/Devin/Cursor/Amp/Antigravity/Claude/Codex/Gemini/
   OpenCode/GitHub Copilot processes, Herdr-aligned Pi `Working...`, Kimi

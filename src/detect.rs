@@ -8,12 +8,13 @@ use agents::{
     amp_is_idle, amp_is_working, amp_permission_required, antigravity_is_working,
     antigravity_permission_required, claude_dynamic_workflow_prompt, claude_mcp_elicitation_prompt,
     claude_should_skip_state_update, cline_permission_required, codex_should_skip_state_update,
+    copilot_background_agents_working, copilot_has_cancel_hint, copilot_permission_required,
     cursor_agent_node_argv, cursor_is_working, cursor_permission_required, devin_is_idle,
-    devin_is_working, devin_permission_required, grok_state, hermes_is_idle,
-    hermes_is_priority_working, hermes_is_working, hermes_permission_required,
+    devin_is_working, devin_permission_required, gemini_permission_required, grok_state,
+    hermes_is_idle, hermes_is_priority_working, hermes_is_working, hermes_permission_required,
     hermes_title_blocked, kilo_permission_required, kimi_is_working, kimi_permission_required,
-    kiro_is_idle, maki_state, muse_should_skip_state_update, muse_state, qodercli_is_working,
-    qodercli_permission_required, qwen_state,
+    kiro_is_idle, maki_state, muse_should_skip_state_update, muse_state,
+    opencode_permission_required, qodercli_is_working, qodercli_permission_required, qwen_state,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -344,55 +345,6 @@ fn kiro_is_working(recent: &str) -> bool {
     agents::kiro_is_working(recent)
 }
 
-fn gemini_permission_required(recent: &str) -> bool {
-    recent.contains("│ apply this change")
-        || recent.contains("│ allow execution")
-        || (recent.contains("yes")
-            && (recent.contains("waiting for user confirmation")
-                || recent.contains("│ do you want to proceed")
-                || recent.contains("do you want to proceed?")))
-        || recent.lines().any(|line| {
-            let line = line.trim_start();
-            line.starts_with('❯') && (line.contains("yes") || line.contains("allow"))
-        })
-}
-
-fn copilot_permission_required(recent: &str) -> bool {
-    let escape_hint = recent.contains("esc to cancel") || recent.contains("esc cancel");
-    let confirmation_hint = [
-        "enter to select",
-        "enter to confirm",
-        "enter to submit",
-        "enter accept",
-    ]
-    .iter()
-    .any(|hint| recent.contains(hint));
-    escape_hint && confirmation_hint
-}
-
-fn copilot_has_cancel_hint(recent: &str) -> bool {
-    [
-        "esc to cancel",
-        "esc cancel",
-        "esc again to cancel",
-        "esc interrupt",
-    ]
-    .iter()
-    .any(|hint| recent.contains(hint))
-}
-
-fn copilot_background_agents_working(recent: &str) -> bool {
-    recent_nonempty_lines(recent, 6).lines().any(|line| {
-        line.trim_start()
-            .strip_prefix('\u{25ce}')
-            .is_some_and(|message| {
-                message
-                    .trim_start()
-                    .starts_with("waiting for background agents")
-            })
-    })
-}
-
 fn claude_is_working(bottom: &str, bottom_five: &str, title: &str) -> bool {
     let title_spinner = title.chars().next().is_some_and(is_claude_spinner)
         && title.chars().nth(1).is_some_and(char::is_whitespace);
@@ -553,18 +505,6 @@ fn is_claude_activity_marker(character: char) -> bool {
         character,
         '*' | '\u{00b7}' | '\u{2722}' | '\u{2736}' | '\u{273b}' | '\u{273d}'
     )
-}
-
-fn opencode_permission_required(recent: &str) -> bool {
-    if recent.contains("\u{25b3} permission required") {
-        return true;
-    }
-
-    recent.contains("esc dismiss")
-        && (recent.contains("enter confirm")
-            || recent.contains("enter submit")
-            || recent.contains("enter toggle"))
-        && (recent.contains("\u{2191}\u{2193} select") || recent.contains("\u{21c6} tab"))
 }
 
 fn recent_nonempty_lines(screen: &str, limit: usize) -> String {
