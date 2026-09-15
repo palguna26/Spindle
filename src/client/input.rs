@@ -11,6 +11,7 @@ pub enum Action {
     CloseTab,
     NextTab,
     PreviousTab,
+    SwitchTab(usize),
     EnterCopyMode,
     NextSpace,
     PreviousSpace,
@@ -270,6 +271,14 @@ fn default_bindings() -> Vec<Binding> {
             prefix: true,
         },
     ]);
+    for (index, code) in ('1'..='9').enumerate() {
+        bindings.push(Binding {
+            action: Action::SwitchTab(index),
+            code: KeyCode::Char(code),
+            modifiers: KeyModifiers::NONE,
+            prefix: true,
+        });
+    }
     bindings
 }
 

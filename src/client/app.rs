@@ -838,6 +838,19 @@ fn event_loop(
                     record_action_error(&mut action_error, "switch tab", result);
                 }
             }
+            Action::SwitchTab(index) => {
+                if let Some(tab_id) = indexed_tab_id(&snapshot, index) {
+                    let result = request_action(
+                        client,
+                        "switch-indexed-tab",
+                        "switch_tab",
+                        json!({ "id": tab_id }),
+                        "switch tab",
+                    )
+                    .and_then(|()| ensure_active_default_pane(client, terminal_size));
+                    record_action_error(&mut action_error, "switch tab", result);
+                }
+            }
             Action::NextSpace | Action::PreviousSpace => {
                 if let Some(space_id) =
                     adjacent_space_id(&snapshot, matches!(pressed, Action::NextSpace))
@@ -2468,6 +2481,19 @@ fn execute_action(
             }
             Ok(false)
         }
+        Action::SwitchTab(index) => {
+            if let Some(tab_id) = indexed_tab_id(snapshot, index) {
+                request_action(
+                    client,
+                    "palette-switch-indexed-tab",
+                    "switch_tab",
+                    json!({ "id": tab_id }),
+                    "switch tab",
+                )?;
+                ensure_active_default_pane(client, terminal_size)?;
+            }
+            Ok(false)
+        }
         Action::NextSpace | Action::PreviousSpace => {
             if let Some(space_id) =
                 adjacent_space_id(snapshot, matches!(pressed, Action::NextSpace))
@@ -2915,6 +2941,12 @@ fn adjacent_tab_id(snapshot: &SessionSnapshot, forward: bool) -> Option<String> 
         (index + workspace.tabs.len() - 1) % workspace.tabs.len()
     };
     Some(workspace.tabs[next].tab_id.clone())
+}
+
+fn indexed_tab_id(snapshot: &SessionSnapshot, index: usize) -> Option<String> {
+    active_workspace(snapshot)
+        .and_then(|workspace| workspace.tabs.get(index))
+        .map(|tab| tab.tab_id.clone())
 }
 
 fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
