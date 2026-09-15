@@ -357,7 +357,8 @@ approved design changes it.
 - [ ] Port each behavior that fits Spindle's Windows-first/local-first purpose
   in a separately tested commit. Pane movement now supports Herdr's
   existing-tab destination as well as a new tab, with optional target-pane
-  splitting in the active workspace.
+  splitting in the active workspace. Tab focus, rename, close, and workspace
+  deletion now resolve IDs across the session's spaces and workspaces.
 - [ ] For behavior not included, record the concrete reason and an equivalent
   Spindle workflow; do not silently omit it.
 - [ ] Improve Windows-specific process launch, terminal input/output, resizing,
