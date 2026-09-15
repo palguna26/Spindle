@@ -358,5 +358,7 @@ mod tests {
         );
         assert!(super::super::parse_env_assignment("missing-separator").is_err());
         assert!(super::super::parse_env_assignment("=empty-key").is_err());
+        assert!(super::super::parse_env_assignment("KEY=bad\0value").is_err());
+        assert!(super::super::parse_env_assignment("KE\0Y=value").is_err());
     }
 }

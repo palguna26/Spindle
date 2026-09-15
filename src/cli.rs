@@ -18,6 +18,9 @@ pub(super) fn parse_env_assignment(value: &str) -> io::Result<(String, String)> 
     if key.is_empty() {
         return Err(io::Error::other("environment key cannot be empty"));
     }
+    if key.contains('\0') || value.contains('\0') {
+        return Err(io::Error::other("environment must not contain NUL bytes"));
+    }
     Ok((key.to_owned(), value.to_owned()))
 }
 
