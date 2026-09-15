@@ -110,6 +110,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 ## 3. Port mouse-first navigation and pane controls
 
 - [x] Click spaces, workspaces, tabs, and panes to switch/focus them.
+- [x] Keep client mouse state and pane hit models in the dedicated
+  `src/client/mouse.rs` module, following Herdr's focused shell mouse module.
 - [x] Toggle a compact four-column sidebar from the Herdr `prefix+b` binding
   or the sidebar footer control; compact rows remain clickable.
 - [x] Save the sidebar's manually selected collapsed state with the local

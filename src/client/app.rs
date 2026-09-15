@@ -1,6 +1,7 @@
 use super::context_menu::{ContextMenu, ContextMenuAction, ContextMenuTarget};
 use super::copy_mode::{CopyMode, KeyResult};
 use super::input::{is_prefix, Action, Keymap};
+use super::mouse::{CachedScrollbackView, MouseState, PaneClick, PaneMouseCapture, SplitDrag};
 use super::navigator::{Navigator, Outcome as NavigatorOutcome, Target as NavigatorTarget};
 use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
@@ -31,79 +32,6 @@ const SPLIT_DRAG_INTERVAL: Duration = Duration::from_millis(33);
 const WHEEL_SCROLL_LINES: usize = 3;
 const MAX_SCROLLBACK_ROWS: usize = 4096;
 const ACTION_ERROR_DURATION: Duration = Duration::from_secs(5);
-
-struct SplitDrag {
-    path: Vec<bool>,
-    direction: SplitDirection,
-    area: Rect,
-    grab_offset: i32,
-    last_sent_at: Option<Instant>,
-}
-
-struct PaneMouseCapture {
-    pane_id: String,
-    rect: Rect,
-    button: MouseButton,
-}
-
-#[derive(Default)]
-struct MouseState {
-    sidebar_collapsed: bool,
-    agent_priority_sort: bool,
-    sidebar_scroll: usize,
-    sidebar_scroll_drag: Option<u16>,
-    preferences_path: std::path::PathBuf,
-    split_drag: Option<SplitDrag>,
-    pane_capture: Option<PaneMouseCapture>,
-    selection: Option<TextSelection>,
-    last_click: Option<PaneClick>,
-    scroll_offsets: HashMap<String, usize>,
-    scrollback_views: HashMap<String, CachedScrollbackView>,
-    copy_mode: Option<CopyMode>,
-    navigation_workspace: Option<(String, String)>,
-}
-
-struct PaneClick {
-    pane_id: String,
-    row: u16,
-    col: u16,
-    at: Instant,
-}
-
-struct CachedScrollbackView {
-    bytes: Vec<u8>,
-    rows: u16,
-    cols: u16,
-    offset: usize,
-    screen: String,
-}
-
-impl PaneClick {
-    fn is_double_click_for(&self, pane_id: &str, row: u16, col: u16, now: Instant) -> bool {
-        self.pane_id == pane_id
-            && now.duration_since(self.at) <= Duration::from_millis(350)
-            && self.row.abs_diff(row) <= 1
-            && self.col.abs_diff(col) <= 1
-    }
-}
-
-impl SplitDrag {
-    fn ratio_at(&self, mouse: MouseEvent) -> f32 {
-        let (pointer, origin, extent) = match self.direction {
-            SplitDirection::Horizontal => (
-                i32::from(mouse.column),
-                i32::from(self.area.x),
-                self.area.width,
-            ),
-            SplitDirection::Vertical => (
-                i32::from(mouse.row),
-                i32::from(self.area.y),
-                self.area.height,
-            ),
-        };
-        ((pointer + self.grab_offset - origin) as f32 / f32::from(extent.max(1))).clamp(0.1, 0.9)
-    }
-}
 
 pub fn run(
     address: impl Into<String>,
