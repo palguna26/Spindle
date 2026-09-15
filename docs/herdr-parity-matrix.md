@@ -5,6 +5,8 @@ Reference: `C:\Users\Palguna\.opensrc\repos\github.com\herdrdev\herdr\master`.
 Latest CLI parity: `spindle pane move <id>` preserves the live pane process
 while moving it to a new tab or an existing tab in the active workspace. The
 existing-tab form supports an optional target pane and right/down split.
+Plugin lifecycle parity now also covers the Herdr `tab.closed` event hook;
+the lifecycle row below records the remaining workspace and layout gaps.
 Statuses describe the current Spindle checkout, not the target. “Partial” means
 some server/model support exists but the user-facing behavior is missing or
 does not yet match Herdr.

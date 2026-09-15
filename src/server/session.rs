@@ -1051,41 +1051,58 @@ impl Session {
 
     pub fn close_tab(&mut self, tab_id: &str) -> Result<Value, String> {
         let active_space_id = self.snapshot.active_space_id.clone();
-        let space = self
+        let workspace_id = self
             .snapshot
             .spaces
             .iter()
             .find(|space| space.space_id == active_space_id)
-            .ok_or_else(|| "active space does not exist".to_string())?;
-        let workspace_id = space
+            .ok_or_else(|| "active space does not exist".to_string())?
             .active_workspace_id
             .clone()
             .ok_or_else(|| "active space has no workspace".to_string())?;
-        let workspace = space
-            .workspaces
-            .iter()
-            .find(|workspace| workspace.workspace_id == workspace_id)
-            .ok_or_else(|| "active workspace does not exist".to_string())?;
-        let index = workspace
-            .tabs
-            .iter()
-            .position(|tab| tab.tab_id == tab_id)
-            .ok_or_else(|| format!("tab '{tab_id}' does not exist"))?;
-        if workspace.tabs.len() == 1 {
+        let (index, tab_count, pane_ids) = {
+            let workspace = self
+                .snapshot
+                .spaces
+                .iter()
+                .find(|space| space.space_id == active_space_id)
+                .ok_or_else(|| "active space does not exist".to_string())?
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.workspace_id == workspace_id)
+                .ok_or_else(|| "active workspace does not exist".to_string())?;
+            let index = workspace
+                .tabs
+                .iter()
+                .position(|tab| tab.tab_id == tab_id)
+                .ok_or_else(|| format!("tab '{tab_id}' does not exist"))?;
+            let pane_ids = workspace.tabs[index]
+                .layout
+                .as_ref()
+                .map(|layout| {
+                    layout
+                        .pane_ids()
+                        .into_iter()
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            (index, workspace.tabs.len(), pane_ids)
+        };
+        self.record_event(
+            "tab_closed",
+            serde_json::json!({ "tab_id": tab_id, "workspace_id": workspace_id }),
+        );
+        if tab_count == 1 {
             self.close_workspace(&active_space_id, &workspace_id)?;
             return Ok(serde_json::json!({ "tab_id": tab_id, "closed_workspace": true }));
         }
-        let pane_ids = workspace.tabs[index]
-            .layout
-            .as_ref()
-            .map(LayoutNode::pane_ids)
-            .unwrap_or_default();
         for pane_id in &pane_ids {
             let _ = self.pane_manager.remove(pane_id);
         }
         self.snapshot
             .panes
-            .retain(|pane| !pane_ids.iter().any(|id| *id == pane.pane_id));
+            .retain(|pane| !pane_ids.contains(&pane.pane_id));
         let workspace = &mut self
             .snapshot
             .spaces
@@ -2371,8 +2388,15 @@ mod tests {
         let mut session = Session::default();
         let tab = session.create_tab("Logs".into()).unwrap();
         let tab_id = tab["tab_id"].as_str().unwrap().to_string();
+        let sequence = session.snapshot.event_sequence;
         session.close_tab(&tab_id).unwrap();
         assert_eq!(session.snapshot().spaces[0].workspaces[0].tabs.len(), 1);
+        let events = session.events_since(sequence);
+        assert!(events.iter().any(|event| {
+            event.event == "tab_closed"
+                && event.payload["tab_id"] == tab_id
+                && event.payload["workspace_id"] == "workspace-1"
+        }));
     }
 
     #[test]
