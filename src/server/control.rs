@@ -689,6 +689,28 @@ pub(crate) fn response_for_with_interactive(
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| session.close_pane(&payload.pane_id))
         }
+        "close_popup" => {
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                let pane_id = session
+                    .snapshot()
+                    .popup_pane_id
+                    .clone()
+                    .ok_or_else(|| "no popup pane is open".to_string())?;
+                session.close_popup_pane(&pane_id)
+            })
+        }
+        "close_overlay" => {
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                let pane_id = session
+                    .snapshot()
+                    .overlay_pane_id
+                    .clone()
+                    .ok_or_else(|| "no overlay pane is open".to_string())?;
+                session.close_overlay_pane(&pane_id)
+            })
+        }
         "stop_server" => Ok(json!({ "stopping": true })),
         _ => Err(format!("unknown operation '{}'", request.op)),
     };

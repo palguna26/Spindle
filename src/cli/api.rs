@@ -72,5 +72,13 @@ mod tests {
             schema["operations"]["create_pane"]["payload"]["properties"]["overlay"]["type"],
             "boolean"
         );
+        assert!(schema["operations"]
+            .as_object()
+            .unwrap()
+            .contains_key("close_popup"));
+        assert!(schema["operations"]
+            .as_object()
+            .unwrap()
+            .contains_key("close_overlay"));
     }
 }
