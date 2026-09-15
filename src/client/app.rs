@@ -6,6 +6,7 @@ use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
 use super::renderer;
 use super::selection::TextSelection;
+use super::startup::{startup_error_action, StartupErrorAction};
 use super::{ClientError, ControlClient};
 use crate::model::layout::Direction as SplitDirection;
 use crate::server::session::SessionSnapshot;
@@ -30,21 +31,6 @@ const SPLIT_DRAG_INTERVAL: Duration = Duration::from_millis(33);
 const WHEEL_SCROLL_LINES: usize = 3;
 const MAX_SCROLLBACK_ROWS: usize = 4096;
 const ACTION_ERROR_DURATION: Duration = Duration::from_secs(5);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StartupErrorAction {
-    Retry,
-    Detach,
-    Ignore,
-}
-
-fn startup_error_action(key: KeyCode) -> StartupErrorAction {
-    match key {
-        KeyCode::Char('r') | KeyCode::Enter => StartupErrorAction::Retry,
-        KeyCode::Esc | KeyCode::Char('q') => StartupErrorAction::Detach,
-        _ => StartupErrorAction::Ignore,
-    }
-}
 
 struct SplitDrag {
     path: Vec<bool>,

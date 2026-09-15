@@ -255,6 +255,9 @@ approved design changes it.
 
 - [ ] Extend the parity matrix across CLI, configuration/keybindings/themes,
   notifications, session recovery, integrations, remote sessions, and plugins.
+- [x] Keep client orchestration categorized like Herdr's shell modules; startup
+  failure actions now live in `src/client/startup.rs` instead of the main event
+  loop module.
 - [x] Add a read-only `spindle workspace list` CLI command, matching Herdr's
   workspace-list entry point and showing active state across spaces.
 - [x] Add `spindle workspace focus <workspace_id>`, matching Herdr's CLI and
