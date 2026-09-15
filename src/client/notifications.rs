@@ -1,5 +1,7 @@
 use crate::detect::AgentState;
 use crate::server::session::SessionSnapshot;
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind {
@@ -14,23 +16,47 @@ pub(crate) struct Event {
     pub kind: Kind,
 }
 
-pub(crate) fn observe(previous: &SessionSnapshot, current: &SessionSnapshot) -> Option<Event> {
-    current.panes.iter().find_map(|pane| {
-        let agent = pane.agent?;
-        let state = pane.agent_state?;
-        let old = previous
-            .panes
-            .iter()
-            .find(|old| old.pane_id == pane.pane_id)
-            .and_then(|old| old.agent_state)
-            .unwrap_or(AgentState::Unknown);
-        let active = active_pane_ids(current).contains(&pane.pane_id.as_str());
-        notification_kind(old, state, active).map(|kind| Event {
-            pane_id: pane.pane_id.clone(),
-            agent: agent.label().to_owned(),
-            kind,
+pub(crate) fn observe_all(previous: &SessionSnapshot, current: &SessionSnapshot) -> Vec<Event> {
+    current
+        .panes
+        .iter()
+        .filter_map(|pane| {
+            let agent = pane.agent?;
+            let state = pane.agent_state?;
+            let old = previous
+                .panes
+                .iter()
+                .find(|old| old.pane_id == pane.pane_id)
+                .and_then(|old| old.agent_state)
+                .unwrap_or(AgentState::Unknown);
+            let active = active_pane_ids(current).contains(&pane.pane_id.as_str());
+            notification_kind(old, state, active).map(|kind| Event {
+                pane_id: pane.pane_id.clone(),
+                agent: agent.label().to_owned(),
+                kind,
+            })
         })
-    })
+        .collect()
+}
+
+pub(crate) fn enqueue(
+    queue: &mut VecDeque<(String, Instant)>,
+    events: impl IntoIterator<Item = Event>,
+    now: Instant,
+) {
+    for event in events {
+        let position = queue.len() as u32 + 1;
+        queue.push_back((
+            message(&event),
+            now + Duration::from_secs(5).saturating_mul(position),
+        ));
+    }
+}
+
+pub(crate) fn expire(queue: &mut VecDeque<(String, Instant)>, now: Instant) {
+    while queue.front().is_some_and(|(_, deadline)| now >= *deadline) {
+        queue.pop_front();
+    }
 }
 
 fn notification_kind(previous: AgentState, current: AgentState, active: bool) -> Option<Kind> {
@@ -86,8 +112,10 @@ pub(crate) fn message(event: &Event) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{notification_kind, Kind};
+    use super::{enqueue, expire, notification_kind, Event, Kind};
     use crate::detect::AgentState;
+    use std::collections::VecDeque;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn notifications_match_herdr_transition_rules() {
@@ -103,5 +131,34 @@ mod tests {
             notification_kind(AgentState::Working, AgentState::Idle, true),
             None
         );
+    }
+
+    #[test]
+    fn queued_notifications_keep_order_and_expire_from_the_front() {
+        let now = Instant::now();
+        let mut queue = VecDeque::new();
+        enqueue(
+            &mut queue,
+            [
+                Event {
+                    pane_id: "pane-1".into(),
+                    agent: "codex".into(),
+                    kind: Kind::NeedsAttention,
+                },
+                Event {
+                    pane_id: "pane-2".into(),
+                    agent: "claude".into(),
+                    kind: Kind::Finished,
+                },
+            ],
+            now,
+        );
+        assert_eq!(queue.len(), 2);
+        assert!(queue.front().unwrap().0.contains("codex"));
+        expire(&mut queue, now + Duration::from_secs(5));
+        assert_eq!(queue.len(), 1);
+        assert!(queue.front().unwrap().0.contains("claude"));
+        expire(&mut queue, now + Duration::from_secs(10));
+        assert!(queue.is_empty());
     }
 }

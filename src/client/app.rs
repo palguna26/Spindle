@@ -22,6 +22,7 @@ use ratatui::layout::Rect;
 use ratatui::Terminal;
 use serde_json::json;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::io::{self, stdout};
 use std::time::{Duration, Instant};
 
@@ -196,7 +197,7 @@ fn event_loop(
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
     let mut action_error: Option<(String, Instant)> = None;
-    let mut notification: Option<(String, Instant)> = None;
+    let mut notifications: VecDeque<(String, Instant)> = VecDeque::new();
     loop {
         keymap = Keymap::from_config(&crate::config::load());
         if action_error
@@ -205,21 +206,15 @@ fn event_loop(
         {
             action_error = None;
         }
-        if notification
-            .as_ref()
-            .is_some_and(|(_, expires_at)| Instant::now() >= *expires_at)
-        {
-            notification = None;
-        }
+        crate::client::notifications::expire(&mut notifications, Instant::now());
         let terminal_size = size().map_err(ClientError::Io)?;
         let mut connected = match current_snapshot(client) {
             Ok(current) => {
-                if let Some(event) = crate::client::notifications::observe(&snapshot, &current) {
-                    notification = Some((
-                        crate::client::notifications::message(&event),
-                        Instant::now() + Duration::from_secs(5),
-                    ));
-                }
+                crate::client::notifications::enqueue(
+                    &mut notifications,
+                    crate::client::notifications::observe_all(&snapshot, &current),
+                    Instant::now(),
+                );
                 snapshot = current;
                 true
             }
@@ -366,7 +361,7 @@ fn event_loop(
                 } else if let Some((error, _)) = &action_error {
                     renderer::render_action_error(frame, error);
                 }
-                if let Some((message, _)) = &notification {
+                if let Some((message, _)) = notifications.front() {
                     renderer::render_notification(frame, message);
                 }
             })
