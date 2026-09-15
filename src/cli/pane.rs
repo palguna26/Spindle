@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
-        [command] if command == "list" => pane_list(project),
+        [command, args @ ..] if command == "list" => pane_list_command(project, args),
         [command] if command == "current" => pane_current(project, None),
         [command, id] if command == "current" => pane_current(project, Some(id)),
         [command, id] if command == "get" => pane_get(project, id),
@@ -117,9 +117,13 @@ fn active_pane_ids(snapshot: &SessionSnapshot) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn pane_list(project: &Project) -> io::Result<()> {
+fn pane_list_command(project: &Project, args: &[String]) -> io::Result<()> {
     let snapshot = get_snapshot(project)?;
-    let pane_ids = active_pane_ids(&snapshot);
+    let workspace_id = parse_list_workspace(args).map_err(io::Error::other)?;
+    let pane_ids = workspace_id
+        .as_deref()
+        .map(|id| workspace_pane_ids(&snapshot, id))
+        .unwrap_or_else(|| active_pane_ids(&snapshot));
     print!(
         "{}",
         format_pane_list(
@@ -129,6 +133,41 @@ fn pane_list(project: &Project) -> io::Result<()> {
         )
     );
     Ok(())
+}
+
+fn parse_list_workspace(args: &[String]) -> Result<Option<String>, String> {
+    if args.is_empty() {
+        return Ok(None);
+    }
+    if args.len() == 2 && args[0] == "--workspace" {
+        if args[1].is_empty() {
+            return Err("workspace ID cannot be empty".into());
+        }
+        return Ok(Some(args[1].clone()));
+    }
+    Err("usage: spindle pane list [--workspace <id>]".into())
+}
+
+fn workspace_pane_ids(snapshot: &SessionSnapshot, workspace_id: &str) -> Vec<String> {
+    snapshot
+        .spaces
+        .iter()
+        .flat_map(|space| &space.workspaces)
+        .find(|workspace| workspace.workspace_id == workspace_id)
+        .map(|workspace| {
+            workspace
+                .tabs
+                .iter()
+                .flat_map(|tab| {
+                    tab.layout
+                        .as_ref()
+                        .into_iter()
+                        .flat_map(|layout| layout.pane_ids())
+                })
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn format_pane_list(panes: &[PaneView], pane_ids: &[String], focused_id: Option<&str>) -> String {
@@ -509,7 +548,7 @@ fn pane_resize(project: &Project, id: &str, raw_delta: &str) -> io::Result<()> {
 
 fn print_help() {
     println!("Usage: spindle pane <list|current|get|focus|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|wait-output|split|resize>");
-    println!("  list             list panes in the active tab");
+    println!("  list [--workspace <id>]  list panes in a workspace");
     println!("  current [<id>]   show the focused or requested pane");
     println!("  get <id>         show a pane as JSON");
     println!("  focus <id>       focus a pane");
@@ -531,7 +570,10 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_pane_list, parse_focus_direction, parse_read_options, ReadSource};
+    use super::{
+        format_pane_list, parse_focus_direction, parse_list_workspace, parse_read_options,
+        ReadSource,
+    };
     use crate::server::session::Session;
     use std::time::Duration;
 
@@ -579,5 +621,14 @@ mod tests {
         assert_eq!(options.source, ReadSource::Recent);
         assert_eq!(options.lines, Some(4));
         assert!(parse_read_options(&["--source".into(), "detection".into()]).is_err());
+    }
+
+    #[test]
+    fn pane_list_accepts_herdr_workspace_selector() {
+        assert_eq!(
+            parse_list_workspace(&["--workspace".into(), "workspace-2".into()]),
+            Ok(Some("workspace-2".into()))
+        );
+        assert!(parse_list_workspace(&["--workspace".into()]).is_err());
     }
 }
