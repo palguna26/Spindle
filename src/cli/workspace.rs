@@ -30,7 +30,8 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
 fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
     let mut name = "Workspace".to_owned();
     let mut cwd = None;
-    let mut focus = true;
+    // Herdr creates the workspace without changing focus unless --focus is given.
+    let mut focus = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -98,12 +99,14 @@ fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
         .spaces
         .iter()
         .find(|space| space.space_id == snapshot.active_space_id)
-        .and_then(|space| space.active_workspace_id.as_deref().and_then(|id| {
-            space
-                .workspaces
-                .iter()
-                .find(|workspace| workspace.workspace_id == id)
-        }))
+        .and_then(|space| {
+            space.active_workspace_id.as_deref().and_then(|id| {
+                space
+                    .workspaces
+                    .iter()
+                    .find(|workspace| workspace.workspace_id == id)
+            })
+        })
         .and_then(|workspace| workspace.repository_path.clone())
         .or(cwd);
     let pane = super::send_command_with_payload(
@@ -301,7 +304,9 @@ fn format_workspace_list(snapshot: &SessionSnapshot) -> String {
 fn print_help() {
     println!("Usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>|close <workspace_id>>");
     println!("  list    list workspaces in the current project session");
-    println!("  create  create a workspace and start its PowerShell pane (--cwd, --label, --no-focus)");
+    println!(
+        "  create  create a workspace and start its PowerShell pane (--cwd, --label, --no-focus)"
+    );
     println!("  get     show a workspace by ID");
     println!("  focus   focus a workspace by ID");
     println!("  rename  rename a workspace by ID");
