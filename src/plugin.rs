@@ -18,6 +18,8 @@ pub(crate) struct Manifest {
     pub(crate) link_handlers: Vec<LinkHandler>,
     #[serde(default)]
     pub(crate) panes: Vec<Pane>,
+    #[serde(default)]
+    pub(crate) platforms: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -25,6 +27,8 @@ pub(crate) struct Action {
     pub(crate) id: String,
     #[serde(default)]
     pub(crate) title: String,
+    #[serde(default)]
+    pub(crate) platforms: Option<Vec<String>>,
     pub(crate) command: Vec<String>,
 }
 
@@ -33,6 +37,8 @@ pub(crate) struct LinkHandler {
     pub(crate) id: String,
     pub(crate) pattern: String,
     pub(crate) action: String,
+    #[serde(default)]
+    pub(crate) platforms: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -43,6 +49,8 @@ pub(crate) struct Pane {
     pub(crate) command: Vec<String>,
     #[serde(default = "default_pane_placement")]
     pub(crate) placement: String,
+    #[serde(default)]
+    pub(crate) platforms: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -113,6 +121,10 @@ pub(crate) fn safe_component(id: &str) -> String {
             }
         })
         .collect()
+}
+
+pub(crate) fn supports_windows(platforms: Option<&[String]>) -> bool {
+    platforms.is_none_or(|values| values.iter().any(|value| value == "windows"))
 }
 
 pub(crate) fn read_registry() -> io::Result<Vec<Registration>> {

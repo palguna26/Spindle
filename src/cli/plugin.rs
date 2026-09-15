@@ -421,7 +421,10 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     let (registration, manifest) = crate::plugin::installed()?
         .into_iter()
         .find(|(registration, manifest)| {
-            registration.id == plugin_id && registration.enabled && manifest.enabled
+            registration.id == plugin_id
+                && registration.enabled
+                && manifest.enabled
+                && crate::plugin::supports_windows(manifest.platforms.as_deref())
         })
         .ok_or_else(|| {
             io::Error::new(
@@ -439,6 +442,12 @@ fn pane_open(args: &[String]) -> io::Result<()> {
                 format!("plugin pane '{entrypoint}' was not found"),
             )
         })?;
+    if !crate::plugin::supports_windows(pane.platforms.as_deref()) {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "plugin pane is not supported on Windows",
+        ));
+    }
     let placement = requested_placement.as_deref().unwrap_or(&pane.placement);
     if !matches!(placement, "split" | "tab" | "zoomed") {
         return usage("plugin pane placement must be split, tab, or zoomed");
@@ -588,11 +597,15 @@ fn action_list(args: &[String]) -> io::Result<()> {
     for (registration, manifest) in crate::plugin::installed()? {
         if !registration.enabled
             || !manifest.enabled
+            || !crate::plugin::supports_windows(manifest.platforms.as_deref())
             || plugin_id.as_ref().is_some_and(|id| id != &manifest.id)
         {
             continue;
         }
         for action in manifest.actions {
+            if !crate::plugin::supports_windows(action.platforms.as_deref()) {
+                continue;
+            }
             let title = if action.title.is_empty() {
                 &action.id
             } else {
@@ -619,12 +632,15 @@ fn action_invoke(args: &[String]) -> io::Result<()> {
     for (registration, manifest) in crate::plugin::installed()? {
         if !registration.enabled
             || !manifest.enabled
+            || !crate::plugin::supports_windows(manifest.platforms.as_deref())
             || selected_plugin.is_some_and(|id| id != manifest.id)
         {
             continue;
         }
         for action in manifest.actions {
-            if action.id == action_id {
+            if action.id == action_id
+                && crate::plugin::supports_windows(action.platforms.as_deref())
+            {
                 matches.push((registration.clone(), manifest.id.clone(), action));
             }
         }

@@ -2,17 +2,25 @@ use std::io;
 
 pub(crate) fn launch_for_url(url: &str) -> io::Result<bool> {
     for (registration, manifest) in crate::plugin::installed()? {
-        if !registration.enabled || !manifest.enabled {
+        if !registration.enabled
+            || !manifest.enabled
+            || !crate::plugin::supports_windows(manifest.platforms.as_deref())
+        {
             continue;
         }
         for handler in &manifest.link_handlers {
+            if !crate::plugin::supports_windows(handler.platforms.as_deref()) {
+                continue;
+            }
             let Ok(pattern) = regex::Regex::new(&handler.pattern) else {
                 continue;
             };
             if !pattern.is_match(url) {
                 continue;
             }
-            let Some(action) = manifest.actions.iter().find(|a| a.id == handler.action) else {
+            let Some(action) = manifest.actions.iter().find(|a| {
+                a.id == handler.action && crate::plugin::supports_windows(a.platforms.as_deref())
+            }) else {
                 continue;
             };
             let Some(command) = action.command.first() else {
@@ -72,5 +80,12 @@ action = "open"
         .unwrap();
         assert_eq!(manifest.id, "example.links");
         assert_eq!(manifest.actions[0].command, ["tool", "--open"]);
+    }
+
+    #[test]
+    fn platform_filters_match_windows_manifest_values() {
+        assert!(crate::plugin::supports_windows(Some(&["windows".into()])));
+        assert!(!crate::plugin::supports_windows(Some(&["linux".into()])));
+        assert!(crate::plugin::supports_windows(None));
     }
 }
