@@ -475,6 +475,9 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     let requested_placement = optional_option(args, "--placement")?;
     let requested_width = optional_option(args, "--width")?;
     let requested_height = optional_option(args, "--height")?;
+    let requested_workspace = optional_option(args, "--workspace")?;
+    let target_pane = optional_option(args, "--target-pane")?;
+    let direction = optional_option(args, "--direction")?;
     let cwd = optional_option(args, "--cwd")?;
     let caller_env = repeated_option(args, "--env")?;
     let no_focus = args.iter().any(|arg| arg == "--no-focus");
@@ -515,6 +518,13 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     if !matches!(placement, "overlay" | "split" | "tab" | "zoomed" | "popup") {
         return usage("plugin pane placement must be overlay, split, tab, zoomed, or popup");
     }
+    if (target_pane.is_some() || direction.is_some()) && placement != "split" {
+        return usage("--target-pane and --direction are only supported for split placement");
+    }
+    let split_direction = match plugin_split_direction(direction.as_deref()) {
+        Ok(direction) => direction,
+        Err(message) => return usage(&message),
+    };
     if placement != "popup" && (requested_width.is_some() || requested_height.is_some()) {
         return usage("--width and --height are only supported for popup placement");
     }
@@ -543,7 +553,7 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     if super::ping_server(&project).is_err() {
         super::start_server(&project)?;
     }
-    let snapshot = super::send_command(&project, "get_snapshot")?
+    let mut snapshot = super::send_command(&project, "get_snapshot")?
         .payload
         .and_then(|payload| serde_json::from_value::<SessionSnapshot>(payload).ok());
     let previous_focus = no_focus
@@ -553,6 +563,50 @@ fn pane_open(args: &[String]) -> io::Result<()> {
                 .and_then(|snapshot| snapshot.focused_pane_id.clone())
         })
         .flatten();
+    let previous_workspace = no_focus.then(|| {
+        snapshot.as_ref().and_then(|snapshot| {
+            snapshot
+                .spaces
+                .iter()
+                .find(|space| space.space_id == snapshot.active_space_id)
+                .and_then(|space| space.active_workspace_id.clone())
+        })
+    });
+    let previous_tab = no_focus.then(|| {
+        snapshot.as_ref().and_then(|snapshot| {
+            snapshot
+                .spaces
+                .iter()
+                .find(|space| space.space_id == snapshot.active_space_id)
+                .and_then(|space| space.active_workspace_id.as_ref())
+                .and_then(|workspace_id| {
+                    snapshot
+                        .spaces
+                        .iter()
+                        .flat_map(|space| space.workspaces.iter())
+                        .find(|workspace| &workspace.workspace_id == workspace_id)
+                })
+                .map(|workspace| workspace.active_tab_id.clone())
+        })
+    });
+    if let Some(workspace_id) = requested_workspace.as_deref() {
+        let response = super::send_command_with_payload(
+            &project,
+            "switch_workspace",
+            serde_json::json!({ "id": workspace_id }),
+        )?;
+        if !response.ok {
+            return Err(io::Error::other(
+                response
+                    .error
+                    .map(|error| error.message)
+                    .unwrap_or_else(|| "server rejected plugin pane workspace".into()),
+            ));
+        }
+        snapshot = super::send_command(&project, "get_snapshot")?
+            .payload
+            .and_then(|payload| serde_json::from_value::<SessionSnapshot>(payload).ok());
+    }
     if placement == "tab" {
         super::send_command_with_payload(
             &project,
@@ -622,23 +676,30 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         env.insert(key.into(), value.into());
     }
     let cwd = cwd.unwrap_or_else(|| registration.path.display().to_string());
-    let response = super::send_command_with_payload(
-        &project,
-        "create_pane",
-        serde_json::json!({
-            "command": command,
-            "args": pane.command.iter().skip(1).collect::<Vec<_>>(),
-            "cwd": cwd,
-            "label": pane.title,
-            "env": env,
-            // Herdr's popup dimensions include its border. The PTY gets the
-            // inner terminal size while the renderer uses the outer size.
-            "cols": if placement == "popup" { popup_width.saturating_sub(2).max(4) } else { 80 },
-            "rows": if placement == "popup" { popup_height.saturating_sub(2).max(4) } else { 24 },
-            "popup": placement == "popup",
-            "overlay": placement == "overlay",
-        }),
-    )?;
+    let create_payload = serde_json::json!({
+        "command": command,
+        "args": pane.command.iter().skip(1).collect::<Vec<_>>(),
+        "cwd": cwd,
+        "label": pane.title,
+        "env": env,
+        // Herdr's popup dimensions include its border. The PTY gets the
+        // inner terminal size while the renderer uses the outer size.
+        "cols": if placement == "popup" { popup_width.saturating_sub(2).max(4) } else { 80 },
+        "rows": if placement == "popup" { popup_height.saturating_sub(2).max(4) } else { 24 },
+        "popup": placement == "popup",
+        "overlay": placement == "overlay",
+    });
+    let response = if placement == "split" {
+        let mut split_payload = create_payload;
+        split_payload["direction"] = serde_json::json!(split_direction);
+        split_payload["pane_id"] = target_pane
+            .as_deref()
+            .map_or(serde_json::Value::Null, serde_json::Value::from);
+        split_payload["focus"] = serde_json::json!(!no_focus);
+        super::send_command_with_payload(&project, "split_pane", split_payload)?
+    } else {
+        super::send_command_with_payload(&project, "create_pane", create_payload)?
+    };
     if !response.ok {
         return Err(io::Error::other(
             response
@@ -659,6 +720,20 @@ fn pane_open(args: &[String]) -> io::Result<()> {
                 &project,
                 "focus_pane",
                 serde_json::json!({ "pane_id": previous_focus }),
+            )?;
+        }
+    }
+    if let Some(previous_workspace) = previous_workspace.flatten() {
+        super::send_command_with_payload(
+            &project,
+            "switch_workspace",
+            serde_json::json!({ "id": previous_workspace }),
+        )?;
+        if let Some(previous_tab) = previous_tab.flatten() {
+            super::send_command_with_payload(
+                &project,
+                "switch_tab",
+                serde_json::json!({ "id": previous_tab }),
             )?;
         }
     }
@@ -980,6 +1055,14 @@ fn usage(message: &str) -> io::Result<()> {
     Err(io::Error::new(io::ErrorKind::InvalidInput, message))
 }
 
+fn plugin_split_direction(direction: Option<&str>) -> Result<&'static str, String> {
+    match direction.unwrap_or("right") {
+        "right" => Ok("horizontal"),
+        "down" => Ok("vertical"),
+        value => Err(format!("invalid split direction: {value}")),
+    }
+}
+
 fn help() {
     println!(
         "Usage: spindle plugin <install|uninstall|link|unlink|list|enable|disable|config-dir|action|pane>"
@@ -991,7 +1074,7 @@ fn help() {
     println!("  unlink <plugin_id>        unregister a plugin, leaving files alone");
     println!("  enable|disable <id>       change a plugin's global enabled state");
     println!("  config-dir <id>           print and create the plugin config directory");
-    println!("  pane open --plugin ID --entrypoint ID [--placement overlay|split|tab|zoomed|popup] [--width N --height N] [--env KEY=VALUE]");
+    println!("  pane open --plugin ID --entrypoint ID [--placement overlay|split|tab|zoomed|popup] [--width N --height N] [--workspace ID] [--target-pane ID] [--direction right|down] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]");
     println!("  pane focus|close <pane_id>              manage a plugin pane");
     println!("  log list [--plugin ID] [--limit N]       show plugin launches");
     println!("  action list [--plugin ID] list manifest actions");
@@ -1000,7 +1083,7 @@ fn help() {
 
 #[cfg(test)]
 mod action_context_tests {
-    use super::add_session_context;
+    use super::{add_session_context, plugin_split_direction};
     use crate::server::session::{Session, SessionSnapshot};
 
     #[test]
@@ -1022,5 +1105,16 @@ mod action_context_tests {
         assert_eq!(context["tab_label"], "Build");
         assert_eq!(context["focused_pane_id"], "pane-1");
         assert_eq!(context["focused_pane_cwd"], "C:/repo");
+    }
+
+    #[test]
+    fn plugin_split_direction_matches_herdr() {
+        assert_eq!(plugin_split_direction(None).unwrap(), "horizontal");
+        assert_eq!(plugin_split_direction(Some("right")).unwrap(), "horizontal");
+        assert_eq!(plugin_split_direction(Some("down")).unwrap(), "vertical");
+        assert_eq!(
+            plugin_split_direction(Some("left")).unwrap_err(),
+            "invalid split direction: left"
+        );
     }
 }

@@ -173,7 +173,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   `herdr-plugin.toml` link-handler actions with clicked-URL environment
   variables. Local `plugin link/list/unlink/enable/disable` registration and
   `plugin action list/invoke`, `plugin config-dir`, local manifest pane opening
-  (`split`, `tab`, `zoomed`), and plugin pane focus/close are now available,
+  (`split`, `tab`, `zoomed`), plugin pane focus/close, and Herdr-compatible
+  plugin pane workspace/target/direction controls are now available,
   with plugin config/state/context variables; shallow GitHub install is now
   available, with bounded plugin launch logs, Windows platform filtering, and
   pane environment overrides. GitHub installs now run supported `[[build]]`
@@ -234,7 +235,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   supports `plugin.id.action` disambiguation, and passes active workspace/tab/
   pane context to the launched process. Plugin panes now receive the same
   active workspace/tab/focused-pane context and Herdr-compatible environment
-  variables;
+  variables. Plugin panes also accept `--workspace`, `--target-pane`, and
+  `--direction right|down`, with `--no-focus` restoring the prior workspace
+  and tab;
 - [x] Route keyboard input to an open plugin popup before the background pane,
   and make the normal close-pane binding close that popup first, matching
   Herdr's popup input ownership.
