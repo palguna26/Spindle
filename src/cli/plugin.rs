@@ -126,8 +126,45 @@ fn config_dir(args: &[String]) -> io::Result<()> {
 fn pane(args: &[String]) -> io::Result<()> {
     match args.first().map(String::as_str) {
         Some("open") => pane_open(&args[1..]),
-        _ => usage("usage: spindle plugin pane open --plugin ID --entrypoint ID [--placement split|tab|zoomed]")
+        Some("focus") => pane_lifecycle(&args[1..], "focus_pane"),
+        Some("close") => pane_lifecycle(&args[1..], "close_pane"),
+        _ => usage("usage: spindle plugin pane <open|focus|close> ..."),
     }
+}
+
+fn pane_lifecycle(args: &[String], operation: &str) -> io::Result<()> {
+    let Some(pane_id) = args.first() else {
+        return usage(&format!(
+            "usage: spindle plugin pane {} <pane_id>",
+            operation.strip_suffix("_pane").unwrap_or(operation)
+        ));
+    };
+    if args.len() != 1 {
+        return usage(&format!(
+            "usage: spindle plugin pane {} <pane_id>",
+            operation.strip_suffix("_pane").unwrap_or(operation)
+        ));
+    }
+    let project = super::Project::from_current_dir()?;
+    let response = super::send_command_with_payload(
+        &project,
+        operation,
+        serde_json::json!({ "pane_id": pane_id }),
+    )?;
+    if !response.ok {
+        return Err(io::Error::other(
+            response
+                .error
+                .map(|error| error.message)
+                .unwrap_or_else(|| format!("server rejected plugin pane {operation}")),
+        ));
+    }
+    println!(
+        "{} plugin pane {}",
+        operation.strip_suffix("_pane").unwrap_or(operation),
+        pane_id
+    );
+    Ok(())
 }
 
 fn pane_open(args: &[String]) -> io::Result<()> {
@@ -135,6 +172,10 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     let entrypoint = required_option(args, "--entrypoint")?;
     let requested_placement = optional_option(args, "--placement")?;
     let cwd = optional_option(args, "--cwd")?;
+    let no_focus = args.iter().any(|arg| arg == "--no-focus");
+    if args.iter().any(|arg| arg == "--focus") && no_focus {
+        return usage("--focus and --no-focus cannot be combined");
+    }
     let (registration, manifest) = crate::plugin::installed()?
         .into_iter()
         .find(|(registration, manifest)| {
@@ -171,6 +212,17 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     if super::ping_server(&project).is_err() {
         super::start_server(&project)?;
     }
+    let previous_focus = if no_focus {
+        let snapshot = super::send_command(&project, "get_snapshot")?;
+        snapshot
+            .payload
+            .as_ref()
+            .and_then(|payload| payload.get("focused_pane_id"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+    } else {
+        None
+    };
     if placement == "tab" {
         super::send_command_with_payload(
             &project,
@@ -223,6 +275,15 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         .and_then(|payload| payload.get("pane_id"))
         .and_then(serde_json::Value::as_str)
         .unwrap_or("unknown");
+    if placement != "tab" {
+        if let Some(previous_focus) = previous_focus {
+            super::send_command_with_payload(
+                &project,
+                "focus_pane",
+                serde_json::json!({ "pane_id": previous_focus }),
+            )?;
+        }
+    }
     if placement == "zoomed" {
         super::send_command_with_payload(
             &project,
@@ -396,6 +457,7 @@ fn help() {
     println!("  enable|disable <id>       change a plugin's global enabled state");
     println!("  config-dir <id>           print and create the plugin config directory");
     println!("  pane open --plugin ID --entrypoint ID  open a manifest pane");
+    println!("  pane focus|close <pane_id>              manage a plugin pane");
     println!("  action list [--plugin ID] list manifest actions");
     println!("  action invoke <id>        start a manifest action without a shell");
 }
