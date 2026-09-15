@@ -1331,6 +1331,7 @@ impl Session {
         }
         if pane_count == 1 && workspace.tabs.len() == 1 {
             self.close_workspace(&active_space_id, &workspace_id)?;
+            self.record_event("pane_closed", serde_json::json!({ "pane_id": pane_id }));
             return Ok(serde_json::json!({
                 "pane_id": pane_id,
                 "closed_workspace": true
@@ -1363,6 +1364,7 @@ impl Session {
                     .clone();
             }
             self.sync_focus_to_active_tab()?;
+            self.record_event("pane_closed", serde_json::json!({ "pane_id": pane_id }));
             return Ok(serde_json::json!({ "pane_id": pane_id, "closed_tab": closing_tab_id }));
         }
 
@@ -1388,6 +1390,7 @@ impl Session {
         };
         self.snapshot.panes.retain(|pane| pane.pane_id != pane_id);
         self.snapshot.focused_pane_id = focused_pane_id;
+        self.record_event("pane_closed", serde_json::json!({ "pane_id": pane_id }));
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
@@ -1403,6 +1406,7 @@ impl Session {
         self.snapshot.popup_width = 0;
         self.snapshot.popup_height = 0;
         self.sync_focus_to_active_tab()?;
+        self.record_event("pane_closed", serde_json::json!({ "pane_id": pane_id }));
         Ok(serde_json::json!({ "pane_id": pane_id, "closed_popup": true }))
     }
 
@@ -1452,6 +1456,7 @@ impl Session {
             }
         }
         self.sync_focus_to_active_tab()?;
+        self.record_event("pane_closed", serde_json::json!({ "pane_id": pane_id }));
         Ok(serde_json::json!({ "pane_id": pane_id, "closed_overlay": true }))
     }
 
