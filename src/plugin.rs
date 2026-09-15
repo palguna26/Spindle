@@ -254,7 +254,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
             root.join("herdr-plugin.toml"),
-            "id = \"example.build\"\nname = \"Build\"\nversion = \"1\"\n[[build]]\ncommand = [\"tool\", \"run\"]\nplatforms = [\"windows\"]\n[[startup]]\ncommand = [\"tool\", \"start\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"pane.exited\"\ncommand = [\"tool\", \"exited\"]\nplatforms = [\"windows\"]\n",
+            "id = \"example.build\"\nname = \"Build\"\nversion = \"1\"\n[[build]]\ncommand = [\"tool\", \"run\"]\nplatforms = [\"windows\"]\n[[startup]]\ncommand = [\"tool\", \"start\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"pane.exited\"\ncommand = [\"tool\", \"exited\"]\nplatforms = [\"windows\"]\n[[events]]\non = \"pane.focused\"\ncommand = [\"tool\", \"focused\"]\nplatforms = [\"windows\"]\n",
         )
         .unwrap();
         let manifest = load(&root).unwrap();
@@ -264,6 +264,7 @@ mod tests {
         assert_eq!(manifest.startup[0].platforms, Some(vec!["windows".into()]));
         assert_eq!(manifest.events[0].on, "pane.exited");
         assert_eq!(manifest.events[0].command, ["tool", "exited"]);
+        assert_eq!(manifest.events[1].on, "pane.focused");
         let _ = std::fs::remove_dir_all(root);
     }
 }

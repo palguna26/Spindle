@@ -1142,6 +1142,7 @@ impl Session {
             &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
         tab.focused_pane_id = Some(pane_id.into());
         self.snapshot.focused_pane_id = Some(pane_id.into());
+        self.record_event("pane_focused", serde_json::json!({ "pane_id": pane_id }));
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
 
@@ -2249,6 +2250,9 @@ mod tests {
             session.snapshot.focused_pane_id.as_deref(),
             Some(pane_id.as_str())
         );
+        assert!(session.events_since(0).iter().any(|event| {
+            event.event == "pane_focused" && event.payload["pane_id"] == serde_json::json!(pane_id)
+        }));
     }
 
     #[test]

@@ -45,6 +45,7 @@ pub(super) fn run_event_hook(
 ) {
     let hook_name = match event.event.as_str() {
         "pane_created" => "pane.created",
+        "pane_focused" => "pane.focused",
         "pane_status"
             if event
                 .payload
