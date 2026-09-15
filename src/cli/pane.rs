@@ -248,8 +248,8 @@ fn pane_neighbor(project: &Project, args: &[String]) -> io::Result<()> {
     let pane_id = pane_id
         .or_else(|| snapshot.focused_pane_id.clone())
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no focused pane"))?;
-    let layout = active_layout(&snapshot)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "active tab has no layout"))?;
+    let layout = layout_for_pane(&snapshot, &pane_id)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "pane has no layout"))?;
     if !layout.pane_ids().contains(&pane_id.as_str()) {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -276,8 +276,8 @@ fn pane_edges(project: &Project, args: &[String]) -> io::Result<()> {
     let pane_id = pane_id
         .or_else(|| snapshot.focused_pane_id.clone())
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no focused pane"))?;
-    let layout = active_layout(&snapshot)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "active tab has no layout"))?;
+    let layout = layout_for_pane(&snapshot, &pane_id)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "pane has no layout"))?;
     if !layout.pane_ids().contains(&pane_id.as_str()) {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -303,8 +303,8 @@ fn pane_layout(project: &Project, args: &[String]) -> io::Result<()> {
     let pane_id = pane_id
         .or_else(|| snapshot.focused_pane_id.clone())
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no focused pane"))?;
-    let layout = active_layout(&snapshot)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "active tab has no layout"))?;
+    let layout = layout_for_pane(&snapshot, &pane_id)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "pane has no layout"))?;
     if !layout.pane_ids().contains(&pane_id.as_str()) {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -771,6 +771,22 @@ fn active_layout(snapshot: &SessionSnapshot) -> Option<&crate::model::layout::La
         .find(|tab| tab.tab_id == workspace.active_tab_id)?
         .layout
         .as_ref()
+}
+
+fn layout_for_pane<'a>(
+    snapshot: &'a SessionSnapshot,
+    pane_id: &str,
+) -> Option<&'a crate::model::layout::LayoutNode> {
+    snapshot
+        .spaces
+        .iter()
+        .flat_map(|space| space.workspaces.iter())
+        .flat_map(|workspace| workspace.tabs.iter())
+        .find_map(|tab| {
+            tab.layout
+                .as_ref()
+                .filter(|layout| layout.pane_ids().contains(&pane_id))
+        })
 }
 
 fn parse_focus_options(args: &[String]) -> Result<(Option<String>, &str), String> {
@@ -1582,7 +1598,8 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        all_pane_ids, direction_name, format_pane_list, is_split_option_form, parse_current_pane,
+            all_pane_ids, direction_name, format_pane_list, is_split_option_form, layout_for_pane,
+            parse_current_pane,
         parse_focus_options, parse_layout_direction, parse_list_workspace, parse_move_options,
         parse_neighbor_options, parse_optional_pane_selector, parse_pane_input_options,
         parse_read_options, parse_read_target, parse_swap_options, parse_zoom_options,
@@ -1617,6 +1634,17 @@ mod tests {
             .unwrap(),
         ]);
         assert_eq!(all_pane_ids(&snapshot), vec!["pane-1", "pane-2"]);
+    }
+
+    #[test]
+    fn pane_inspection_finds_layouts_in_inactive_spaces() {
+        let mut session = Session::default();
+        session.create_space("Other project".into()).unwrap();
+        let mut snapshot = session.snapshot().clone();
+        snapshot.spaces[1].workspaces[0].tabs[0].layout =
+            Some(crate::model::layout::LayoutNode::pane("pane-1"));
+
+        assert!(layout_for_pane(&snapshot, "pane-1").is_some());
     }
 
     #[test]
