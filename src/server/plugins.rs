@@ -53,6 +53,7 @@ pub(super) fn run_event_hook(
         "workspace_renamed" => "workspace.renamed",
         "workspace_closed" => "workspace.closed",
         "pane_focused" => "pane.focused",
+        "pane_moved" => "pane.moved",
         "pane_closed" => "pane.closed",
         "pane_status"
             if event

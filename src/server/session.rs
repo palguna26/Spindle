@@ -912,6 +912,7 @@ impl Session {
             .position(|tab| tab.tab_id == workspace.active_tab_id)
             .ok_or_else(|| "active tab does not exist".to_string())?;
         let source = &mut workspace.tabs[source_index];
+        let source_tab_id = source.tab_id.clone();
         let pane_count = source
             .layout
             .as_ref()
@@ -953,6 +954,14 @@ impl Session {
         });
         workspace.active_tab_id = tab_id.clone();
         self.snapshot.focused_pane_id = Some(pane_id.into());
+        self.record_event(
+            "pane_moved",
+            serde_json::json!({
+                "pane_id": pane_id,
+                "previous_tab_id": source_tab_id,
+                "tab_id": tab_id,
+            }),
+        );
         Ok(serde_json::json!({ "pane_id": pane_id, "tab_id": tab_id }))
     }
 
@@ -990,6 +999,7 @@ impl Session {
             }
         }
         let source = &workspace.tabs[source_index];
+        let source_tab_id = source.tab_id.clone();
         if !source
             .layout
             .as_ref()
@@ -1036,6 +1046,14 @@ impl Session {
         target.focused_pane_id = Some(pane_id.into());
         workspace.active_tab_id = target_tab_id.into();
         self.snapshot.focused_pane_id = Some(pane_id.into());
+        self.record_event(
+            "pane_moved",
+            serde_json::json!({
+                "pane_id": pane_id,
+                "previous_tab_id": source_tab_id,
+                "tab_id": target_tab_id,
+            }),
+        );
         Ok(serde_json::json!({
             "pane_id": pane_id,
             "tab_id": target_tab_id,
@@ -2572,6 +2590,7 @@ mod tests {
         workspace.active_tab_id = first_tab;
         session.sync_focus_to_active_tab().unwrap();
 
+        let sequence = session.snapshot.event_sequence;
         let result = session
             .move_pane_to_tab(
                 "pane-1",
@@ -2582,6 +2601,12 @@ mod tests {
             .unwrap();
         assert_eq!(result["tab_id"], target_tab);
         assert_eq!(session.snapshot.panes.len(), 2);
+        assert!(session.events_since(sequence).iter().any(|event| {
+            event.event == "pane_moved"
+                && event.payload["pane_id"] == "pane-1"
+                && event.payload["previous_tab_id"] == "tab-1"
+                && event.payload["tab_id"] == target_tab
+        }));
         let workspace = &session.snapshot.spaces[0].workspaces[0];
         assert_eq!(workspace.tabs.len(), 1);
         assert!(workspace.tabs[0]

@@ -183,7 +183,7 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   server endpoints are ready, with isolated failures and startup context /
   environment variables;
   Herdr-style manifest event hooks now support `pane.created`, `pane.focused`,
-  `pane.closed`, `pane.exited`, `tab.created`, `tab.focused`, `tab.closed`, `workspace.focused`, `workspace.created`, `workspace.renamed`, and `workspace.closed`, delivered from the server event history with the
+  `pane.closed`, `pane.exited`, `pane.moved`, `tab.created`, `tab.focused`, `tab.closed`, `workspace.focused`, `workspace.created`, `workspace.renamed`, and `workspace.closed`, delivered from the server event history with the
   triggering event and active session context; other Herdr event kinds remain
   to be ported;
   popup panes now use a transient server popup slot, preserve the tiled
