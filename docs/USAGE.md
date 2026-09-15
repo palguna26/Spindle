@@ -146,6 +146,15 @@ new PowerShell pane creation, named workspace switching, and type-to-confirm del
 workspace. Deletion still requires all panes in the target to be stopped and
 never permits deleting the last space or workspace.
 
+### Link plugins
+
+Ctrl-click can launch a Herdr-style link handler before opening a web URL. Put
+each trusted plugin in `%APPDATA%\Spindle\plugins\<plugin-name>\` with a
+`herdr-plugin.toml` manifest containing `[[actions]]` and `[[link_handlers]]`.
+The matching action command runs without a shell, from the plugin directory,
+with `SPINDLE_PLUGIN_CLICKED_URL` and `SPINDLE_PLUGIN_LINK_HANDLER_ID` set.
+If no handler matches, or a plugin cannot start, Spindle opens the URL normally.
+
 ## State and recovery
 
 State is stored per project under:
