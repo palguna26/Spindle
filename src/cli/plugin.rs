@@ -268,21 +268,64 @@ fn unlink(args: &[String]) -> io::Result<()> {
 }
 
 fn list(args: &[String]) -> io::Result<()> {
-    if !args.is_empty() {
-        return usage("usage: spindle plugin list");
+    let mut plugin_id = None;
+    let mut json = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--plugin" => {
+                let Some(id) = args.get(index + 1) else {
+                    return usage("missing value for --plugin");
+                };
+                plugin_id = Some(id.clone());
+                index += 2;
+            }
+            other => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unknown option: {other}"),
+                ))
+            }
+        }
     }
-    for (registration, manifest) in crate::plugin::installed()? {
+    let plugins = crate::plugin::installed()?
+        .into_iter()
+        .filter(|(_, manifest)| plugin_id.as_ref().is_none_or(|id| id == &manifest.id))
+        .map(|(registration, manifest)| {
+            serde_json::json!({
+                "id": manifest.id,
+                "name": manifest.name,
+                "version": manifest.version,
+                "enabled": registration.enabled && manifest.enabled,
+                "path": registration.path,
+                "managed": registration.managed,
+                "source": registration.source,
+            })
+        })
+        .collect::<Vec<_>>();
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&plugins).map_err(io::Error::other)?
+        );
+        return Ok(());
+    }
+    for plugin in plugins {
         println!(
             "{}\t{}\t{}\t{}\t{}",
-            manifest.id,
-            manifest.name,
-            manifest.version,
-            if registration.enabled {
+            plugin["id"].as_str().unwrap_or(""),
+            plugin["name"].as_str().unwrap_or(""),
+            plugin["version"].as_str().unwrap_or(""),
+            if plugin["enabled"].as_bool().unwrap_or(false) {
                 "enabled"
             } else {
                 "disabled"
             },
-            registration.path.display()
+            plugin["path"].as_str().unwrap_or("")
         );
     }
     Ok(())
@@ -654,7 +697,7 @@ fn help() {
     println!("  install owner/repo[/subdir] [--ref REF] --yes  install from GitHub");
     println!("  uninstall <id|owner/repo[/subdir]>            remove a managed plugin");
     println!("  link <path> [--disabled]  register a local Herdr manifest");
-    println!("  list                      list linked plugins");
+    println!("  list [--plugin ID] [--json] list linked plugins");
     println!("  unlink <plugin_id>        unregister a plugin, leaving files alone");
     println!("  enable|disable <id>       change a plugin's global enabled state");
     println!("  config-dir <id>           print and create the plugin config directory");
