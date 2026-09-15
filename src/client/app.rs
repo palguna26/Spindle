@@ -256,9 +256,17 @@ fn event_loop(
         if snapshot_has_focused_pane(&snapshot) {
             startup_error = None;
         } else if connected && startup_error.is_none() {
-            startup_error = ensure_active_default_pane(client, terminal_size)
-                .err()
-                .map(startup_error_message);
+            match ensure_active_default_pane(client, terminal_size) {
+                Ok(()) => {
+                    // Recovery changes the server immediately. Pull the new snapshot before
+                    // drawing so startup never presents Herdr's usable shell as an empty pane.
+                    match current_snapshot(client) {
+                        Ok(updated) => snapshot = updated,
+                        Err(error) => startup_error = Some(startup_error_message(error)),
+                    }
+                }
+                Err(error) => startup_error = Some(startup_error_message(error)),
+            }
         }
         if connected && !was_connected {
             connected = client
