@@ -29,6 +29,10 @@ pub enum Command {
     FocusRight,
     FocusUp,
     FocusDown,
+    SwapLeft,
+    SwapRight,
+    SwapUp,
+    SwapDown,
     SplitHorizontal,
     SplitVertical,
     ResizeSmaller,
@@ -38,7 +42,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Self; 32] = [
+    pub const ALL: [Self; 36] = [
         Self::NewTab,
         Self::NewPane,
         Self::CloseTab,
@@ -65,6 +69,10 @@ impl Command {
         Self::FocusRight,
         Self::FocusUp,
         Self::FocusDown,
+        Self::SwapLeft,
+        Self::SwapRight,
+        Self::SwapUp,
+        Self::SwapDown,
         Self::SplitHorizontal,
         Self::SplitVertical,
         Self::ResizeSmaller,
@@ -101,6 +109,10 @@ impl Command {
             Self::FocusRight => "Focus pane right",
             Self::FocusUp => "Focus pane up",
             Self::FocusDown => "Focus pane down",
+            Self::SwapLeft => "Swap pane left",
+            Self::SwapRight => "Swap pane right",
+            Self::SwapUp => "Swap pane up",
+            Self::SwapDown => "Swap pane down",
             Self::SplitHorizontal => "Split horizontally",
             Self::SplitVertical => "Split vertically",
             Self::ResizeSmaller => "Resize smaller",
@@ -138,6 +150,10 @@ impl Command {
             Self::FocusRight => Action::FocusRight,
             Self::FocusUp => Action::FocusUp,
             Self::FocusDown => Action::FocusDown,
+            Self::SwapLeft => Action::SwapLeft,
+            Self::SwapRight => Action::SwapRight,
+            Self::SwapUp => Action::SwapUp,
+            Self::SwapDown => Action::SwapDown,
             Self::SplitHorizontal => Action::SplitHorizontal,
             Self::SplitVertical => Action::SplitVertical,
             Self::ResizeSmaller => Action::ResizeSmaller,

@@ -961,6 +961,22 @@ fn event_loop(
                     ),
                 );
             }
+            Action::SwapLeft | Action::SwapRight | Action::SwapUp | Action::SwapDown => {
+                record_action_error(
+                    &mut action_error,
+                    "swap panes",
+                    request_action(
+                        client,
+                        "swap-direction",
+                        "swap_panes",
+                        json!({
+                            "source_pane_id": snapshot.focused_pane_id,
+                            "direction": swap_direction_name(pressed),
+                        }),
+                        "swap panes",
+                    ),
+                );
+            }
             Action::SplitHorizontal | Action::SplitVertical => {
                 let direction = if matches!(pressed, Action::SplitHorizontal) {
                     "horizontal"
@@ -2334,6 +2350,16 @@ fn focus_direction_name(action: Action) -> &'static str {
     }
 }
 
+fn swap_direction_name(action: Action) -> &'static str {
+    match action {
+        Action::SwapLeft => "left",
+        Action::SwapRight => "right",
+        Action::SwapUp => "up",
+        Action::SwapDown => "down",
+        _ => unreachable!("not a directional swap action"),
+    }
+}
+
 fn execute_action(
     pressed: Action,
     client: &ControlClient,
@@ -2489,6 +2515,19 @@ fn execute_action(
                 "focus_direction",
                 json!({ "direction": focus_direction_name(pressed) }),
                 "focus pane",
+            )?;
+            Ok(false)
+        }
+        Action::SwapLeft | Action::SwapRight | Action::SwapUp | Action::SwapDown => {
+            request_action(
+                client,
+                "palette-swap-direction",
+                "swap_panes",
+                json!({
+                    "source_pane_id": snapshot.focused_pane_id,
+                    "direction": swap_direction_name(pressed),
+                }),
+                "swap panes",
             )?;
             Ok(false)
         }
