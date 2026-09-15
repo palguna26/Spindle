@@ -18,6 +18,7 @@ pub(crate) struct Event {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct QueuedNotification {
+    pub pane_id: String,
     pub message: String,
     pub kind: Kind,
     pub visible_at: Instant,
@@ -117,12 +118,16 @@ pub(crate) fn enqueue_with_delay(
 ) {
     for event in events {
         let position = queue.len() as u32 + 1;
+        let notification_message = message(&event);
+        let pane_id = event.pane_id;
+        let kind = event.kind;
         let visible_at = now
             + Duration::from_secs(delay_seconds.min(3600))
             + Duration::from_secs(5).saturating_mul(position.saturating_sub(1));
         queue.push_back(QueuedNotification {
-            message: message(&event),
-            kind: event.kind,
+            pane_id,
+            message: notification_message,
+            kind,
             visible_at,
             expires_at: visible_at + Duration::from_secs(5),
             sound_emitted: false,
@@ -144,6 +149,13 @@ pub(crate) fn visible_message(queue: &VecDeque<QueuedNotification>, now: Instant
         .front()
         .filter(|notification| now >= notification.visible_at)
         .map(|notification| notification.message.as_str())
+}
+
+pub(crate) fn visible_pane_id(queue: &VecDeque<QueuedNotification>, now: Instant) -> Option<&str> {
+    queue
+        .front()
+        .filter(|notification| now >= notification.visible_at)
+        .map(|notification| notification.pane_id.as_str())
 }
 
 pub(crate) fn take_visible_sound(

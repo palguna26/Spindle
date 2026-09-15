@@ -1100,14 +1100,45 @@ impl Session {
     }
 
     pub fn focus_pane(&mut self, pane_id: &str) -> Result<Value, String> {
-        let tab = self.active_tab_mut()?;
-        if !tab
-            .layout
-            .as_ref()
-            .is_some_and(|layout| layout.pane_ids().contains(&pane_id))
-        {
-            return Err(format!("pane '{pane_id}' does not exist in the active tab"));
-        }
+        let Some((space_index, workspace_index, tab_index)) = self
+            .snapshot
+            .spaces
+            .iter()
+            .enumerate()
+            .find_map(|(space_index, space)| {
+                space
+                    .workspaces
+                    .iter()
+                    .enumerate()
+                    .find_map(|(workspace_index, workspace)| {
+                        workspace
+                            .tabs
+                            .iter()
+                            .enumerate()
+                            .find_map(|(tab_index, tab)| {
+                                tab.layout
+                                    .as_ref()
+                                    .filter(|layout| layout.pane_ids().contains(&pane_id))
+                                    .map(|_| (space_index, workspace_index, tab_index))
+                            })
+                    })
+            })
+        else {
+            return Err(format!("pane '{pane_id}' does not exist"));
+        };
+
+        let space_id = self.snapshot.spaces[space_index].space_id.clone();
+        let workspace_id = self.snapshot.spaces[space_index].workspaces[workspace_index]
+            .workspace_id
+            .clone();
+        let tab_id = self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index]
+            .tab_id
+            .clone();
+        self.snapshot.active_space_id = space_id;
+        self.snapshot.spaces[space_index].active_workspace_id = Some(workspace_id);
+        self.snapshot.spaces[space_index].workspaces[workspace_index].active_tab_id = tab_id;
+        let tab =
+            &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
         tab.focused_pane_id = Some(pane_id.into());
         self.snapshot.focused_pane_id = Some(pane_id.into());
         Ok(serde_json::json!({ "pane_id": pane_id }))
@@ -2176,6 +2207,43 @@ mod tests {
         assert!(session.focus_pane("missing").is_err());
         assert!(session.switch_workspace("missing").is_err());
         assert!(session.switch_tab("missing").is_err());
+    }
+
+    #[test]
+    fn focusing_a_pane_can_activate_its_workspace_and_tab() {
+        let mut session = Session::default();
+        let second = session.create_workspace("Second".into()).unwrap();
+        let workspace_id = second["workspace_id"].as_str().unwrap().to_owned();
+        let pane_id = session
+            .create_pane(CreatePaneRequest {
+                command: "cmd.exe".into(),
+                args: Vec::new(),
+                cwd: std::env::current_dir()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+                cols: 80,
+                rows: 24,
+                label: None,
+                env: Default::default(),
+                popup: false,
+                overlay: false,
+            })
+            .unwrap()["pane_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        session.switch_workspace("workspace-1").unwrap();
+        session.focus_pane(&pane_id).unwrap();
+        assert_eq!(session.snapshot.active_space_id, "space-1");
+        assert_eq!(
+            session.snapshot.spaces[0].active_workspace_id.as_deref(),
+            Some(workspace_id.as_str())
+        );
+        assert_eq!(
+            session.snapshot.focused_pane_id.as_deref(),
+            Some(pane_id.as_str())
+        );
     }
 
     #[test]

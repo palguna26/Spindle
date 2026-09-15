@@ -1109,6 +1109,22 @@ fn event_loop(
             Action::None => {}
             Action::Help => {}
             Action::CommandPalette => {}
+            Action::OpenNotificationTarget => {
+                let target =
+                    crate::client::notifications::visible_pane_id(&notifications, Instant::now())
+                        .map(str::to_owned)
+                        .ok_or_else(|| ClientError::Server("no visible notification target".into()))
+                        .and_then(|pane_id| {
+                            request_action(
+                                client,
+                                "open-notification-target",
+                                "focus_pane",
+                                json!({ "pane_id": pane_id }),
+                                "open notification target",
+                            )
+                        });
+                record_action_error(&mut action_error, "open notification target", target);
+            }
             Action::CreateWorkspace => {
                 let result = create_workspace_from_current_directory(client, terminal_size);
                 record_action_error(&mut action_error, "create workspace", result);

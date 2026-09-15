@@ -40,10 +40,11 @@ pub enum Command {
     ResizeLarger,
     Detach,
     ToggleRightClickPassthrough,
+    OpenNotificationTarget,
 }
 
 impl Command {
-    pub const ALL: [Self; 37] = [
+    pub const ALL: [Self; 38] = [
         Self::NewTab,
         Self::NewPane,
         Self::CloseTab,
@@ -81,6 +82,7 @@ impl Command {
         Self::ResizeLarger,
         Self::Detach,
         Self::ToggleRightClickPassthrough,
+        Self::OpenNotificationTarget,
     ];
 
     pub fn label(self) -> &'static str {
@@ -122,6 +124,7 @@ impl Command {
             Self::ResizeLarger => "Resize larger",
             Self::Detach => "Detach",
             Self::ToggleRightClickPassthrough => "Toggle right-click passthrough",
+            Self::OpenNotificationTarget => "Open notification target",
         }
     }
 
@@ -164,6 +167,7 @@ impl Command {
             Self::ResizeLarger => Action::ResizeLarger,
             Self::Detach => Action::Detach,
             Self::ToggleRightClickPassthrough => Action::ToggleRightClickPassthrough,
+            Self::OpenNotificationTarget => Action::OpenNotificationTarget,
         }
     }
 }

@@ -138,7 +138,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
 }
 
 pub fn default_document() -> &'static str {
-    "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n\n[theme]\nname = \"terminal\"\n\n[notifications]\nenabled = true\ndelivery = \"herdr\"\ndelay_seconds = 1\nsound = true\n"
+    "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\nopen_notification_target = \"prefix+o\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n\n[theme]\nname = \"terminal\"\n\n[notifications]\nenabled = true\ndelivery = \"herdr\"\ndelay_seconds = 1\nsound = true\n"
 }
 
 #[cfg(test)]

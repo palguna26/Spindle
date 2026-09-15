@@ -51,6 +51,7 @@ pub enum Action {
     ToggleRightClickPassthrough,
     Help,
     CommandPalette,
+    OpenNotificationTarget,
     Send(KeyCode),
 }
 
@@ -175,7 +176,7 @@ fn default_bindings() -> Vec<Binding> {
         (Action::StopFocusedPane, 's', false),
         (Action::EnterResizeMode, 'r', false),
         (Action::EditScrollback, 'e', false),
-        (Action::FocusNext, 'o', false),
+        (Action::OpenNotificationTarget, 'o', false),
         (Action::FocusPrevious, 'O', true),
         (Action::FocusLeft, 'h', false),
         (Action::FocusDown, 'j', false),
@@ -325,6 +326,7 @@ fn action_name(name: &str) -> Option<Action> {
         "toggle_right_click_passthrough" => Action::ToggleRightClickPassthrough,
         "help" => Action::Help,
         "command_palette" => Action::CommandPalette,
+        "open_notification_target" => Action::OpenNotificationTarget,
         "enter_copy_mode" => Action::EnterCopyMode,
         "create_workspace" => Action::CreateWorkspace,
         "rename_workspace" => Action::RenameActiveWorkspace,
@@ -492,7 +494,7 @@ mod tests {
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE)),
-            Action::FocusNext
+            Action::OpenNotificationTarget
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)),
