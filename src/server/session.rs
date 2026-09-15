@@ -1811,19 +1811,46 @@ impl Session {
     }
 
     pub fn toggle_pane_zoom(&mut self, pane_id: &str) -> Result<Value, String> {
-        let zoomed = {
-            let tab = self.active_tab_mut()?;
-            if !tab
-                .layout
-                .as_ref()
-                .is_some_and(|layout| layout.pane_ids().contains(&pane_id))
-            {
-                return Err(format!("pane '{pane_id}' does not exist in the active tab"));
-            }
-            tab.focused_pane_id = Some(pane_id.into());
-            tab.zoomed = !tab.zoomed;
-            tab.zoomed
+        let Some((space_index, workspace_index, tab_index)) = self
+            .snapshot
+            .spaces
+            .iter()
+            .enumerate()
+            .find_map(|(space_index, space)| {
+                space
+                    .workspaces
+                    .iter()
+                    .enumerate()
+                    .find_map(|(workspace_index, workspace)| {
+                        workspace
+                            .tabs
+                            .iter()
+                            .enumerate()
+                            .find_map(|(tab_index, tab)| {
+                                tab.layout
+                                    .as_ref()
+                                    .filter(|layout| layout.pane_ids().contains(&pane_id))
+                                    .map(|_| (space_index, workspace_index, tab_index))
+                            })
+                    })
+            })
+        else {
+            return Err(format!("pane '{pane_id}' does not exist"));
         };
+        let space_id = self.snapshot.spaces[space_index].space_id.clone();
+        let workspace_id = self.snapshot.spaces[space_index].workspaces[workspace_index]
+            .workspace_id
+            .clone();
+        let tab_id = self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index]
+            .tab_id
+            .clone();
+        self.snapshot.active_space_id = space_id;
+        self.snapshot.spaces[space_index].active_workspace_id = Some(workspace_id);
+        self.snapshot.spaces[space_index].workspaces[workspace_index].active_tab_id = tab_id;
+        let tab = &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
+        tab.focused_pane_id = Some(pane_id.into());
+        tab.zoomed = !tab.zoomed;
+        let zoomed = tab.zoomed;
         self.snapshot.focused_pane_id = Some(pane_id.into());
         self.record_active_layout_event();
         Ok(serde_json::json!({ "pane_id": pane_id, "zoomed": zoomed }))
@@ -3776,6 +3803,31 @@ mod tests {
         );
         assert!(!session.snapshot.spaces[0].workspaces[0].tabs[0].zoomed);
         assert!(session.toggle_pane_zoom("missing").is_err());
+    }
+
+    #[test]
+    fn pane_zoom_resolves_a_pane_in_an_inactive_workspace() {
+        let mut session = Session::default();
+        session.create_space("Other project".into()).unwrap();
+        let workspace = &mut session.snapshot.spaces[1].workspaces[0];
+        workspace.tabs[0].layout = Some(LayoutNode::pane("pane-1"));
+        workspace.tabs[0].focused_pane_id = Some("pane-1".into());
+        session.snapshot.panes.push(
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-1", "command": "powershell.exe", "args": [], "cwd": "C:/",
+                "status": "Running", "scrollback_bytes": 0
+            }))
+            .unwrap(),
+        );
+        session.switch_space("space-1").unwrap();
+
+        assert_eq!(
+            session.toggle_pane_zoom("pane-1").unwrap(),
+            serde_json::json!({ "pane_id": "pane-1", "zoomed": true })
+        );
+        assert_eq!(session.snapshot.active_space_id, "space-2");
+        assert_eq!(session.snapshot.focused_pane_id.as_deref(), Some("pane-1"));
+        assert!(session.snapshot.spaces[1].workspaces[0].tabs[0].zoomed);
     }
 
     #[test]
