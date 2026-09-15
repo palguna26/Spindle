@@ -22,6 +22,7 @@ pub(crate) fn run(
         "" | "shell" => run_shell(command, snapshot, client.endpoint()),
         "pane" => open_pane(command, snapshot, client, false),
         "popup" => open_pane(command, snapshot, client, true),
+        "plugin_action" => crate::client::plugins::launch_action(&command.command, snapshot),
         other => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("unsupported custom command type '{other}'"),

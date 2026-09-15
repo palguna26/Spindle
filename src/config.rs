@@ -340,6 +340,23 @@ mod tests {
     }
 
     #[test]
+    fn loads_custom_plugin_action_commands() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-custom-plugin-command-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "[[keys.command]]\nkey = \"prefix+alt+p\"\ntype = \"plugin_action\"\ncommand = \"example.plugin.open\"\n",
+        )
+        .unwrap();
+        let config = load_from(&path);
+        assert_eq!(config.custom_commands[0].action_type, "plugin_action");
+        assert_eq!(config.custom_commands[0].command, "example.plugin.open");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn invalid_or_missing_files_use_defaults() {
         let path = std::env::temp_dir().join(format!(
             "spindle-invalid-config-{}.toml",

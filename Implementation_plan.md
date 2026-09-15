@@ -295,8 +295,9 @@ approved design changes it.
 - [x] Add Herdr-style `[[keys.command]]` commands with direct or prefix key
   bindings. Shell commands use Windows `cmd.exe /d /c`; pane commands use the
   temporary overlay lifecycle and popup commands use the transient centered
-  popup. All command types receive focused-pane cwd and active
-  workspace/tab/pane environment variables.
+  popup. Plugin-action commands use the installed plugin launcher. All
+  command types receive focused-pane cwd and active workspace/tab/pane
+  environment variables.
 - [x] Add mouse navigation to the Settings overlay for section and value
   selection, with outside-click dismissal.
 - [x] Keep the normal narrow sidebar title compact so workspace controls stay
