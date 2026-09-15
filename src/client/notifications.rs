@@ -19,8 +19,10 @@ pub(crate) struct Event {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct QueuedNotification {
     pub message: String,
+    pub kind: Kind,
     pub visible_at: Instant,
     pub expires_at: Instant,
+    pub sound_emitted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,8 +122,10 @@ pub(crate) fn enqueue_with_delay(
             + Duration::from_secs(5).saturating_mul(position.saturating_sub(1));
         queue.push_back(QueuedNotification {
             message: message(&event),
+            kind: event.kind,
             visible_at,
             expires_at: visible_at + Duration::from_secs(5),
+            sound_emitted: false,
         });
     }
 }
@@ -140,6 +144,28 @@ pub(crate) fn visible_message(queue: &VecDeque<QueuedNotification>, now: Instant
         .front()
         .filter(|notification| now >= notification.visible_at)
         .map(|notification| notification.message.as_str())
+}
+
+pub(crate) fn take_visible_sound(
+    queue: &mut VecDeque<QueuedNotification>,
+    now: Instant,
+) -> Option<Kind> {
+    let notification = queue.front_mut()?;
+    if now < notification.visible_at || notification.sound_emitted {
+        return None;
+    }
+    notification.sound_emitted = true;
+    Some(notification.kind)
+}
+
+pub(crate) fn play_sounds(events: &[Event]) {
+    for event in events {
+        let sound = match event.kind {
+            Kind::NeedsAttention => crate::platform::NotificationSound::Attention,
+            Kind::Finished => crate::platform::NotificationSound::Finished,
+        };
+        let _ = crate::platform::play_notification_sound(sound);
+    }
 }
 
 fn notification_kind(previous: AgentState, current: AgentState, active: bool) -> Option<Kind> {

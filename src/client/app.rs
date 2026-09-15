@@ -128,6 +128,21 @@ fn event_loop(
             action_error = None;
         }
         crate::client::notifications::expire(&mut notifications, Instant::now());
+        if config.notification_sound {
+            while let Some(kind) =
+                crate::client::notifications::take_visible_sound(&mut notifications, Instant::now())
+            {
+                let sound = match kind {
+                    crate::client::notifications::Kind::NeedsAttention => {
+                        crate::platform::NotificationSound::Attention
+                    }
+                    crate::client::notifications::Kind::Finished => {
+                        crate::platform::NotificationSound::Finished
+                    }
+                };
+                let _ = crate::platform::play_notification_sound(sound);
+            }
+        }
         let terminal_size = size().map_err(ClientError::Io)?;
         let mut connected = match current_snapshot(client) {
             Ok(current) => {
@@ -137,6 +152,9 @@ fn event_loop(
                         &mut pending_external_notifications,
                         now,
                     );
+                    if config.notification_sound {
+                        crate::client::notifications::play_sounds(&due);
+                    }
                     crate::client::notifications::deliver(
                         &mut notifications,
                         due,
@@ -159,6 +177,15 @@ fn event_loop(
                             config.notification_delay_seconds,
                         );
                     } else {
+                        if config.notification_sound
+                            && matches!(
+                                config.notification_delivery,
+                                crate::config::NotificationDelivery::Terminal
+                                    | crate::config::NotificationDelivery::System
+                            )
+                        {
+                            crate::client::notifications::play_sounds(&events);
+                        }
                         crate::client::notifications::deliver(
                             &mut notifications,
                             events,

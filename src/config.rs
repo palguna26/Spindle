@@ -24,6 +24,7 @@ struct NotificationsConfig {
     enabled: bool,
     delivery: NotificationDelivery,
     delay_seconds: u64,
+    sound: bool,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +42,7 @@ impl Default for NotificationsConfig {
             enabled: true,
             delivery: NotificationDelivery::Herdr,
             delay_seconds: 1,
+            sound: true,
         }
     }
 }
@@ -77,6 +79,7 @@ pub struct Config {
     pub notifications_enabled: bool,
     pub(crate) notification_delivery: NotificationDelivery,
     pub(crate) notification_delay_seconds: u64,
+    pub(crate) notification_sound: bool,
 }
 
 impl Default for Config {
@@ -88,6 +91,7 @@ impl Default for Config {
             notifications_enabled: true,
             notification_delivery: NotificationDelivery::Herdr,
             notification_delay_seconds: 1,
+            notification_sound: true,
         }
     }
 }
@@ -129,11 +133,12 @@ pub fn load_from(path: &std::path::Path) -> Config {
         notifications_enabled: file.notifications.enabled,
         notification_delivery: file.notifications.delivery,
         notification_delay_seconds: file.notifications.delay_seconds.min(3600),
+        notification_sound: file.notifications.sound,
     }
 }
 
 pub fn default_document() -> &'static str {
-    "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n\n[theme]\nname = \"terminal\"\n\n[notifications]\nenabled = true\ndelivery = \"herdr\"\ndelay_seconds = 1\n"
+    "[keys]\nprefix = \"ctrl+b\"\nnew_tab = \"prefix+c\"\nclose_pane = \"prefix+x\"\nclose_tab = \"prefix+shift+x\"\nnext_tab = [\"prefix+n\", \"prefix+right\"]\nprevious_tab = [\"prefix+p\", \"prefix+left\"]\nworkspace_picker = \"prefix+w\"\nsession_navigator = \"prefix+g\"\ncreate_workspace = \"prefix+shift+n\"\nrename_workspace = \"prefix+shift+w\"\ndelete_workspace = \"prefix+shift+d\"\n\n[theme]\nname = \"terminal\"\n\n[notifications]\nenabled = true\ndelivery = \"herdr\"\ndelay_seconds = 1\nsound = true\n"
 }
 
 #[cfg(test)]

@@ -3,13 +3,29 @@ use std::mem::size_of;
 use std::ptr::null_mut;
 use std::time::Duration;
 
+use windows_sys::Win32::System::Diagnostics::Debug::MessageBeep;
 use windows_sys::Win32::UI::Shell::{
     Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_TIP, NIIF_INFO, NIIF_NOSOUND, NIM_ADD, NIM_DELETE,
     NIM_MODIFY, NOTIFYICONDATAW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DestroyWindow, LoadIconW, IDI_APPLICATION,
+    CreateWindowExW, DestroyWindow, LoadIconW, IDI_APPLICATION, MB_ICONEXCLAMATION, MB_OK,
 };
+
+use super::NotificationSound;
+
+pub(crate) fn play_notification_sound(sound: NotificationSound) -> io::Result<bool> {
+    let kind = match sound {
+        NotificationSound::Attention => MB_ICONEXCLAMATION,
+        NotificationSound::Finished => MB_OK,
+    };
+    let played = unsafe { MessageBeep(kind) };
+    if played == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(true)
+    }
+}
 
 pub(crate) fn show_desktop_notification(title: &str, body: Option<&str>) -> io::Result<bool> {
     let title = sanitize(title, 64);
