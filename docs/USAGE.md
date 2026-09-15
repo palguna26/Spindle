@@ -88,7 +88,8 @@ or `tokyo-night` to change the main UI accent and focused-pane colors.
 
 Background agent panes show a short in-app notification when they need
 attention or finish. Notifications for the active tab are suppressed, like
-Herdr's default behavior.
+Herdr's default behavior. Multiple background events are queued and shown in
+arrival order.
 
 Tabs can also be automated with `spindle tab list`, `create [label]`,
 `get <id>`, `focus <id>`, `rename <id> <label>`, and `close <id>`.
