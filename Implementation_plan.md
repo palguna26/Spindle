@@ -379,7 +379,9 @@ approved design changes it.
   creation also accepts Herdr's label, workspace destination, cwd, environment, and
   focus controls while preserving the current workspace/tab by default.
   Tab listing accepts `--workspace` for inactive-workspace inspection without
-  changing focus.
+  changing focus. `spindle worktree list` now discovers Git worktrees through
+  Herdr-compatible porcelain parsing and reports linked checkout state as JSON;
+  create/open/remove worktree actions remain.
 - [ ] For behavior not included, record the concrete reason and an equivalent
   Spindle workflow; do not silently omit it.
 - [ ] Improve Windows-specific process launch, terminal input/output, resizing,

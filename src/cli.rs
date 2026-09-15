@@ -31,6 +31,7 @@ mod pane;
 mod plugin;
 mod tab;
 mod workspace;
+mod worktree;
 
 pub fn run() -> io::Result<()> {
     let command = env::args().nth(1).unwrap_or_else(|| "attach".into());
@@ -122,6 +123,9 @@ pub fn run() -> io::Result<()> {
         }
         "workspace" => {
             workspace::run_workspace_command(&project, &env::args().skip(2).collect::<Vec<_>>())?
+        }
+        "worktree" => {
+            worktree::run_worktree_command(&project, &env::args().skip(2).collect::<Vec<_>>())?
         }
         "tab" => tab::run_tab_command(&project, &env::args().skip(2).collect::<Vec<_>>())?,
         "pane" => pane::run_pane_command(&project, &env::args().skip(2).collect::<Vec<_>>())?,
@@ -229,7 +233,9 @@ fn send_command_with_payload(
 fn print_help() {
     println!("Spindle - persistent parallel coding-agent sessions");
     println!();
-    println!("Usage: spindle [start|attach|stop|list|doctor|workspace|tab|pane|agent|help]");
+    println!(
+        "Usage: spindle [start|attach|stop|list|doctor|workspace|worktree|tab|pane|agent|help]"
+    );
     println!();
     println!("Commands:");
     println!("  start    start a server for the current project");
@@ -248,6 +254,7 @@ fn print_help() {
     println!("  workspace get <id>  show a workspace by ID");
     println!("  workspace focus <id>  focus a workspace by ID");
     println!("  workspace rename <id> <label>  rename a workspace");
+    println!("  worktree list [--workspace ID | --cwd PATH]  list Git worktrees");
     println!("  tab list        list tabs in the active workspace");
     println!("  tab create      create a tab in the active workspace");
     println!("  tab get/focus/rename/close  manage tabs by ID");
