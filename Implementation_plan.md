@@ -216,6 +216,7 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   pane move-to-tab accepts Herdr's `--ratio` option;
   pane moves accept Herdr's `--focus` and `--no-focus` controls, including
   moving to a new tab in another workspace with `--workspace`;
+  pane move source IDs resolve across spaces, workspaces, and tabs;
   moving a live pane into a new Herdr-style workspace with `--label` and
   `--tab-label`;
   popup panes now use a transient server popup slot, preserve the tiled

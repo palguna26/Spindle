@@ -682,7 +682,7 @@ pub(crate) fn response_for_with_interactive(
                         payload.focus.unwrap_or(true),
                     )
                 } else {
-                    session.move_pane_to_new_tab_in_workspace(
+                    session.move_pane_to_new_tab_anywhere(
                         &payload.pane_id,
                         payload.name,
                         payload.target_workspace_id.as_deref(),
