@@ -10,7 +10,23 @@
     "create_space": {}, "switch_space": {}, "rename_space": {}, "delete_space": {},
     "create_workspace": {}, "switch_workspace": {}, "focus_workspace": {}, "rename_workspace": {}, "delete_workspace": {},
     "create_tab": {}, "switch_tab": {}, "rename_tab": {}, "close_tab": {},
-    "create_pane": {}, "ensure_active_pane": {}, "split_pane": {}, "send_input": {}, "resize_pty": {},
+    "create_pane": {
+      "payload": {
+        "type": "object",
+        "required": ["command", "cwd", "cols", "rows"],
+        "properties": {
+          "command": { "type": "string" },
+          "args": { "type": "array", "items": { "type": "string" } },
+          "cwd": { "type": "string" },
+          "label": { "type": ["string", "null"] },
+          "env": { "type": "object", "additionalProperties": { "type": "string" } },
+          "cols": { "type": "integer", "minimum": 1 },
+          "rows": { "type": "integer", "minimum": 1 },
+          "popup": { "type": "boolean", "default": false },
+          "overlay": { "type": "boolean", "default": false }
+        }
+      }
+    }, "ensure_active_pane": {}, "split_pane": {}, "send_input": {}, "resize_pty": {},
     "stop_pane": {}, "restart_pane": {}, "focus_pane": {}, "swap_panes": {}, "rename_pane": {},
     "toggle_pane_zoom": {}, "toggle_right_click_passthrough": {}, "move_pane": {}, "focus_next": {}, "focus_previous": {},
     "focus_direction": {}, "resize_pane": {}, "set_split_ratio": {}, "close_pane": {}, "stop_server": {}

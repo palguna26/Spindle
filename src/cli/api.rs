@@ -64,5 +64,13 @@ mod tests {
             .as_object()
             .unwrap()
             .contains_key("get_snapshot"));
+        assert_eq!(
+            schema["operations"]["create_pane"]["payload"]["properties"]["popup"]["type"],
+            "boolean"
+        );
+        assert_eq!(
+            schema["operations"]["create_pane"]["payload"]["properties"]["overlay"]["type"],
+            "boolean"
+        );
     }
 }
