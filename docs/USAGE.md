@@ -176,7 +176,7 @@ GitHub plugins can be installed with `spindle plugin install owner/repo --yes`
 or `spindle plugin install owner/repo/subdir --ref REF --yes`. Spindle uses a
 shallow checkout under the per-user plugin directory, validates the Herdr
 manifest, and registers it globally. Existing managed checkouts are refused
-so an installed plugin cannot be overwritten accidentally.
+are replaced transactionally; local linked checkouts are refused.
 Use `spindle plugin uninstall <plugin_id>` or the original GitHub source to
 remove a managed checkout and unregister it. Local linked plugins use
 `spindle plugin unlink` and are never deleted by uninstall.
