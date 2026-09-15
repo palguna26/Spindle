@@ -1,5 +1,6 @@
 pub mod control;
 pub mod lifecycle;
+mod plugins;
 pub mod session;
 #[cfg(windows)]
 pub(crate) mod transport;
@@ -96,6 +97,10 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
             });
         }
     });
+    plugins::run_startup_hooks(
+        session.lock().expect("session lock poisoned").snapshot(),
+        &address,
+    );
     #[cfg(not(windows))]
     let accept_next = || control_listener.accept().map(|(stream, _)| stream);
     #[cfg(windows)]

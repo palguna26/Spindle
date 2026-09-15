@@ -17,6 +17,8 @@ pub(crate) struct Manifest {
     #[serde(default)]
     pub(crate) build: Vec<Build>,
     #[serde(default)]
+    pub(crate) startup: Vec<Startup>,
+    #[serde(default)]
     pub(crate) link_handlers: Vec<LinkHandler>,
     #[serde(default)]
     pub(crate) panes: Vec<Pane>,
@@ -26,6 +28,13 @@ pub(crate) struct Manifest {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Build {
+    pub(crate) command: Vec<String>,
+    #[serde(default)]
+    pub(crate) platforms: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct Startup {
     pub(crate) command: Vec<String>,
     #[serde(default)]
     pub(crate) platforms: Option<Vec<String>>,
@@ -235,12 +244,14 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
             root.join("herdr-plugin.toml"),
-            "id = \"example.build\"\nname = \"Build\"\nversion = \"1\"\n[[build]]\ncommand = [\"tool\", \"run\"]\nplatforms = [\"windows\"]\n",
+            "id = \"example.build\"\nname = \"Build\"\nversion = \"1\"\n[[build]]\ncommand = [\"tool\", \"run\"]\nplatforms = [\"windows\"]\n[[startup]]\ncommand = [\"tool\", \"start\"]\nplatforms = [\"windows\"]\n",
         )
         .unwrap();
         let manifest = load(&root).unwrap();
         assert_eq!(manifest.build[0].command, ["tool", "run"]);
         assert_eq!(manifest.build[0].platforms, Some(vec!["windows".into()]));
+        assert_eq!(manifest.startup[0].command, ["tool", "start"]);
+        assert_eq!(manifest.startup[0].platforms, Some(vec!["windows".into()]));
         let _ = std::fs::remove_dir_all(root);
     }
 }

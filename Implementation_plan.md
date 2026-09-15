@@ -179,6 +179,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   pane environment overrides. GitHub installs now run supported `[[build]]`
   commands in the temporary plugin checkout before registration and reject
   failed builds with bounded output, while local links remain author-built;
+  enabled plugins now also run Herdr-style `[[startup]]` hooks once after the
+  server endpoints are ready, with isolated failures and startup context /
+  environment variables;
   popup panes now use a transient server popup slot, preserve the tiled
   background focus, render centered terminal content, accept popup placement
   from the plugin CLI, and close when the process exits. Overlay panes now
