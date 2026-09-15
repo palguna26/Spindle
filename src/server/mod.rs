@@ -97,14 +97,11 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
             });
         }
     });
-    plugins::run_startup_hooks(
-        session.lock().expect("session lock poisoned").snapshot(),
-        &address,
-    );
     #[cfg(not(windows))]
     let accept_next = || control_listener.accept().map(|(stream, _)| stream);
     #[cfg(windows)]
     let accept_next = || transport::accept(&address);
+    let startup_hooks_started = Arc::new(AtomicBool::new(false));
 
     while !stopping.load(Ordering::Acquire) {
         let stream = accept_next()?;
@@ -113,12 +110,27 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
         let wake_address = address.clone();
         let wake_interactive_address = interactive_address.clone();
         let handler_interactive_address = interactive_address.clone();
+        let startup_hooks_started = Arc::clone(&startup_hooks_started);
+        let startup_endpoint = address.clone();
         thread::spawn(move || {
-            if let Ok(true) = control::handle_connection_with_interactive(
+            let stopped = control::handle_connection_with_interactive(
                 stream,
-                session,
+                Arc::clone(&session),
                 &handler_interactive_address,
-            ) {
+            )
+            .unwrap_or(false);
+            if startup_hooks_started
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                let snapshot = session
+                    .lock()
+                    .expect("session lock poisoned")
+                    .snapshot()
+                    .clone();
+                plugins::run_startup_hooks(&snapshot, &startup_endpoint);
+            }
+            if stopped {
                 stopping.store(true, Ordering::Release);
                 wake_server(&wake_address);
                 wake_server(&wake_interactive_address);
