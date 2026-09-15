@@ -388,6 +388,18 @@ fn event_loop(
         let input = event::read().map_err(ClientError::Io)?;
         let key = match input {
             Event::Mouse(mouse) => {
+                if let Some(open_settings) = settings.as_mut() {
+                    if matches!(
+                        open_settings.handle_mouse(
+                            Rect::new(0, 0, terminal_size.0, terminal_size.1),
+                            mouse,
+                        ),
+                        SettingsOutcome::Close | SettingsOutcome::Saved
+                    ) {
+                        settings = None;
+                    }
+                    continue;
+                }
                 if settings.is_some() {
                     continue;
                 }

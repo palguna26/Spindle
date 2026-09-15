@@ -1,4 +1,5 @@
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::Rect;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Section {
@@ -41,6 +42,17 @@ pub(super) struct Settings {
 }
 
 impl Settings {
+    pub(super) fn rect(screen: Rect) -> Rect {
+        let width = 58.min(screen.width.max(1));
+        let height = (screen.height * 68 / 100).max(1).min(screen.height.max(1));
+        Rect::new(
+            screen.x + screen.width.saturating_sub(width) / 2,
+            screen.y + screen.height.saturating_sub(height) / 2,
+            width,
+            height,
+        )
+    }
+
     pub(super) fn open() -> Self {
         let config = crate::config::load();
         let section = Section::Theme;
@@ -94,6 +106,40 @@ impl Settings {
         }
     }
 
+    pub(super) fn handle_mouse(&mut self, screen: Rect, mouse: MouseEvent) -> Outcome {
+        if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+            return Outcome::Continue;
+        }
+        let area = Self::rect(screen);
+        if mouse.column < area.x
+            || mouse.column >= area.right()
+            || mouse.row < area.y
+            || mouse.row >= area.bottom()
+        {
+            return Outcome::Close;
+        }
+        let inner = Rect::new(
+            area.x.saturating_add(1),
+            area.y.saturating_add(1),
+            area.width.saturating_sub(2),
+            area.height.saturating_sub(2),
+        );
+        if mouse.row == inner.y {
+            let section_width = (inner.width / Section::ALL.len() as u16).max(1);
+            let index = usize::from(mouse.column.saturating_sub(inner.x) / section_width)
+                .min(Section::ALL.len() - 1);
+            self.section = Section::ALL[index];
+            self.selected = selected_for(self.section, &crate::config::load());
+        } else if mouse.row >= inner.y + 2 {
+            let index = usize::from(mouse.row - (inner.y + 2));
+            if index < self.choices().len() {
+                self.selected = index;
+                return self.save();
+            }
+        }
+        Outcome::Continue
+    }
+
     fn save(self) -> Outcome {
         let value = self.choices()[self.selected];
         let result = match self.section {
@@ -142,6 +188,8 @@ fn selected_for(section: Section, config: &crate::config::Config) -> usize {
 mod tests {
     use super::{Outcome, Section, Settings};
     use crossterm::event::KeyCode;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::layout::Rect;
 
     #[test]
     fn settings_navigation_matches_herdr_sections_and_choices() {
@@ -152,5 +200,20 @@ mod tests {
         assert_eq!(settings.section, Section::Notifications);
         assert_eq!(settings.choices(), &["off", "herdr", "terminal", "system"]);
         assert_eq!(settings.handle_key(KeyCode::Esc), Outcome::Close);
+    }
+
+    #[test]
+    fn settings_mouse_selects_a_section() {
+        let screen = Rect::new(0, 0, 100, 30);
+        let area = Settings::rect(screen);
+        let mut settings = Settings::open();
+        let mouse = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: area.x + 30,
+            row: area.y + 1,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert_eq!(settings.handle_mouse(screen, mouse), Outcome::Continue);
+        assert_eq!(settings.section, Section::Notifications);
     }
 }

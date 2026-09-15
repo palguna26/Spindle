@@ -707,7 +707,7 @@ pub(crate) fn render_global_menu(frame: &mut Frame<'_>, menu: &GlobalMenu) {
 }
 
 pub(super) fn render_settings(frame: &mut Frame<'_>, settings: &Settings) {
-    let area = centered_rect(58, 68, frame.area());
+    let area = Settings::rect(frame.area());
     let sections = super::settings::Section::ALL
         .iter()
         .map(|section| {

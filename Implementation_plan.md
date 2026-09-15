@@ -285,6 +285,8 @@ approved design changes it.
   confirmation when reload is invoked from the keyboard or global menu.
 - [x] Keep `spindle config default` aligned with the supported Settings and
   reload bindings so the starter file is discoverable and usable.
+- [x] Add mouse navigation to the Settings overlay for section and value
+  selection, with outside-click dismissal.
 - [x] Keep client orchestration categorized like Herdr's shell modules; startup
   failure actions now live in `src/client/startup.rs` instead of the main event
   loop module.
