@@ -560,7 +560,7 @@ fn parse_read_target(
 }
 
 fn parse_read_options(args: &[String]) -> Result<ReadOptions, String> {
-    let mut source = ReadSource::Visible;
+    let mut source = ReadSource::Recent;
     let mut lines = None;
     let mut index = 0;
     while index < args.len() {
@@ -945,6 +945,13 @@ mod tests {
         assert_eq!(options.source, ReadSource::Recent);
         assert_eq!(options.lines, Some(4));
         assert!(parse_read_options(&["--source".into(), "detection".into()]).is_err());
+    }
+
+    #[test]
+    fn read_options_default_to_recent_source_like_herdr() {
+        let options = parse_read_options(&[]).unwrap();
+        assert_eq!(options.source, ReadSource::Recent);
+        assert_eq!(options.lines, None);
     }
 
     #[test]

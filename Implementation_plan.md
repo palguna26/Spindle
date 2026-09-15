@@ -192,6 +192,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   pane ID form;
   `spindle pane list` now lists all session panes by default, matching Herdr;
   `--workspace` remains available to narrow the result;
+  `spindle pane read` now defaults to Herdr's `recent` source while preserving
+  explicit `--source visible` reads;
   popup panes now use a transient server popup slot, preserve the tiled
   background focus, render centered terminal content, accept popup placement
   from the plugin CLI, and close when the process exits. Overlay panes now
