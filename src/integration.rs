@@ -6,6 +6,9 @@ use jsonc_parser::ParseOptions;
 use serde::Serialize;
 use serde_json::{json, Value};
 
+mod paths;
+use self::paths::*;
+
 const CODEX_HOOK_ASSET: &str = include_str!("integration/assets/codex-agent-state.ps1");
 const CODEX_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const COPILOT_HOOK_ASSET: &str = include_str!("integration/assets/copilot-agent-state.ps1");
@@ -172,19 +175,6 @@ pub(crate) fn statuses() -> Vec<Status> {
             path: target.path().display().to_string(),
         })
         .collect()
-}
-
-fn home_dir() -> PathBuf {
-    if cfg!(windows) {
-        env::var_os("USERPROFILE")
-            .map(PathBuf::from)
-            .or_else(|| env::var_os("HOME").map(PathBuf::from))
-            .unwrap_or_else(|| PathBuf::from("."))
-    } else {
-        env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."))
-    }
 }
 
 fn command_available(command: &str) -> bool {
@@ -992,31 +982,6 @@ pub(crate) fn uninstall_omp() -> std::io::Result<Vec<String>> {
     )])
 }
 
-fn claude_dir() -> PathBuf {
-    env::var_os("CLAUDE_CONFIG_DIR")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir().join(".claude"))
-}
-
-fn pi_extension_dir() -> PathBuf {
-    env::var_os("PI_CODING_AGENT_DIR")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir().join(".pi").join("agent"))
-        .join("extensions")
-}
-
-fn omp_extension_dir() -> PathBuf {
-    if let Some(value) = env::var_os("PI_CODING_AGENT_DIR").filter(|value| !value.is_empty()) {
-        return PathBuf::from(value).join("extensions");
-    }
-    let config = env::var_os("PI_CONFIG_DIR")
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| ".omp".into());
-    home_dir().join(config).join("agent").join("extensions")
-}
-
 fn add_claude_hook(
     content: &str,
     path: &std::path::Path,
@@ -1230,106 +1195,6 @@ fn plugin_entry_matches(value: &Value, plugin_spec: &str) -> bool {
             .and_then(|parts| parts.first())
             .and_then(Value::as_str)
             == Some(plugin_spec)
-}
-
-fn codex_dir() -> PathBuf {
-    env::var_os("CODEX_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir().join(".codex"))
-}
-
-fn copilot_dir() -> PathBuf {
-    env::var_os("COPILOT_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir().join(".copilot"))
-}
-
-fn cursor_dir() -> PathBuf {
-    env::var_os("CURSOR_CONFIG_DIR")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir().join(".cursor"))
-}
-
-fn devin_dir() -> PathBuf {
-    if let Some(value) = env::var_os("DEVIN_CONFIG_DIR").filter(|value| !value.is_empty()) {
-        return PathBuf::from(value);
-    }
-    if let Some(value) = env::var_os("APPDATA").filter(|value| !value.is_empty()) {
-        return PathBuf::from(value).join("devin");
-    }
-    home_dir().join(".config").join("devin")
-}
-
-fn droid_dir() -> PathBuf {
-    home_dir().join(".factory")
-}
-
-fn kimi_dir() -> PathBuf {
-    env::var_os("KIMI_CODE_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir().join(".kimi-code"))
-}
-
-fn qodercli_dir() -> PathBuf {
-    env::var_os("QODERCLI_CONFIG_DIR")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir().join(".qoder"))
-}
-
-fn qwen_dir() -> PathBuf {
-    env::var_os("QWEN_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir().join(".qwen"))
-}
-
-fn grok_dir() -> PathBuf {
-    env::var_os("GROK_CONFIG_DIR")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::var_os("GROK_HOME")
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from)
-        })
-        .unwrap_or_else(|| home_dir().join(".grok"))
-}
-
-fn kilo_dir() -> PathBuf {
-    env::var_os("KILO_CONFIG_DIR")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::var_os("KILO_HOME")
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from)
-        })
-        .unwrap_or_else(|| home_dir().join(".config").join("kilo"))
-}
-
-fn hermes_dir() -> PathBuf {
-    env::var_os("HERMES_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            env::var_os("LOCALAPPDATA")
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from)
-                .map(|p| p.join("hermes"))
-                .unwrap_or_else(|| home_dir().join(".hermes"))
-        })
-}
-
-fn antigravity_cli_dir() -> PathBuf {
-    env::var_os("ANTIGRAVITY_CLI_CONFIG_DIR")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir().join(".gemini").join("config"))
 }
 
 fn ensure_antigravity_cli_hook(config: &mut Value, hook_path: &std::path::Path) {
@@ -1932,10 +1797,6 @@ fn remove_direct_hook(
                 .any(|field| entry.get(field).and_then(Value::as_str) == Some(command)))
     });
     Ok(before != entries.len())
-}
-
-fn opencode_dir() -> PathBuf {
-    home_dir().join(".config").join("opencode")
 }
 
 fn ensure_codex_hook(
