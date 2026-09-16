@@ -853,7 +853,7 @@ fn sidebar_rows_with_collapsed<'a>(
     collapsed_groups: &HashSet<String>,
 ) -> Vec<SidebarRow<'a>> {
     let mut rows = Vec::new();
-    let mut priority_agents = Vec::new();
+    let mut agents = Vec::new();
     for space in &snapshot.spaces {
         rows.push(SidebarRow::Space {
             space_id: &space.space_id,
@@ -921,10 +921,10 @@ fn sidebar_rows_with_collapsed<'a>(
                     .as_ref()
                     .map(|layout| layout.pane_ids())
                     .unwrap_or_default();
-                let agents = snapshot.panes.iter().filter(|pane| {
+                let pane_agents = snapshot.panes.iter().filter(|pane| {
                     pane.agent.is_some() && pane_ids.contains(&pane.pane_id.as_str())
                 });
-                for pane in agents {
+                for pane in pane_agents {
                     let row = SidebarRow::Agent {
                         space_id: &space.space_id,
                         workspace_id: &workspace.workspace_id,
@@ -933,24 +933,22 @@ fn sidebar_rows_with_collapsed<'a>(
                         workspace_name: &workspace.name,
                         pane,
                     };
-                    if agent_priority_sort {
-                        priority_agents.push(row);
-                    } else {
-                        rows.push(row);
-                    }
+                    agents.push(row);
                 }
             }
         }
     }
     if agent_priority_sort {
-        priority_agents.sort_by_key(|row| {
+        agents.sort_by_key(|row| {
             let SidebarRow::Agent { pane, .. } = row else {
                 unreachable!()
             };
             std::cmp::Reverse(agent_state_priority(pane.agent_display_state()))
         });
+    }
+    if !agents.is_empty() {
         rows.push(SidebarRow::AgentHeader);
-        rows.extend(priority_agents);
+        rows.extend(agents);
     }
     rows
 }
@@ -2349,12 +2347,22 @@ mod tests {
             .draw(|frame| render_sidebar(frame, &snapshot, sidebar))
             .unwrap();
         let buffer = terminal.backend().buffer();
+        let rows = super::sidebar_rows_with_collapsed(&snapshot, false, &HashSet::new());
+        let visual = super::sidebar_visual_rows(&rows, false, &crate::config::load().sidebar);
+        let focused_row = visual
+            .iter()
+            .enumerate()
+            .find_map(|(index, (row, _))| {
+                matches!(
+                    row.and_then(|row| rows.get(row)),
+                    Some(super::SidebarRow::Agent { pane, .. }) if pane.pane_id == "pane-2"
+                )
+                .then_some(index)
+            })
+            .expect("focused agent row exists");
+        let focused_y = super::sidebar_body(sidebar).y + focused_row as u16;
         assert_eq!(
-            buffer.cell((sidebar.x + 8, sidebar.y + 8)).unwrap().bg,
-            ratatui::style::Color::Rgb(30, 30, 46)
-        );
-        assert_ne!(
-            buffer.cell((sidebar.x + 8, sidebar.y + 7)).unwrap().bg,
+            buffer.cell((sidebar.x + 8, focused_y)).unwrap().bg,
             ratatui::style::Color::Rgb(30, 30, 46)
         );
     }
@@ -2557,8 +2565,14 @@ mod tests {
         snapshot.panes = vec![agent_pane("pane-1", "codex", "working")];
         let area = Rect::new(0, 0, 100, 30);
         let sidebar = main_areas(area).sidebar;
+        let target = (sidebar.y..sidebar.bottom()).find_map(|row| {
+            match hit_test(&snapshot, area, click(sidebar.x + 3, row)) {
+                Some(target @ ClickTarget::Agent { .. }) => Some(target),
+                _ => None,
+            }
+        });
         assert_eq!(
-            hit_test(&snapshot, area, click(sidebar.x + 3, sidebar.y + 6)),
+            target,
             Some(ClickTarget::Agent {
                 space_id: "space-1".into(),
                 workspace_id: "workspace-2".into(),
