@@ -401,7 +401,8 @@ approved design changes it.
   INSERT_INDEX` and emits `tab.moved` for plugins. `spindle worktree list` now
   discovers Git worktrees through
   Herdr-compatible porcelain parsing and reports linked checkout state as JSON;
-  create/open/remove worktree actions remain. Worktree-backed workspaces now
+  create/open/remove worktree actions are also available from workspace context
+  menus through typed prompts. Worktree-backed workspaces now
   persist their linked-checkout state and the sidebar groups child checkouts
   under the main checkout, shows normal checkout branches, and uses a compact
   branch cue for children. Workspace branch metadata also refreshes on the
