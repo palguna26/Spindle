@@ -476,6 +476,10 @@ Terminal verification is still pending.
   transcript/model-picker status preservation plus MCP input-request blockers
   and dynamic-workflow blockers
 
+  Codex now uses a dedicated Herdr-style manifest evaluator for priority and
+  screen-region matching; the remaining agent detectors are still being
+  migrated from compatibility functions.
+
 - [x] Add a Herdr-style read-only integration status command. The initial
   registry covers Codex and OpenCode, reports whether each agent is available,
   and shows the expected hook/plugin path in text or JSON form. OpenCode
