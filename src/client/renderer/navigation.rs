@@ -614,6 +614,18 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
                         Style::default().fg(if active { Color::White } else { Color::Gray })
                     },
                 ));
+                if !*is_linked_worktree {
+                    if let Some(branch) = branch.filter(|branch| !branch.is_empty()) {
+                        spans.push(Span::styled(
+                            format!(" · {branch}"),
+                            if previewed {
+                                preview_style
+                            } else {
+                                Style::default().fg(Color::DarkGray)
+                            },
+                        ));
+                    }
+                }
                 Line::from(spans)
             }
             SidebarRow::Agent {
@@ -1217,7 +1229,8 @@ mod tests {
 
     #[test]
     fn sidebar_and_tab_strip_render_active_names() {
-        let snapshot = sample_snapshot();
+        let mut snapshot = sample_snapshot();
+        snapshot.spaces[0].workspaces[0].branch = Some("main".into());
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
         let areas = main_areas(Rect::new(0, 0, 100, 30));
@@ -1236,6 +1249,7 @@ mod tests {
             .collect::<String>();
         assert!(content.contains("Default"));
         assert!(content.contains("Current project"));
+        assert!(content.contains("Current project · m"));
         assert!(content.contains("Docs"));
         assert!(content.contains("Activity"));
     }
