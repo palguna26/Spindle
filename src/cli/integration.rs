@@ -13,6 +13,12 @@ pub(super) fn run(args: &[String]) -> io::Result<()> {
         [command, target] if command == "uninstall" && target == "codex" => {
             print_messages(crate::integration::uninstall_codex()?)
         }
+        [command, target] if command == "install" && target == "opencode" => {
+            print_messages(crate::integration::install_opencode()?)
+        }
+        [command, target] if command == "uninstall" && target == "opencode" => {
+            print_messages(crate::integration::uninstall_opencode()?)
+        }
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -31,6 +37,8 @@ fn print_help() {
     eprintln!("usage: spindle integration status [--json]");
     eprintln!("       spindle integration install codex");
     eprintln!("       spindle integration uninstall codex");
+    eprintln!("       spindle integration install opencode");
+    eprintln!("       spindle integration uninstall opencode");
 }
 
 fn print_messages(messages: Vec<String>) -> io::Result<()> {

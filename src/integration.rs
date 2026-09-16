@@ -6,6 +6,8 @@ use serde_json::{json, Value};
 
 const CODEX_HOOK_ASSET: &str = include_str!("integration/assets/codex-agent-state.ps1");
 const CODEX_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const OPENCODE_PLUGIN_ASSET: &str = include_str!("integration/assets/opencode-agent-state.js");
+const OPENCODE_PLUGIN_NAME: &str = "spindle-agent-state.js";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Target {
@@ -34,7 +36,7 @@ impl Target {
                 .join(".config")
                 .join("opencode")
                 .join("plugins")
-                .join("spindle-agent-state.js"),
+                .join(OPENCODE_PLUGIN_NAME),
         }
     }
 
@@ -182,11 +184,43 @@ pub(crate) fn uninstall_codex() -> std::io::Result<Vec<String>> {
     )])
 }
 
+pub(crate) fn install_opencode() -> std::io::Result<Vec<String>> {
+    let dir = opencode_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "opencode config directory not found at {}. install opencode first",
+            dir.display()
+        )));
+    }
+    let plugins = dir.join("plugins");
+    std::fs::create_dir_all(&plugins)?;
+    let plugin_path = plugins.join(OPENCODE_PLUGIN_NAME);
+    std::fs::write(&plugin_path, OPENCODE_PLUGIN_ASSET)?;
+    Ok(vec![format!(
+        "installed opencode integration plugin to {}",
+        plugin_path.display()
+    )])
+}
+
+pub(crate) fn uninstall_opencode() -> std::io::Result<Vec<String>> {
+    let plugin_path = opencode_dir().join("plugins").join(OPENCODE_PLUGIN_NAME);
+    let removed = remove_file_if_exists(&plugin_path)?;
+    Ok(vec![format!(
+        "{} opencode integration plugin {}",
+        if removed { "removed" } else { "did not find" },
+        plugin_path.display()
+    )])
+}
+
 fn codex_dir() -> PathBuf {
     env::var_os("CODEX_HOME")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| home_dir().join(".codex"))
+}
+
+fn opencode_dir() -> PathBuf {
+    home_dir().join(".config").join("opencode")
 }
 
 fn ensure_codex_hook(
@@ -290,7 +324,7 @@ fn remove_file_if_exists(path: &std::path::Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
-    use super::Target;
+    use super::{Target, OPENCODE_PLUGIN_NAME};
 
     #[test]
     fn targets_match_herdr_names() {
@@ -301,7 +335,7 @@ mod tests {
     #[test]
     fn target_paths_match_agent_layouts() {
         assert!(Target::Codex.path().ends_with("spindle-agent-state.ps1"));
-        assert!(Target::Opencode.path().ends_with("spindle-agent-state.js"));
+        assert!(Target::Opencode.path().ends_with(OPENCODE_PLUGIN_NAME));
     }
 
     #[test]
