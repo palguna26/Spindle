@@ -439,6 +439,21 @@ const ANTIGRAVITY_RULES: &[Rule] = &[
     },
 ];
 
+const KILO_RULES: &[Rule] = &[
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::OpenCodePermission,
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::Contains(&["esc interrupt"]),
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -485,6 +500,10 @@ pub(crate) fn detect_amp(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_antigravity(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, ANTIGRAVITY_RULES)
+}
+
+pub(crate) fn detect_kilo(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, KILO_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -768,8 +787,8 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 mod tests {
     use super::{
         detect_amp, detect_antigravity, detect_cline, detect_codex, detect_copilot, detect_cursor,
-        detect_devin, detect_droid, detect_gemini, detect_opencode, detect_pi, detect_qoder,
-        DetectionInput,
+        detect_devin, detect_droid, detect_gemini, detect_kilo, detect_opencode, detect_pi,
+        detect_qoder, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -863,6 +882,14 @@ mod tests {
 
     fn detect_antigravity_state(screen: &str) -> Option<AgentState> {
         detect_antigravity(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_kilo_state(screen: &str) -> Option<AgentState> {
+        detect_kilo(DetectionInput {
             screen,
             osc_title: "",
             _osc_progress: "",
@@ -1099,5 +1126,26 @@ mod tests {
             Some(AgentState::Working)
         );
         assert_eq!(detect_antigravity_state("· 0 task"), None);
+    }
+
+    #[test]
+    fn kilo_manifest_matches_herdr_rules() {
+        assert_eq!(
+            detect_kilo_state("△ Permission required"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_kilo_state("Esc dismiss\nEnter confirm\n↑↓ select"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_kilo_state("Esc dismiss\nEnter submit\n⇆ Tab"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_kilo_state("Esc interrupt"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_kilo_state("ordinary output"), None);
     }
 }
