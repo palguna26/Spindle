@@ -119,6 +119,118 @@ fn split_ratio_control_updates_the_persisted_layout() {
 }
 
 #[test]
+fn pane_agent_reports_are_authoritative_and_sequence_checked() {
+    let state_dir = test_state_dir();
+    let (thread, address) = start_server(&state_dir);
+    let client = ControlClient::connect(address.trim()).unwrap();
+    let pane = client
+        .request(
+            "agent-pane",
+            "ensure_active_pane",
+            serde_json::json!({
+                "command": "cmd.exe",
+                "args": ["/C", "ping", "127.0.0.1", "-n", "30"],
+                "cwd": std::env::current_dir().unwrap().to_string_lossy(),
+                "cols": 80,
+                "rows": 24
+            }),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    let pane_id = pane["pane_id"].as_str().unwrap();
+
+    let report = client
+        .request(
+            "agent-report",
+            "report_agent",
+            serde_json::json!({
+                "pane_id": pane_id,
+                "source": "herdr:codex",
+                "agent": "codex",
+                "state": "working",
+                "seq": 4
+            }),
+        )
+        .unwrap();
+    assert!(report.ok);
+    assert_eq!(report.payload.unwrap()["updated"], true);
+
+    let stale = client
+        .request(
+            "agent-stale",
+            "report_agent",
+            serde_json::json!({
+                "pane_id": pane_id,
+                "source": "herdr:codex",
+                "agent": "codex",
+                "state": "idle",
+                "seq": 3
+            }),
+        )
+        .unwrap();
+    assert!(stale.ok);
+    assert_eq!(stale.payload.unwrap()["updated"], false);
+
+    let snapshot = client
+        .request(
+            "agent-snapshot",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    let current = snapshot["panes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pane| pane["pane_id"].as_str() == Some(pane_id))
+        .unwrap();
+    assert_eq!(current["agent"], "codex");
+    assert_eq!(current["agent_state"], "working");
+
+    let release = client
+        .request(
+            "agent-release",
+            "release_agent",
+            serde_json::json!({
+                "pane_id": pane_id,
+                "source": "herdr:codex",
+                "agent": "codex",
+                "seq": 5
+            }),
+        )
+        .unwrap();
+    assert!(release.ok);
+    assert_eq!(release.payload.unwrap()["released"], true);
+
+    let after = client
+        .request(
+            "agent-after-release",
+            "get_snapshot",
+            Value::Object(Default::default()),
+        )
+        .unwrap()
+        .payload
+        .unwrap();
+    let released = after["panes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pane| pane["pane_id"].as_str() == Some(pane_id))
+        .unwrap();
+    assert!(released["agent"].is_null());
+    assert!(released["agent_state"].is_null());
+
+    client
+        .request("stop", "stop_server", Value::Object(Default::default()))
+        .unwrap();
+    thread.join().unwrap();
+    let _ = std::fs::remove_dir_all(state_dir);
+}
+
+#[test]
 fn pane_view_settings_survive_server_restart() {
     let state_dir = test_state_dir();
     let (thread, address) = start_server(&state_dir);
