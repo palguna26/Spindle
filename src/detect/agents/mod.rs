@@ -44,7 +44,9 @@ pub(super) use kimi::{kimi_is_working, kimi_permission_required};
 pub(super) use kiro::{kiro_is_idle, kiro_is_working, kiro_permission_required};
 pub(super) use maki::maki_state;
 pub(super) use muse::{muse_should_skip_state_update, muse_state};
-pub(super) use opencode::opencode_permission_required;
+pub(super) use opencode::{
+    opencode_interrupt_hint_working, opencode_permission_required, opencode_progress_bar_working,
+};
 pub(super) use pi::pi_is_working;
 pub(super) use qoder_cli::{qodercli_is_working, qodercli_permission_required};
 pub(super) use qwen::qwen_state;

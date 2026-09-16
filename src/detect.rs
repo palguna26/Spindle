@@ -14,8 +14,8 @@ use agents::{
     hermes_is_idle, hermes_is_priority_working, hermes_is_working, hermes_permission_required,
     hermes_title_blocked, kilo_permission_required, kimi_is_working, kimi_permission_required,
     kiro_is_idle, maki_state, muse_should_skip_state_update, muse_state,
-    opencode_permission_required, pi_is_working, qodercli_is_working, qodercli_permission_required,
-    qwen_state,
+    opencode_interrupt_hint_working, opencode_permission_required, opencode_progress_bar_working,
+    pi_is_working, qodercli_is_working, qodercli_permission_required, qwen_state,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -243,19 +243,7 @@ pub(crate) fn detect_state_with_osc(
                     }))
         }
         AgentKind::OpenCode => {
-            [
-                "esc to interrupt",
-                "ctrl+c to interrupt",
-                "press esc to interrupt",
-            ]
-            .iter()
-            .any(|signal| combined.contains(signal))
-                || combined.lines().any(|line| {
-                    line.contains("opencode")
-                        && (line.contains("esc to interrupt")
-                            || line.contains("esc again to interrupt"))
-                })
-                || has_progress_bar(screen)
+            opencode_interrupt_hint_working(&recent) || opencode_progress_bar_working(&recent)
         }
         AgentKind::Claude => claude_is_working(&bottom_twelve, &bottom_five, title),
         AgentKind::Gemini => recent.contains("esc to cancel"),
@@ -561,23 +549,6 @@ fn is_codex_spinner(character: char) -> bool {
         character,
         '⠋' | '⠙' | '⠹' | '⠸' | '⠼' | '⠴' | '⠦' | '⠧' | '⠇' | '⠏'
     )
-}
-
-fn has_progress_bar(screen: &str) -> bool {
-    screen.lines().any(|line| {
-        let mut run = 0;
-        for character in line.chars() {
-            if matches!(character, '█' | '⬝') {
-                run += 1;
-                if run >= 4 {
-                    return true;
-                }
-            } else {
-                run = 0;
-            }
-        }
-        false
-    })
 }
 
 #[cfg(any(windows, test))]
@@ -2392,6 +2363,26 @@ mod tests {
                 "",
             ),
             AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::OpenCode, "CTRL+C TO INTERRUPT", ""),
+            AgentState::Working
+        );
+    }
+
+    #[test]
+    fn opencode_manifest_progress_bar_marks_working_only_for_four_glyphs() {
+        assert_eq!(
+            detect_state(AgentKind::OpenCode, "build ■■■■", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::OpenCode, "build ⬬⬬⬬⬬", ""),
+            AgentState::Working
+        );
+        assert_eq!(
+            detect_state(AgentKind::OpenCode, "build ■■■", ""),
+            AgentState::Unknown
         );
     }
 }
