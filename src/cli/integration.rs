@@ -55,6 +55,12 @@ pub(super) fn run(args: &[String]) -> io::Result<()> {
         [command, target] if command == "uninstall" && target == "devin" => {
             print_messages(crate::integration::uninstall_devin()?)
         }
+        [command, target] if command == "install" && target == "droid" => {
+            print_messages(crate::integration::install_droid()?)
+        }
+        [command, target] if command == "uninstall" && target == "droid" => {
+            print_messages(crate::integration::uninstall_droid()?)
+        }
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -87,6 +93,8 @@ fn print_help() {
     eprintln!("       spindle integration uninstall cursor");
     eprintln!("       spindle integration install devin");
     eprintln!("       spindle integration uninstall devin");
+    eprintln!("       spindle integration install droid");
+    eprintln!("       spindle integration uninstall droid");
 }
 
 fn print_messages(messages: Vec<String>) -> io::Result<()> {

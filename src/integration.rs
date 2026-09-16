@@ -14,6 +14,8 @@ const CURSOR_HOOK_ASSET: &str = include_str!("integration/assets/cursor-agent-st
 const CURSOR_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const DEVIN_HOOK_ASSET: &str = include_str!("integration/assets/devin-agent-state.ps1");
 const DEVIN_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const DROID_HOOK_ASSET: &str = include_str!("integration/assets/droid-agent-state.ps1");
+const DROID_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -36,10 +38,11 @@ pub(crate) enum Target {
     Copilot,
     Cursor,
     Devin,
+    Droid,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 8] = [
+    pub(crate) const ALL: [Self; 9] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
@@ -48,6 +51,7 @@ impl Target {
         Self::Copilot,
         Self::Cursor,
         Self::Devin,
+        Self::Droid,
     ];
 
     fn label(self) -> &'static str {
@@ -60,6 +64,7 @@ impl Target {
             Self::Copilot => "copilot",
             Self::Cursor => "cursor",
             Self::Devin => "devin",
+            Self::Droid => "droid",
         }
     }
 
@@ -81,6 +86,7 @@ impl Target {
             Self::Copilot => copilot_dir().join("hooks").join(COPILOT_HOOK_NAME),
             Self::Cursor => cursor_dir().join(CURSOR_HOOK_NAME),
             Self::Devin => devin_dir().join(DEVIN_HOOK_NAME),
+            Self::Droid => droid_dir().join("hooks").join(DROID_HOOK_NAME),
         }
     }
 
@@ -365,6 +371,70 @@ pub(crate) fn uninstall_devin() -> std::io::Result<Vec<String>> {
     }
     Ok(vec![format!(
         "{} devin integration hook {}",
+        if removed_hook || changed {
+            "removed"
+        } else {
+            "did not find"
+        },
+        hook_path.display()
+    )])
+}
+
+pub(crate) fn install_droid() -> std::io::Result<Vec<String>> {
+    let dir = droid_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "droid config directory not found at {}. install droid first",
+            dir.display()
+        )));
+    }
+    let hooks_dir = dir.join("hooks");
+    std::fs::create_dir_all(&hooks_dir)?;
+    let hook_path = hooks_dir.join(DROID_HOOK_NAME);
+    std::fs::write(&hook_path, DROID_HOOK_ASSET)?;
+    let settings_path = dir.join("settings.json");
+    let mut settings = read_json_object(&settings_path, "droid settings")?;
+    ensure_droid_settings(&mut settings, &settings_path, &hook_path)?;
+    std::fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
+    let hooks_path = dir.join("hooks.json");
+    if hooks_path.is_file() {
+        let mut legacy = read_json_object(&hooks_path, "droid hooks file")?;
+        if remove_droid_legacy(&mut legacy, &hook_path)? {
+            std::fs::write(&hooks_path, serde_json::to_string_pretty(&legacy)?)?;
+        }
+    }
+    Ok(vec![
+        format!(
+            "installed droid integration hook to {}",
+            hook_path.display()
+        ),
+        format!("ensured droid settings at {}", settings_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_droid() -> std::io::Result<Vec<String>> {
+    let dir = droid_dir();
+    let hook_path = dir.join("hooks").join(DROID_HOOK_NAME);
+    let settings_path = dir.join("settings.json");
+    let removed_hook = remove_file_if_exists(&hook_path)?;
+    let mut changed = false;
+    if settings_path.is_file() {
+        let mut settings = read_json_object(&settings_path, "droid settings")?;
+        changed = remove_droid_settings(&mut settings, &hook_path)?;
+        if changed {
+            std::fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
+        }
+    }
+    let hooks_path = dir.join("hooks.json");
+    if hooks_path.is_file() {
+        let mut legacy = read_json_object(&hooks_path, "droid hooks file")?;
+        changed |= remove_droid_legacy(&mut legacy, &hook_path)?;
+        if changed {
+            std::fs::write(&hooks_path, serde_json::to_string_pretty(&legacy)?)?;
+        }
+    }
+    Ok(vec![format!(
+        "{} droid integration hook {}",
         if removed_hook || changed {
             "removed"
         } else {
@@ -822,6 +892,81 @@ fn devin_dir() -> PathBuf {
     home_dir().join(".config").join("devin")
 }
 
+fn droid_dir() -> PathBuf {
+    home_dir().join(".factory")
+}
+
+fn droid_events() -> [(&'static str, &'static str); 1] {
+    [("SessionStart", "session")]
+}
+fn droid_removed_events() -> [(&'static str, &'static str); 9] {
+    [
+        ("SessionStart", "idle"),
+        ("UserPromptSubmit", "working"),
+        ("PreToolUse", "working"),
+        ("PostToolUse", "working"),
+        ("Notification", "blocked"),
+        ("Stop", "idle"),
+        ("SubagentStop", "working"),
+        ("PreCompact", "working"),
+        ("SessionEnd", "release"),
+    ]
+}
+
+fn ensure_droid_settings(
+    config: &mut Value,
+    path: &std::path::Path,
+    hook_path: &std::path::Path,
+) -> std::io::Result<()> {
+    let root = config.as_object_mut().ok_or_else(|| {
+        std::io::Error::other(format!(
+            "droid settings at {} must be a JSON object",
+            path.display()
+        ))
+    })?;
+    let hooks = root
+        .entry("hooks")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or_else(|| std::io::Error::other("droid settings hooks must be a JSON object"))?;
+    for (event, action) in droid_removed_events().into_iter().chain(droid_events()) {
+        remove_devin_hook(hooks, event, &devin_hook_command(hook_path, action))?;
+    }
+    for (event, action) in droid_events() {
+        let entries = hooks
+            .entry(event)
+            .or_insert_with(|| json!([]))
+            .as_array_mut()
+            .ok_or_else(|| {
+                std::io::Error::other(format!("droid {event} hooks must be an array"))
+            })?;
+        entries.push(json!({"hooks":[{"type":"command","command":devin_hook_command(hook_path, action),"timeout":10}]}));
+    }
+    Ok(())
+}
+
+fn remove_droid_settings(config: &mut Value, hook_path: &std::path::Path) -> std::io::Result<bool> {
+    let Some(hooks) = config.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return Ok(false);
+    };
+    let mut changed = false;
+    for (event, action) in droid_events().into_iter().chain(droid_removed_events()) {
+        changed |= remove_devin_hook(hooks, event, &devin_hook_command(hook_path, action))?;
+    }
+    Ok(changed)
+}
+
+fn remove_droid_legacy(config: &mut Value, hook_path: &std::path::Path) -> std::io::Result<bool> {
+    let Some(hooks) = config.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return Ok(false);
+    };
+    let mut changed = false;
+    for (event, action) in droid_events().into_iter().chain(droid_removed_events()) {
+        changed |= remove_devin_hook(hooks, event, &devin_hook_command(hook_path, action))?;
+    }
+    Ok(changed)
+}
+
 fn devin_events() -> [(&'static str, &'static str); 6] {
     [
         ("SessionStart", "session"),
@@ -1204,6 +1349,7 @@ mod tests {
         assert_eq!(Target::Copilot.label(), "copilot");
         assert_eq!(Target::Cursor.label(), "cursor");
         assert_eq!(Target::Devin.label(), "devin");
+        assert_eq!(Target::Droid.label(), "droid");
     }
 
     #[test]
@@ -1215,6 +1361,7 @@ mod tests {
         assert!(Target::Copilot.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Cursor.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Devin.path().ends_with("spindle-agent-state.ps1"));
+        assert!(Target::Droid.path().ends_with("spindle-agent-state.ps1"));
     }
 
     #[test]
