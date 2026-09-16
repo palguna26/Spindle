@@ -65,6 +65,9 @@ rows.
 The session navigator also honors Herdr's `[theme.custom] selection_bg` token
 for selected rows on desktop and mobile layouts.
 
+Desktop and mobile navigator panels now use the selected Herdr `panel_bg`
+surface instead of inheriting the terminal default background.
+
 An unset theme now defaults to Herdr's Catppuccin palette in both rendering
 and the settings overlay.
 

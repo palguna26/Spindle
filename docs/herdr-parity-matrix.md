@@ -335,3 +335,6 @@ Herdr's `src/config/theme.rs` and `src/client/shell/sidebar.rs`.
 
 Navigator selection now uses Herdr's `[theme.custom] selection_bg` token on
 desktop and mobile switcher layouts.
+
+Navigator panels now use the selected Herdr `panel_bg` surface on desktop and
+mobile layouts.
