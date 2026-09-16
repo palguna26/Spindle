@@ -24,6 +24,9 @@ const QODERCLI_HOOK_ASSET: &str = include_str!("integration/assets/qodercli-agen
 const QODERCLI_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const QWEN_HOOK_ASSET: &str = include_str!("integration/assets/qwen-agent-session.ps1");
 const QWEN_HOOK_NAME: &str = "spindle-agent-session.ps1";
+const GROK_HOOK_ASSET: &str = include_str!("integration/assets/grok-agent-state.ps1");
+const GROK_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const GROK_CONFIG_NAME: &str = "spindle.json";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -50,10 +53,11 @@ pub(crate) enum Target {
     Kimi,
     Qodercli,
     Qwen,
+    Grok,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 12] = [
+    pub(crate) const ALL: [Self; 13] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
@@ -66,6 +70,7 @@ impl Target {
         Self::Kimi,
         Self::Qodercli,
         Self::Qwen,
+        Self::Grok,
     ];
 
     fn label(self) -> &'static str {
@@ -82,6 +87,7 @@ impl Target {
             Self::Kimi => "kimi",
             Self::Qodercli => "qodercli",
             Self::Qwen => "qwen",
+            Self::Grok => "grok",
         }
     }
 
@@ -107,6 +113,7 @@ impl Target {
             Self::Kimi => kimi_dir().join("hooks").join(KIMI_HOOK_NAME),
             Self::Qodercli => qodercli_dir().join("hooks").join(QODERCLI_HOOK_NAME),
             Self::Qwen => qwen_dir().join("hooks").join(QWEN_HOOK_NAME),
+            Self::Grok => grok_dir().join("hooks").join(GROK_HOOK_NAME),
         }
     }
 
@@ -612,6 +619,44 @@ pub(crate) fn uninstall_qwen() -> std::io::Result<Vec<String>> {
     )])
 }
 
+pub(crate) fn install_grok() -> std::io::Result<Vec<String>> {
+    let dir = grok_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "grok config directory not found at {}. install grok cli first",
+            dir.display()
+        )));
+    }
+    let hooks_dir = dir.join("hooks");
+    std::fs::create_dir_all(&hooks_dir)?;
+    let hook_path = hooks_dir.join(GROK_HOOK_NAME);
+    let config_path = hooks_dir.join(GROK_CONFIG_NAME);
+    std::fs::write(&hook_path, GROK_HOOK_ASSET)?;
+    let config = json!({"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":format!("{} session", direct_hook_command(&hook_path)),"timeout":10}]}]}});
+    std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
+    Ok(vec![
+        format!("installed grok integration hook to {}", hook_path.display()),
+        format!("ensured grok hook config at {}", config_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_grok() -> std::io::Result<Vec<String>> {
+    let dir = grok_dir();
+    let hooks_dir = dir.join("hooks");
+    let hook_path = hooks_dir.join(GROK_HOOK_NAME);
+    let config_path = hooks_dir.join(GROK_CONFIG_NAME);
+    let removed_hook = remove_file_if_exists(&hook_path)?;
+    let removed_config = remove_file_if_exists(&config_path)?;
+    Ok(vec![format!(
+        "{} grok integration files",
+        if removed_hook || removed_config {
+            "removed"
+        } else {
+            "did not find"
+        }
+    )])
+}
+
 pub(crate) fn install_opencode() -> std::io::Result<Vec<String>> {
     let dir = opencode_dir();
     if !dir.is_dir() {
@@ -1083,6 +1128,18 @@ fn qwen_dir() -> PathBuf {
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| home_dir().join(".qwen"))
+}
+
+fn grok_dir() -> PathBuf {
+    env::var_os("GROK_CONFIG_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("GROK_HOME")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+        })
+        .unwrap_or_else(|| home_dir().join(".grok"))
 }
 
 fn qwen_command(path: &std::path::Path) -> String {
@@ -1746,6 +1803,7 @@ mod tests {
         assert_eq!(Target::Kimi.label(), "kimi");
         assert_eq!(Target::Qodercli.label(), "qodercli");
         assert_eq!(Target::Qwen.label(), "qwen");
+        assert_eq!(Target::Grok.label(), "grok");
     }
 
     #[test]
@@ -1761,6 +1819,7 @@ mod tests {
         assert!(Target::Kimi.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Qodercli.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Qwen.path().ends_with("spindle-agent-session.ps1"));
+        assert!(Target::Grok.path().ends_with("spindle-agent-state.ps1"));
     }
 
     #[test]
