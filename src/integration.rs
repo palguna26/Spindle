@@ -22,6 +22,8 @@ const KIMI_BEGIN: &str = "# >>> spindle kimi integration";
 const KIMI_END: &str = "# <<< spindle kimi integration";
 const QODERCLI_HOOK_ASSET: &str = include_str!("integration/assets/qodercli-agent-state.ps1");
 const QODERCLI_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const QWEN_HOOK_ASSET: &str = include_str!("integration/assets/qwen-agent-session.ps1");
+const QWEN_HOOK_NAME: &str = "spindle-agent-session.ps1";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -47,10 +49,11 @@ pub(crate) enum Target {
     Droid,
     Kimi,
     Qodercli,
+    Qwen,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 11] = [
+    pub(crate) const ALL: [Self; 12] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
@@ -62,6 +65,7 @@ impl Target {
         Self::Droid,
         Self::Kimi,
         Self::Qodercli,
+        Self::Qwen,
     ];
 
     fn label(self) -> &'static str {
@@ -77,6 +81,7 @@ impl Target {
             Self::Droid => "droid",
             Self::Kimi => "kimi",
             Self::Qodercli => "qodercli",
+            Self::Qwen => "qwen",
         }
     }
 
@@ -101,6 +106,7 @@ impl Target {
             Self::Droid => droid_dir().join("hooks").join(DROID_HOOK_NAME),
             Self::Kimi => kimi_dir().join("hooks").join(KIMI_HOOK_NAME),
             Self::Qodercli => qodercli_dir().join("hooks").join(QODERCLI_HOOK_NAME),
+            Self::Qwen => qwen_dir().join("hooks").join(QWEN_HOOK_NAME),
         }
     }
 
@@ -551,6 +557,52 @@ pub(crate) fn uninstall_qodercli() -> std::io::Result<Vec<String>> {
     }
     Ok(vec![format!(
         "{} qodercli integration hook {}",
+        if removed_hook || changed {
+            "removed"
+        } else {
+            "did not find"
+        },
+        hook_path.display()
+    )])
+}
+
+pub(crate) fn install_qwen() -> std::io::Result<Vec<String>> {
+    let dir = qwen_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "qwen code config directory not found at {}. install qwen code first",
+            dir.display()
+        )));
+    }
+    let hooks_dir = dir.join("hooks");
+    std::fs::create_dir_all(&hooks_dir)?;
+    let hook_path = hooks_dir.join(QWEN_HOOK_NAME);
+    std::fs::write(&hook_path, QWEN_HOOK_ASSET)?;
+    let settings_path = dir.join("settings.json");
+    let mut config = read_json_object(&settings_path, "qwen settings")?;
+    ensure_qwen_hook(&mut config, &settings_path, &hook_path)?;
+    std::fs::write(&settings_path, serde_json::to_string_pretty(&config)?)?;
+    Ok(vec![
+        format!("installed qwen integration hook to {}", hook_path.display()),
+        format!("ensured qwen settings at {}", settings_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_qwen() -> std::io::Result<Vec<String>> {
+    let dir = qwen_dir();
+    let hook_path = dir.join("hooks").join(QWEN_HOOK_NAME);
+    let settings_path = dir.join("settings.json");
+    let removed_hook = remove_file_if_exists(&hook_path)?;
+    let mut changed = false;
+    if settings_path.is_file() {
+        let mut config = read_json_object(&settings_path, "qwen settings")?;
+        changed = remove_qwen_hook(&mut config, &hook_path)?;
+        if changed {
+            std::fs::write(&settings_path, serde_json::to_string_pretty(&config)?)?;
+        }
+    }
+    Ok(vec![format!(
+        "{} qwen integration hook {}",
         if removed_hook || changed {
             "removed"
         } else {
@@ -1024,6 +1076,73 @@ fn qodercli_dir() -> PathBuf {
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| home_dir().join(".qoder"))
+}
+
+fn qwen_dir() -> PathBuf {
+    env::var_os("QWEN_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".qwen"))
+}
+
+fn qwen_command(path: &std::path::Path) -> String {
+    format!("{} session", direct_hook_command(path))
+}
+fn ensure_qwen_hook(
+    config: &mut Value,
+    path: &std::path::Path,
+    hook_path: &std::path::Path,
+) -> std::io::Result<()> {
+    let root = config.as_object_mut().ok_or_else(|| {
+        std::io::Error::other(format!(
+            "qwen settings at {} must be a JSON object",
+            path.display()
+        ))
+    })?;
+    let hooks = root
+        .entry("hooks")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or_else(|| std::io::Error::other("qwen settings hooks must be a JSON object"))?;
+    let entries = hooks
+        .entry("SessionStart")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .ok_or_else(|| std::io::Error::other("qwen SessionStart hooks must be an array"))?;
+    entries.retain(|entry| {
+        entry
+            .get("hooks")
+            .and_then(Value::as_array)
+            .is_none_or(|items| {
+                !items.iter().any(|item| {
+                    item.get("command").and_then(Value::as_str)
+                        == Some(qwen_command(hook_path).as_str())
+                })
+            })
+    });
+    entries.push(json!({"matcher":"*","hooks":[{"type":"command","command":qwen_command(hook_path),"timeout":10000}]}));
+    Ok(())
+}
+fn remove_qwen_hook(config: &mut Value, hook_path: &std::path::Path) -> std::io::Result<bool> {
+    let Some(hooks) = config.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return Ok(false);
+    };
+    let Some(entries) = hooks.get_mut("SessionStart").and_then(Value::as_array_mut) else {
+        return Ok(false);
+    };
+    let command = qwen_command(hook_path);
+    let before = entries.len();
+    entries.retain(|entry| {
+        !entry
+            .get("hooks")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items.iter().any(|item| {
+                    item.get("command").and_then(Value::as_str) == Some(command.as_str())
+                })
+            })
+    });
+    Ok(before != entries.len())
 }
 
 fn qodercli_events() -> [(&'static str, &'static str); 1] {
@@ -1626,6 +1745,7 @@ mod tests {
         assert_eq!(Target::Droid.label(), "droid");
         assert_eq!(Target::Kimi.label(), "kimi");
         assert_eq!(Target::Qodercli.label(), "qodercli");
+        assert_eq!(Target::Qwen.label(), "qwen");
     }
 
     #[test]
@@ -1640,6 +1760,7 @@ mod tests {
         assert!(Target::Droid.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Kimi.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Qodercli.path().ends_with("spindle-agent-state.ps1"));
+        assert!(Target::Qwen.path().ends_with("spindle-agent-session.ps1"));
     }
 
     #[test]

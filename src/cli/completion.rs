@@ -83,7 +83,7 @@ const BASH: &str = r#"_spindle() {
     COMPREPLY=( $(compgen -W "show help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "integration" ]]; then
     if [[ "$COMP_WORDS[2]" == "install" || "$COMP_WORDS[2]" == "uninstall" ]]; then
-      COMPREPLY=( $(compgen -W "codex opencode claude pi omp copilot cursor devin droid kimi qodercli" -- "$cur") )
+      COMPREPLY=( $(compgen -W "codex opencode claude pi omp copilot cursor devin droid kimi qodercli qwen" -- "$cur") )
     else
       COMPREPLY=( $(compgen -W "status install uninstall help" -- "$cur") )
     fi
@@ -122,7 +122,7 @@ complete -c spindle -f -n '__fish_seen_subcommand_from agent' -a 'list get focus
 complete -c spindle -f -n '__fish_seen_subcommand_from notification' -a 'show help'
 complete -c spindle -f -n '__fish_seen_subcommand_from notification; and __fish_seen_subcommand_from show' -l body -r -l position -r -l sound -r
 complete -c spindle -f -n '__fish_seen_subcommand_from integration' -a 'status install uninstall help'
-complete -c spindle -f -n '__fish_seen_subcommand_from integration; and __fish_seen_subcommand_from install uninstall' -a 'codex opencode claude pi omp copilot cursor devin droid kimi qodercli'
+complete -c spindle -f -n '__fish_seen_subcommand_from integration; and __fish_seen_subcommand_from install uninstall' -a 'codex opencode claude pi omp copilot cursor devin droid kimi qodercli qwen'
 complete -c spindle -f -n '__fish_seen_subcommand_from integration; and __fish_seen_subcommand_from status' -l json
 "#;
 
@@ -139,7 +139,7 @@ _spindle() {
     api) _arguments '1:command:(snapshot schema help)' ;;
     agent) _arguments '1:command:(list get focus start wait read send-keys prompt rename help)' ;;
     notification) _arguments '1:command:(show help)' '2:options:(--body --position --sound)' ;;
-    integration) _arguments '1:command:(status install uninstall help)' '2:target:(codex opencode claude pi omp copilot cursor devin droid kimi qodercli)' '3:options:(--json)' ;;
+    integration) _arguments '1:command:(status install uninstall help)' '2:target:(codex opencode claude pi omp copilot cursor devin droid kimi qodercli qwen)' '3:options:(--json)' ;;
   esac
 }
 _spindle "$@"
@@ -163,7 +163,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq 'api') { 'snapshot schema help' }
     elseif ($words[1] -eq 'agent') { 'list get focus start wait read send-keys prompt rename help' }
     elseif ($words[1] -eq 'notification') { 'show help --body --position --sound' }
-    elseif ($words[1] -eq 'integration' -and ($words[2] -eq 'install' -or $words[2] -eq 'uninstall')) { 'codex opencode claude pi omp copilot cursor devin droid kimi qodercli' }
+    elseif ($words[1] -eq 'integration' -and ($words[2] -eq 'install' -or $words[2] -eq 'uninstall')) { 'codex opencode claude pi omp copilot cursor devin droid kimi qodercli qwen' }
     elseif ($words[1] -eq 'integration') { 'status install uninstall help --json' }
   $choices | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
@@ -213,6 +213,8 @@ edit:completion:argadd 'spindle integration install' (kimi)
 edit:completion:argadd 'spindle integration uninstall' (kimi)
 edit:completion:argadd 'spindle integration install' (qodercli)
 edit:completion:argadd 'spindle integration uninstall' (qodercli)
+edit:completion:argadd 'spindle integration install' (qwen)
+edit:completion:argadd 'spindle integration uninstall' (qwen)
 "#;
 
 #[cfg(test)]
