@@ -658,6 +658,7 @@ fn sidebar_token_spans(
     tokens: &[String],
     values: impl Fn(&str) -> Option<(String, Style)>,
     prefix: &str,
+    overlay0: Color,
 ) -> Vec<Span<'static>> {
     let mut spans = vec![Span::raw(prefix.to_owned())];
     let mut visible = 0;
@@ -673,7 +674,7 @@ fn sidebar_token_spans(
                 } else {
                     " · ".to_owned()
                 },
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(overlay0),
             ));
         }
         spans.push(Span::styled(value, style));
@@ -694,6 +695,7 @@ fn render_space_token_row(
     indent: &str,
     text: Color,
     subtext0: Color,
+    overlay0: Color,
 ) -> Line<'static> {
     let state_icon = state
         .map(|state| state.sidebar_marker().to_owned())
@@ -721,6 +723,7 @@ fn render_space_token_row(
                 .map(|value| (value, Style::default().fg(subtext0))),
         },
         indent,
+        overlay0,
     ))
 }
 
@@ -734,6 +737,7 @@ fn render_agent_token_row(
     active_row_bg: Color,
     text: Color,
     subtext0: Color,
+    overlay0: Color,
 ) -> Line<'static> {
     let state = pane.agent_display_state();
     let state_icon = state.sidebar_marker().to_owned();
@@ -798,6 +802,7 @@ fn render_agent_token_row(
                 .map(|value| (value, focused_style(Style::default().fg(subtext0)))),
         },
         "    ",
+        overlay0,
     ))
 }
 
@@ -1071,6 +1076,8 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
     let accent = super::ThemePalette::from_config(&config).accent;
     let text = super::ThemePalette::text(&config);
     let subtext0 = super::ThemePalette::subtext0(&config);
+    let overlay0 = super::ThemePalette::overlay0(&config);
+    let surface_dim = super::ThemePalette::surface_dim(&config);
     let sidebar_bg = super::ThemePalette::sidebar_bg(&config);
     let active_row_bg = super::ThemePalette::active_row_bg(&config);
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
@@ -1097,7 +1104,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                     Line::from(vec![
                         Span::styled(
                             marker,
-                            Style::default().fg(if active { accent } else { Color::DarkGray }),
+                            Style::default().fg(if active { accent } else { overlay0 }),
                         ),
                         Span::styled(
                             (*name).to_owned(),
@@ -1172,8 +1179,9 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                         indent,
                         text,
                         subtext0,
+                        overlay0,
                     );
-                    let line = append_summary(line, tokens);
+                    let line = append_summary(line, tokens, overlay0);
                     if previewed {
                         line.style(Style::default().bg(active_row_bg))
                     } else {
@@ -1206,8 +1214,10 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                             active_row_bg,
                             text,
                             subtext0,
+                            overlay0,
                         ),
                         &pane.tokens,
+                        overlay0,
                     )
                 }
                 SidebarRow::AgentHeader => Line::from(vec![
@@ -1262,7 +1272,15 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
         }
     }
     if max_scroll > 0 && body.width > 1 && body.height > 0 {
-        render_sidebar_scrollbar(frame, body, start, max_scroll, visual_rows.len());
+        render_sidebar_scrollbar(
+            frame,
+            body,
+            start,
+            max_scroll,
+            visual_rows.len(),
+            overlay0,
+            surface_dim,
+        );
     }
 }
 
@@ -1281,12 +1299,13 @@ fn visible_metadata_tokens(
 fn append_summary(
     mut line: Line<'static>,
     tokens: &std::collections::HashMap<String, String>,
+    overlay0: Color,
 ) -> Line<'static> {
     for (key, value) in visible_metadata_tokens(tokens) {
         if key == "summary" {
             line.spans.push(Span::styled(
                 format!(" · {value}"),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(overlay0),
             ));
         }
     }
@@ -1327,6 +1346,8 @@ fn render_sidebar_scrollbar(
     start: usize,
     max_scroll: usize,
     row_count: usize,
+    overlay0: Color,
+    surface_dim: Color,
 ) {
     let Some((thumb_top, thumb_height)) =
         sidebar_scrollbar_thumb(body, start, max_scroll, row_count)
@@ -1339,8 +1360,8 @@ fn render_sidebar_scrollbar(
         if let Some(cell) = frame.buffer_mut().cell_mut((x, body.y + row as u16)) {
             let thumb = row >= usize::from(thumb_top)
                 && row < usize::from(thumb_top.saturating_add(thumb_height));
-            cell.set_symbol(if thumb { "#" } else { "|" });
-            cell.set_fg(if thumb { Color::Gray } else { Color::DarkGray });
+            cell.set_symbol("▕");
+            cell.set_fg(if thumb { overlay0 } else { surface_dim });
         }
     }
 }
@@ -2500,6 +2521,7 @@ mod tests {
             "  ",
             Color::White,
             Color::Gray,
+            Color::DarkGray,
         );
         let content = line
             .spans
