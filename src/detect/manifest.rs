@@ -25,6 +25,7 @@ struct Rule {
 #[derive(Debug, Clone, Copy)]
 enum Region {
     OscTitle,
+    OscProgress,
     TopNonEmpty(usize),
     BottomNonEmpty(usize),
     AfterLastPrompt,
@@ -85,6 +86,13 @@ enum Matcher {
     MuseApproval,
     MuseIdlePrompt,
     MuseIdleFallback,
+    GrokOption,
+    GrokLegacyPermission,
+    GrokBackgroundChip,
+    GrokTitleIdle,
+    GrokSpinnerStatus,
+    GrokLegacyWorking,
+    GrokPromptIdle,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -690,6 +698,93 @@ const MUSE_RULES: &[Rule] = &[
     },
 ];
 
+const GROK_RULES: &[Rule] = &[
+    Rule {
+        priority: 1300,
+        state: AgentState::Blocked,
+        region: Region::OscTitle,
+        matcher: Matcher::Contains(&["action required"]),
+    },
+    Rule {
+        priority: 1200,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::GrokOption,
+    },
+    Rule {
+        priority: 1190,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(2),
+        matcher: Matcher::All(&[":select", "ctrl+o:yolo", "ctrl+c:cancel"]),
+    },
+    Rule {
+        priority: 1185,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(2),
+        matcher: Matcher::All(&["tab:scrollback", "shift+x:dismiss"]),
+    },
+    Rule {
+        priority: 1180,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::GrokLegacyPermission,
+    },
+    Rule {
+        priority: 1170,
+        state: AgentState::Working,
+        region: Region::TopNonEmpty(1),
+        matcher: Matcher::GrokBackgroundChip,
+    },
+    Rule {
+        priority: 1150,
+        state: AgentState::Working,
+        region: Region::OscProgress,
+        matcher: Matcher::Contains(&["4;1;-1"]),
+    },
+    Rule {
+        priority: 1100,
+        state: AgentState::Idle,
+        region: Region::OscTitle,
+        matcher: Matcher::GrokTitleIdle,
+    },
+    Rule {
+        priority: 1000,
+        state: AgentState::Working,
+        region: Region::OscTitle,
+        matcher: Matcher::Regex(r"\S"),
+    },
+    Rule {
+        priority: 950,
+        state: AgentState::Idle,
+        region: Region::OscProgress,
+        matcher: Matcher::Contains(&["4;0;0"]),
+    },
+    Rule {
+        priority: 200,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::GrokSpinnerStatus,
+    },
+    Rule {
+        priority: 190,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(2),
+        matcher: Matcher::All(&["esc:cancel", "ctrl+.:shortcuts"]),
+    },
+    Rule {
+        priority: 120,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::GrokLegacyWorking,
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Idle,
+        region: Region::BottomNonEmpty(2),
+        matcher: Matcher::GrokPromptIdle,
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -762,6 +857,10 @@ pub(crate) fn detect_muse(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, MUSE_RULES)
 }
 
+pub(crate) fn detect_grok(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, GROK_RULES)
+}
+
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
     let mut matched = None;
     for rule in rules {
@@ -784,6 +883,7 @@ fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState>
 fn region(input: DetectionInput<'_>, region: Region) -> String {
     let text = match region {
         Region::OscTitle => input.osc_title.to_owned(),
+        Region::OscProgress => input._osc_progress.to_owned(),
         Region::TopNonEmpty(limit) => top_nonempty_lines(input.screen, limit),
         Region::BottomNonEmpty(limit) => recent_nonempty_lines(input.screen, limit),
         Region::AfterLastPrompt => agents::codex_after_last_prompt_marker(input.screen),
@@ -1211,6 +1311,53 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                 .is_ok_and(|regex| regex.is_match(line))
             }) && !text.contains("esc to interrupt")
         }
+        Matcher::GrokOption => text.lines().any(|line| {
+            let line = line.trim_start();
+            let mut fields = line.split_whitespace();
+            let Some(gutter) = fields.next() else { return false };
+            let Some(key) = fields.next() else { return false };
+            let Some(choice) = fields.next() else { return false };
+            !gutter.is_ascii() && key.chars().all(|c| c.is_ascii_alphanumeric())
+                && matches!(choice, "(●)" | "(○)" | "(â—)" | "(â—‹)")
+        }),
+        Matcher::GrokLegacyPermission => {
+            text.contains("yes, proceed")
+                && text.contains("no, reject")
+                && (text.contains("scope") && (text.contains("choose permission") || text.contains("←/→")))
+        }
+        Matcher::GrokBackgroundChip => {
+            let line = text.trim_start();
+            let mut fields = line.split_whitespace();
+            let Some(marker) = fields.next() else { return false };
+            let Some(count) = fields.next() else { return false };
+            !marker.is_ascii() && count.parse::<u32>().is_ok_and(|count| count > 0)
+                && text.contains('│')
+        }
+        Matcher::GrokTitleIdle => {
+            (text == "grok" || text.ends_with(" - grok"))
+                && !text.chars().any(|c| ('\u{2800}'..='\u{28ff}').contains(&c))
+        }
+        Matcher::GrokSpinnerStatus => {
+            text.lines().any(|line| {
+                let line = line.trim_start();
+                line.contains("[stop]")
+                    && line.chars().next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c))
+            })
+        }
+        Matcher::GrokLegacyWorking => {
+            text.contains("ctrl+c:cancel")
+                && text.contains("ctrl+enter:interject")
+                && (text.contains("waiting") || text.lines().any(|line| {
+                    let line = line.trim_start();
+                    line.chars().next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c))
+                        && ["run", "read", "search", "list"].iter().any(|verb| line.contains(verb))
+                }))
+        }
+        Matcher::GrokPromptIdle => {
+            text.contains("ctrl+.:shortcuts")
+                && !text.contains("esc:cancel")
+                && !text.contains("ctrl+c:cancel")
+        }
     }
 }
 
@@ -1300,9 +1447,9 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 mod tests {
     use super::{
         detect_amp, detect_antigravity, detect_cline, detect_codex, detect_copilot, detect_cursor,
-        detect_devin, detect_droid, detect_gemini, detect_hermes, detect_kilo, detect_kimi,
-        detect_kiro, detect_maki, detect_muse, detect_opencode, detect_pi, detect_qoder,
-        DetectionInput,
+        detect_devin, detect_droid, detect_gemini, detect_grok, detect_hermes, detect_kilo,
+        detect_kimi, detect_kiro, detect_maki, detect_muse, detect_opencode, detect_pi,
+        detect_qoder, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -1448,6 +1595,48 @@ mod tests {
             osc_title: "",
             _osc_progress: "",
         })
+    }
+
+    fn detect_grok_state(screen: &str, title: &str, progress: &str) -> Option<AgentState> {
+        detect_grok(DetectionInput {
+            screen,
+            osc_title: title,
+            _osc_progress: progress,
+        })
+    }
+
+    #[test]
+    fn grok_manifest_matches_herdr_priority_rules() {
+        assert_eq!(
+            detect_grok_state("", "Action Required", ""),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_grok_state("┃ 2 (○) Yes, proceed", "", ""),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_grok_state("1/3:select │ Ctrl+o:yolo │ Ctrl+c:cancel", "", ""),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_grok_state("⋅ 2 │ background tasks", "", ""),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_grok_state("", "", "4;1;-1"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_grok_state("⠧ Waiting on subagent [stop]", "", ""),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_grok_state("", "grok", ""), Some(AgentState::Idle));
+        assert_eq!(
+            detect_grok_state("Ctrl+.:shortcuts", "", ""),
+            Some(AgentState::Idle)
+        );
+        assert_eq!(detect_grok_state("", "", "4;0;0"), Some(AgentState::Idle));
     }
 
     #[test]

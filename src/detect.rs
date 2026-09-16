@@ -320,6 +320,13 @@ pub(crate) fn detect_state_with_osc(
         return qwen_state(screen, title, osc_progress).unwrap_or(AgentState::Unknown);
     }
     if agent == AgentKind::Grok {
+        if let Some(state) = manifest::detect_grok(manifest::DetectionInput {
+            screen,
+            osc_title: title,
+            _osc_progress: osc_progress,
+        }) {
+            return state;
+        }
         return grok_state(screen, title, osc_progress);
     }
     if agent == AgentKind::Maki {
