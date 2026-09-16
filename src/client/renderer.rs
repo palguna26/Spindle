@@ -978,7 +978,6 @@ mod tests {
         assert!(content.contains("Default"));
         assert!(content.contains("Current project"));
         assert!(content.contains("switch"));
-        assert!(content.contains("Ctrl-b g"));
         assert!(content.contains("Main"));
     }
 

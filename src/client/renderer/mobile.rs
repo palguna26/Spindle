@@ -11,7 +11,7 @@ pub(super) fn render_header(frame: &mut Frame<'_>, area: Rect, snapshot: &Sessio
     }
     let switch = super::layout::mobile_switch_rect(area);
     let title_width = switch.x.saturating_sub(area.x);
-    let title = super::active_title(snapshot);
+    let title = mobile_title(snapshot);
     let title = title
         .chars()
         .take(usize::from(title_width.saturating_sub(1)))
@@ -34,9 +34,50 @@ pub(super) fn render_header(frame: &mut Frame<'_>, area: Rect, snapshot: &Sessio
     );
     if area.height > 1 {
         frame.render_widget(
-            Paragraph::new(format!(" {}  Ctrl-b g navigator", agent_summary(snapshot))),
+            Paragraph::new(format!(" {}", agent_summary(snapshot))),
             Rect::new(area.x, area.y + 1, area.width, 1),
         );
+    }
+}
+
+fn mobile_title(snapshot: &SessionSnapshot) -> String {
+    let Some(space) = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)
+    else {
+        return "no workspace".into();
+    };
+    let Some(workspace_id) = space.active_workspace_id.as_deref() else {
+        return "no workspace".into();
+    };
+    let Some(workspace) = space
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.workspace_id == workspace_id)
+    else {
+        return "no workspace".into();
+    };
+    let active = workspace
+        .tabs
+        .iter()
+        .position(|tab| tab.tab_id == workspace.active_tab_id)
+        .unwrap_or(0);
+    let tab_name = workspace
+        .tabs
+        .get(active)
+        .map(|tab| tab.name.as_str())
+        .unwrap_or("1");
+    if workspace.tabs.len() <= 1 {
+        format!("{}  tab {}", workspace.name, tab_name)
+    } else {
+        format!(
+            "{}  tab {} · {}/{}",
+            workspace.name,
+            tab_name,
+            active + 1,
+            workspace.tabs.len()
+        )
     }
 }
 
@@ -81,7 +122,7 @@ fn agent_summary(snapshot: &SessionSnapshot) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::agent_summary;
+    use super::{agent_summary, mobile_title};
     use crate::server::session::{Session, SessionSnapshot};
 
     fn snapshot_with_agent(state: &str, done: bool) -> SessionSnapshot {
@@ -101,6 +142,24 @@ mod tests {
             .unwrap(),
         );
         snapshot
+    }
+
+    #[test]
+    fn mobile_title_matches_herdr_compact_workspace_and_tab_format() {
+        let mut session = Session::default();
+        session.create_tab("Logs".into()).unwrap();
+        assert_eq!(
+            mobile_title(session.snapshot()),
+            "Current project  tab Logs · 2/2"
+        );
+    }
+
+    #[test]
+    fn mobile_title_handles_an_empty_active_workspace() {
+        let mut snapshot = Session::default().snapshot().clone();
+        snapshot.spaces[0].workspaces.clear();
+        snapshot.spaces[0].active_workspace_id = None;
+        assert_eq!(mobile_title(&snapshot), "no workspace");
     }
 
     #[test]
