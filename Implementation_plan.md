@@ -82,6 +82,9 @@ overrides and terminal reset behavior.
 Sidebar secondary chrome now uses Herdr's `overlay0` and `surface_dim` tokens
 for token separators, metadata summaries, and the scrollbar track/thumb.
 
+Pane status indicators now use the selected Herdr theme's yellow, teal, and
+red semantic colors for running, completed, and halted/interrupted panes.
+
 Narrow tab strips now keep a minimum tab width and center the active tab in the
 visible window, using one shared geometry calculation for rendering, clicks,
 and tab drag targets.
