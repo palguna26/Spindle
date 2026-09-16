@@ -47,9 +47,13 @@ struct ReportMetadataRequest {
     #[serde(default)]
     display_title: Option<String>,
     #[serde(default)]
+    state_labels: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
     clear_display_agent: bool,
     #[serde(default)]
     clear_title: bool,
+    #[serde(default)]
+    clear_state_labels: bool,
     #[serde(default)]
     seq: Option<u64>,
 }
@@ -533,6 +537,8 @@ pub(crate) fn response_for_with_interactive(
                 && !payload.clear_display_agent
                 && payload.display_title.is_none()
                 && !payload.clear_title
+                && payload.state_labels.is_empty()
+                && !payload.clear_state_labels
             {
                 return request_error(
                     request.request_id,
@@ -542,6 +548,7 @@ pub(crate) fn response_for_with_interactive(
             }
             if payload.display_agent.is_some() && payload.clear_display_agent
                 || payload.display_title.is_some() && payload.clear_title
+                || !payload.state_labels.is_empty() && payload.clear_state_labels
             {
                 return request_error(
                     request.request_id,
@@ -555,15 +562,21 @@ pub(crate) fn response_for_with_interactive(
                 session.report_metadata(
                     &payload.pane_id,
                     crate::server::session::DisplayAgentReportRequest {
-                        source,
+                        source: source.clone(),
                         display_agent: payload.display_agent,
                         clear: payload.clear_display_agent,
                         seq: payload.seq,
                     },
                     crate::server::session::DisplayTitleReportRequest {
-                        source: payload.source,
+                        source: source.clone(),
                         display_title: payload.display_title,
                         clear: payload.clear_title,
+                        seq: payload.seq,
+                    },
+                    crate::server::session::DisplayStateLabelsReportRequest {
+                        source,
+                        state_labels: payload.state_labels,
+                        clear: payload.clear_state_labels,
                         seq: payload.seq,
                     },
                 )

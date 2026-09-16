@@ -1458,13 +1458,15 @@ fn pane_report_metadata(project: &Project, id: &str, args: &[String]) -> io::Res
     let mut source = None;
     let mut display_agent = None;
     let mut display_title = None;
+    let mut state_labels = serde_json::Map::new();
     let mut clear_display_agent = false;
     let mut clear_title = false;
+    let mut clear_state_labels = false;
     let mut seq = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
-            "--source" | "--display-agent" | "--title" | "--seq" => {
+            "--source" | "--display-agent" | "--title" | "--state-label" | "--seq" => {
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| io::Error::other(format!("{} requires a value", args[index])))?;
@@ -1472,6 +1474,18 @@ fn pane_report_metadata(project: &Project, id: &str, args: &[String]) -> io::Res
                     "--source" => source = Some(value.clone()),
                     "--display-agent" => display_agent = Some(value.clone()),
                     "--title" => display_title = Some(value.clone()),
+                    "--state-label" => {
+                        let (state, label) = value
+                            .split_once('=')
+                            .ok_or_else(|| io::Error::other("--state-label must be STATE=LABEL"))?;
+                        if !matches!(state, "unknown" | "idle" | "working" | "blocked" | "done") {
+                            return Err(io::Error::other("--state-label state must be unknown, idle, working, blocked, or done"));
+                        }
+                        state_labels.insert(
+                            state.to_owned(),
+                            serde_json::Value::String(label.to_owned()),
+                        );
+                    }
                     "--seq" => {
                         seq =
                             Some(value.parse::<u64>().map_err(|_| {
@@ -1490,11 +1504,21 @@ fn pane_report_metadata(project: &Project, id: &str, args: &[String]) -> io::Res
                 clear_title = true;
                 index += 1;
             }
+            "--clear-state-labels" => {
+                clear_state_labels = true;
+                index += 1;
+            }
             option => return Err(io::Error::other(format!("unknown option: {option}"))),
         }
     }
     let source = source.ok_or_else(|| io::Error::other("missing required --source"))?;
-    if display_agent.is_none() && !clear_display_agent && display_title.is_none() && !clear_title {
+    if display_agent.is_none()
+        && !clear_display_agent
+        && display_title.is_none()
+        && !clear_title
+        && state_labels.is_empty()
+        && !clear_state_labels
+    {
         return Err(io::Error::other("provide metadata to set or clear"));
     }
     pane_mutation_with_payload(
@@ -1507,6 +1531,8 @@ fn pane_report_metadata(project: &Project, id: &str, args: &[String]) -> io::Res
             "clear_display_agent": clear_display_agent,
             "display_title": display_title,
             "clear_title": clear_title,
+            "state_labels": state_labels,
+            "clear_state_labels": clear_state_labels,
             "seq": seq
         }),
     )
@@ -1854,7 +1880,7 @@ fn print_help() {
     );
     println!("  report-agent <id> --source ID --agent LABEL --state unknown|idle|working|blocked [--seq N] [--agent-session-id ID|--agent-session-path PATH]  report hook state");
     println!("  report-agent-session <id> --source ID --agent LABEL (--agent-session-id ID|--agent-session-path PATH) [--seq N]  report session identity");
-    println!("  report-metadata <id> --source ID [--display-agent LABEL|--clear-display-agent] [--title TEXT|--clear-title] [--seq N]  report display metadata");
+    println!("  report-metadata <id> --source ID [--display-agent LABEL|--clear-display-agent] [--title TEXT|--clear-title] [--state-label STATE=TEXT|--clear-state-labels] [--seq N]  report display metadata");
     println!("  release-agent <id> --source ID --agent LABEL [--seq N]  release hook authority");
     println!("  wait-output <id> (--match TEXT | --regex PATTERN) [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--raw]  wait for output");
     println!("  split <direction> [command args...] | [--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus|--no-focus]  split with a new pane");

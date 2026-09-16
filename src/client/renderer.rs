@@ -1001,7 +1001,7 @@ fn pane_title_text(pane: &crate::server::session::PaneView) -> String {
         pane.agent
             .as_ref()
             .map(|agent| {
-                let state = format!(" {}", pane.agent_display_state().label());
+                let state = format!(" {}", pane.agent_display_state_label());
                 format!(
                     " [{}{state}]",
                     pane.display_agent
@@ -1271,6 +1271,7 @@ mod tests {
                 agent_done: false,
                 display_agent: None,
                 display_title: None,
+                state_labels: std::collections::BTreeMap::new(),
                 agent_session: None,
                 status: PaneStatus::Running,
                 scrollback_bytes: 0,
@@ -1369,6 +1370,7 @@ mod tests {
             agent_done: false,
             display_agent: None,
             display_title: None,
+            state_labels: std::collections::BTreeMap::new(),
             agent_session: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
@@ -1424,6 +1426,7 @@ mod tests {
             agent_done: false,
             display_agent: None,
             display_title: None,
+            state_labels: std::collections::BTreeMap::new(),
             agent_session: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,

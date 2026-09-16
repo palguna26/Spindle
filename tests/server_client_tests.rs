@@ -182,6 +182,7 @@ fn pane_agent_reports_are_authoritative_and_sequence_checked() {
                 "source": "plugin:codex",
                 "display_agent": "Codex Review",
                 "display_title": "Review shell",
+                "state_labels": {"working": "Indexing"},
                 "seq": 2
             }),
         )
@@ -239,6 +240,7 @@ fn pane_agent_reports_are_authoritative_and_sequence_checked() {
     assert_eq!(current["agent_state"], "working");
     assert_eq!(current["display_agent"], "Codex Review");
     assert_eq!(current["display_title"], "Review shell");
+    assert_eq!(current["state_labels"]["working"], "Indexing");
     assert_eq!(current["agent_session"]["source"], "herdr:codex");
     assert_eq!(current["agent_session"]["kind"], "id");
     assert_eq!(current["agent_session"]["value"], "session-1");
@@ -252,6 +254,7 @@ fn pane_agent_reports_are_authoritative_and_sequence_checked() {
                 "source": "plugin:codex",
                 "clear_display_agent": true,
                 "clear_title": true,
+                "clear_state_labels": true,
                 "seq": 3
             }),
         )

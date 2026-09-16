@@ -175,7 +175,7 @@ impl Navigator {
                                 id: pane.pane_id.clone(),
                             };
                             let agent_label = pane.agent_display_name().unwrap_or("agent");
-                            let agent_detail = pane.agent_display_state().label().to_owned();
+                            let agent_detail = pane.agent_display_state_label();
                             if query.is_empty()
                                 || contains(&[agent_label, &agent_detail, &pane.cwd], &query)
                             {
