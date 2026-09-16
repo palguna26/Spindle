@@ -385,6 +385,9 @@ fn event_loop(
                             "Delete workspace group: type its name"
                         }
                         RenameTarget::DeleteSpace => "Delete space: type its name",
+                        RenameTarget::CreateWorktree => "Create worktree: type branch name",
+                        RenameTarget::OpenWorktree => "Open worktree: type path or branch",
+                        RenameTarget::RemoveWorktree => "Remove worktree checkout: type its name",
                         RenameTarget::SwitchWorkspace => "Switch workspace: type its name",
                         RenameTarget::PluginAction => "Run plugin action: type its ID",
                     };
@@ -1465,6 +1468,22 @@ fn handle_mouse(
                     menu.has_manual_label = has_manual_label;
                     if let ContextMenuTarget::Workspace { space_id, id } = &menu.target {
                         menu.close_group = workspace_has_linked_children(snapshot, space_id, id);
+                        if let Some(workspace) = snapshot
+                            .spaces
+                            .iter()
+                            .find(|space| space.space_id == *space_id)
+                            .and_then(|space| {
+                                space
+                                    .workspaces
+                                    .iter()
+                                    .find(|workspace| workspace.workspace_id == *id)
+                            })
+                        {
+                            menu.is_git =
+                                workspace.repository_path.is_some() || workspace.branch.is_some();
+                            menu.is_linked_worktree = workspace.is_linked_worktree;
+                            menu.has_worktree_children = menu.close_group;
+                        }
                     }
                     menu.source_pane_id = agent_pane
                         .clone()
@@ -2208,6 +2227,9 @@ fn activate_context_menu(
                 } else {
                     RenameTarget::DeleteWorkspace
                 })),
+                ContextMenuAction::NewWorktree => Ok(Some(RenameTarget::CreateWorktree)),
+                ContextMenuAction::OpenWorktree => Ok(Some(RenameTarget::OpenWorktree)),
+                ContextMenuAction::RemoveWorktree => Ok(Some(RenameTarget::RemoveWorktree)),
                 _ => Ok(None),
             }
         }
@@ -2361,7 +2383,11 @@ fn activate_context_menu(
                     ensure_active_default_pane(client, terminal_size)?;
                     Ok(None)
                 }
-                ContextMenuAction::Activate | ContextMenuAction::NewTab => Ok(None),
+                ContextMenuAction::Activate
+                | ContextMenuAction::NewTab
+                | ContextMenuAction::NewWorktree
+                | ContextMenuAction::OpenWorktree
+                | ContextMenuAction::RemoveWorktree => Ok(None),
             }
         }
     }
@@ -2444,6 +2470,39 @@ fn submit_rename(
     name: String,
     terminal_size: (u16, u16),
 ) -> Result<(), ClientError> {
+    if matches!(
+        target,
+        RenameTarget::CreateWorktree | RenameTarget::OpenWorktree | RenameTarget::RemoveWorktree
+    ) {
+        let workspace = active_workspace(snapshot)
+            .ok_or_else(|| ClientError::Server("no active workspace".into()))?;
+        if target == RenameTarget::RemoveWorktree {
+            if workspace.name != name {
+                return Ok(());
+            }
+            run_worktree_command(["remove", "--workspace", &workspace.workspace_id, "--force"])?;
+        } else {
+            let mut args = vec![
+                if target == RenameTarget::CreateWorktree {
+                    "create"
+                } else {
+                    "open"
+                },
+                "--workspace",
+                workspace.workspace_id.as_str(),
+            ];
+            if target == RenameTarget::CreateWorktree {
+                args.extend(["--branch", name.as_str(), "--focus"]);
+            } else if std::path::Path::new(&name).is_absolute() {
+                args.extend(["--path", name.as_str(), "--focus"]);
+            } else {
+                args.extend(["--branch", name.as_str(), "--focus"]);
+            }
+            run_worktree_command(args)?;
+        }
+        ensure_active_default_pane(client, terminal_size)?;
+        return Ok(());
+    }
     if matches!(
         target,
         RenameTarget::DeleteWorkspace
@@ -2529,7 +2588,10 @@ fn submit_rename(
         }
         RenameTarget::DeleteWorkspace
         | RenameTarget::DeleteWorkspaceGroup
-        | RenameTarget::DeleteSpace => unreachable!(),
+        | RenameTarget::DeleteSpace
+        | RenameTarget::CreateWorktree
+        | RenameTarget::OpenWorktree
+        | RenameTarget::RemoveWorktree => unreachable!(),
         RenameTarget::SwitchWorkspace => {
             if let Some(id) = workspace_id_by_name(snapshot, &name) {
                 request_action(
@@ -2562,6 +2624,23 @@ fn submit_rename(
         )?;
     }
     Ok(())
+}
+
+fn run_worktree_command<'a>(args: impl IntoIterator<Item = &'a str>) -> Result<(), ClientError> {
+    let executable = std::env::current_exe().map_err(ClientError::Io)?;
+    let output = std::process::Command::new(executable)
+        .args(std::iter::once("worktree").chain(args))
+        .output()
+        .map_err(ClientError::Io)?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    Err(ClientError::Server(if message.is_empty() {
+        "worktree command failed".into()
+    } else {
+        message
+    }))
 }
 
 fn active_workspace(snapshot: &SessionSnapshot) -> Option<&crate::server::session::WorkspaceView> {

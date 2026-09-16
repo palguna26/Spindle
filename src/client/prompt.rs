@@ -11,6 +11,9 @@ pub enum RenameTarget {
     DeleteWorkspace,
     DeleteWorkspaceGroup,
     DeleteSpace,
+    CreateWorktree,
+    OpenWorktree,
+    RemoveWorktree,
     SwitchWorkspace,
     PluginAction,
 }

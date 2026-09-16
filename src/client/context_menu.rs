@@ -14,6 +14,9 @@ pub(crate) enum ContextMenuAction {
     NewTab,
     Rename,
     Close,
+    NewWorktree,
+    OpenWorktree,
+    RemoveWorktree,
     Focus,
     SplitRight,
     SplitDown,
@@ -34,6 +37,9 @@ pub(crate) struct ContextMenu {
     pub(crate) has_manual_label: bool,
     pub(crate) source_pane_id: Option<String>,
     pub(crate) close_group: bool,
+    pub(crate) is_git: bool,
+    pub(crate) is_linked_worktree: bool,
+    pub(crate) has_worktree_children: bool,
 }
 
 impl ContextMenu {
@@ -65,25 +71,37 @@ impl ContextMenu {
             has_manual_label: false,
             source_pane_id: None,
             close_group: false,
+            is_git: false,
+            is_linked_worktree: false,
+            has_worktree_children: false,
         })
     }
 
     pub(crate) fn items(&self) -> Vec<(&'static str, ContextMenuAction)> {
         use ContextMenuAction as A;
         match &self.target {
-            ContextMenuTarget::Workspace { .. } => vec![
-                ("Open workspace", A::Activate),
-                ("New tab", A::NewTab),
-                ("Rename workspace", A::Rename),
-                (
-                    if self.close_group {
-                        "Close workspace group"
-                    } else {
-                        "Close workspace"
-                    },
-                    A::Close,
-                ),
-            ],
+            ContextMenuTarget::Workspace { .. } => {
+                let mut items = vec![
+                    ("Open workspace", A::Activate),
+                    ("New tab", A::NewTab),
+                    ("Rename workspace", A::Rename),
+                    (
+                        if self.close_group {
+                            "Close workspace group"
+                        } else {
+                            "Close workspace"
+                        },
+                        A::Close,
+                    ),
+                ];
+                if self.is_linked_worktree {
+                    items.push(("Remove worktree checkout", A::RemoveWorktree));
+                } else if self.is_git {
+                    items.push(("New worktree", A::NewWorktree));
+                    items.push(("Open worktree", A::OpenWorktree));
+                }
+                items
+            }
             ContextMenuTarget::Tab(_) => vec![
                 ("Open tab", A::Activate),
                 ("New tab", A::NewTab),
@@ -227,6 +245,19 @@ mod tests {
         assert!(!workspace_group
             .items()
             .contains(&("Close workspace", ContextMenuAction::Close)));
+        let mut git_workspace = workspace_group;
+        git_workspace.is_git = true;
+        assert!(git_workspace
+            .items()
+            .contains(&("New worktree", ContextMenuAction::NewWorktree)));
+        assert!(git_workspace
+            .items()
+            .contains(&("Open worktree", ContextMenuAction::OpenWorktree)));
+        git_workspace.is_linked_worktree = true;
+        assert!(git_workspace.items().contains(&(
+            "Remove worktree checkout",
+            ContextMenuAction::RemoveWorktree
+        )));
     }
 
     #[test]
