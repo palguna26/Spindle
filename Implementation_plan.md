@@ -421,6 +421,10 @@ Terminal verification is still pending.
   PowerShell session hook and Herdr-compatible `sessionStart` registration in
   `.cursor/hooks.json`, removes stale lifecycle entries, and preserves user
   hooks.
+
+- [x] Add the Devin integration. Install/uninstall now manages the Windows
+  PowerShell hook and Herdr-compatible lifecycle entries in Devin's
+  `config.json`, while preserving unrelated nested hooks.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
