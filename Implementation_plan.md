@@ -430,6 +430,11 @@ Terminal verification is still pending.
   PowerShell hook under `.factory/hooks`, registers Droid lifecycle hooks in
   `settings.json`, and cleans legacy `hooks.json` entries without removing
   unrelated hooks.
+
+- [x] Add the Kimi integration. Install/uninstall now manages the Windows
+  PowerShell state hook under `.kimi-code/hooks` and an idempotent, marked
+  `config.toml` hook block with Kimi's session, working, blocked, idle, and
+  release routes.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
