@@ -28,9 +28,11 @@ Latest structure milestone: agent lifecycle detection is separated into
 manager still owns pane I/O and delegates startup grace, idle confirmation,
 and process-exit confirmation to that module.
 
-Latest TUI milestone: the live-pane renderer now keeps the status chrome
-visible after panes are attached. This follows Herdr's explicit UI area
-handling in `src/ui/widgets.rs` and is covered by a connected-pane render test.
+Latest TUI milestone: the live-pane renderer now gives connected panes the
+full terminal height and hides the status row in normal terminal mode. This
+matches Herdr's `src/client/shell/render.rs::render_mode_bar`, which returns no
+bar for normal terminal mode; connection, empty-state, and navigation bars
+remain visible when needed.
 
 Latest first-run milestone: Spindle now shows a persistent welcome overlay
 when `onboarding` is absent or true, matching Herdr's `Config::should_show_onboarding`
@@ -165,7 +167,7 @@ commit `68d86ad` as partial startup work; do not count it as completion.
 ## 2. Build the everyday workspace layout
 
 - [x] Add a workspace/space sidebar with active selection and useful names.
-- [x] Add visible tab controls and a focused-pane/status area.
+- [x] Add visible tab controls and transient focused-pane/status chrome.
 - [x] Save focused pane per tab and restore it when switching tabs or
   workspaces, matching Herdr's focus in each tab layout.
 - [x] Render the active pane tree in the remaining area with clear focus and
