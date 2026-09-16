@@ -454,6 +454,9 @@ approved design changes it.
   `[ui] redraw_on_focus_gained` now defaults to true and controls whether a
   terminal focus-gained event requests the next full client redraw, matching
   Herdr.
+  `[ui] sidebar_collapsed_mode = "compact"|"hidden"` now controls whether a
+  collapsed sidebar keeps Herdr's four-column rail or releases the full width
+  to the pane area.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
