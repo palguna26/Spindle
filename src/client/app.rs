@@ -3954,7 +3954,10 @@ mod tests {
             prefix: Some("ctrl+a".into()),
             bindings: BTreeMap::from([
                 ("navigate_workspace_up".into(), vec!["k".into()]),
-                ("navigate_workspace_down".into(), vec!["j".into()]),
+                (
+                    "navigate_workspace_down".into(),
+                    vec!["j".into(), "ctrl+j".into()],
+                ),
             ]),
             ..Config::default()
         };
@@ -3970,6 +3973,13 @@ mod tests {
         assert_eq!(
             workspace_picker_key(
                 KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE),
+                &keymap,
+            ),
+            WorkspacePickerKey::Move(true)
+        );
+        assert_eq!(
+            workspace_picker_key(
+                KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL),
                 &keymap,
             ),
             WorkspacePickerKey::Move(true)

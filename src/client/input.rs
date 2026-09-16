@@ -71,8 +71,8 @@ struct Binding {
 pub struct Keymap {
     prefix: (KeyCode, KeyModifiers),
     bindings: Vec<Binding>,
-    navigate_workspace_up: (KeyCode, KeyModifiers),
-    navigate_workspace_down: (KeyCode, KeyModifiers),
+    navigate_workspace_up: Vec<(KeyCode, KeyModifiers)>,
+    navigate_workspace_down: Vec<(KeyCode, KeyModifiers)>,
 }
 
 impl Default for Keymap {
@@ -80,8 +80,8 @@ impl Default for Keymap {
         Self {
             prefix: (KeyCode::Char('b'), KeyModifiers::CONTROL),
             bindings: default_bindings(),
-            navigate_workspace_up: (KeyCode::Up, KeyModifiers::NONE),
-            navigate_workspace_down: (KeyCode::Down, KeyModifiers::NONE),
+            navigate_workspace_up: vec![(KeyCode::Up, KeyModifiers::NONE)],
+            navigate_workspace_down: vec![(KeyCode::Down, KeyModifiers::NONE)],
         }
     }
 }
@@ -97,13 +97,16 @@ impl Keymap {
                 name.as_str(),
                 "navigate_workspace_up" | "navigate_workspace_down"
             ) {
-                if let Some((code, modifiers, false)) =
-                    values.iter().find_map(|value| parse_binding(value))
-                {
+                let keys: Vec<_> = values
+                    .iter()
+                    .filter_map(|value| parse_binding(value))
+                    .filter_map(|(code, modifiers, prefix)| (!prefix).then_some((code, modifiers)))
+                    .collect();
+                if !keys.is_empty() {
                     if name == "navigate_workspace_up" {
-                        keymap.navigate_workspace_up = (code, modifiers);
+                        keymap.navigate_workspace_up = keys;
                     } else {
-                        keymap.navigate_workspace_down = (code, modifiers);
+                        keymap.navigate_workspace_down = keys;
                     }
                 }
                 continue;
@@ -147,9 +150,15 @@ impl Keymap {
     }
 
     pub fn navigate_workspace_direction(&self, key: KeyEvent) -> Option<bool> {
-        if (key.code, key.modifiers) == self.navigate_workspace_up {
+        if self
+            .navigate_workspace_up
+            .contains(&(key.code, key.modifiers))
+        {
             Some(false)
-        } else if (key.code, key.modifiers) == self.navigate_workspace_down {
+        } else if self
+            .navigate_workspace_down
+            .contains(&(key.code, key.modifiers))
+        {
             Some(true)
         } else {
             None
