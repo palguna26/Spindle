@@ -10,6 +10,9 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
         [command, options @ ..] if command == "create" => workspace_create(project, options),
         [command, workspace_id] if command == "get" => workspace_get(project, workspace_id),
         [command, workspace_id] if command == "focus" => workspace_focus(project, workspace_id),
+        [command, workspace_id, options @ ..] if command == "report-metadata" => {
+            workspace_report_metadata(project, workspace_id, options)
+        }
         [command, workspace_id, label @ ..] if command == "rename" && !label.is_empty() => {
             workspace_rename(project, workspace_id, &label.join(" "))
         }
@@ -40,6 +43,89 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
             ))
         }
     }
+}
+
+fn workspace_report_metadata(
+    project: &Project,
+    workspace_id: &str,
+    args: &[String],
+) -> io::Result<()> {
+    let mut source = None;
+    let mut tokens = serde_json::Map::new();
+    let mut ttl_ms = None;
+    let mut seq = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--source" | "--token" | "--clear-token" | "--ttl-ms" | "--seq" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| io::Error::other(format!("{} requires a value", args[index])))?;
+                match args[index].as_str() {
+                    "--source" => source = Some(value.clone()),
+                    "--token" => {
+                        let (key, token) = value
+                            .split_once('=')
+                            .ok_or_else(|| io::Error::other("--token must be KEY=VALUE"))?;
+                        tokens.insert(key.to_owned(), serde_json::Value::String(token.to_owned()));
+                    }
+                    "--clear-token" => {
+                        tokens.insert(value.clone(), serde_json::Value::Null);
+                    }
+                    "--ttl-ms" => {
+                        let ttl = value.parse::<u64>().map_err(|_| {
+                            io::Error::other("--ttl-ms must be an unsigned integer")
+                        })?;
+                        if ttl == 0 || ttl > 86_400_000 {
+                            return Err(io::Error::other(
+                                "--ttl-ms must be between 1 and 86400000",
+                            ));
+                        }
+                        ttl_ms = Some(ttl);
+                    }
+                    "--seq" => {
+                        seq =
+                            Some(value.parse::<u64>().map_err(|_| {
+                                io::Error::other("--seq must be an unsigned integer")
+                            })?);
+                    }
+                    _ => unreachable!(),
+                }
+                index += 2;
+            }
+            option => return Err(io::Error::other(format!("unknown option: {option}"))),
+        }
+    }
+    let source = source.ok_or_else(|| io::Error::other("missing required --source"))?;
+    if tokens.is_empty() {
+        return Err(io::Error::other("provide metadata to set or clear"));
+    }
+    let response = super::send_command_with_payload(
+        project,
+        "report_workspace_metadata",
+        serde_json::json!({
+            "workspace_id": workspace_id,
+            "source": source,
+            "tokens": tokens,
+            "ttl_ms": ttl_ms,
+            "seq": seq,
+        }),
+    )?;
+    if !response.ok {
+        return Err(io::Error::other(
+            response
+                .error
+                .map(|error| error.message)
+                .unwrap_or_else(|| "server rejected the workspace metadata report".into()),
+        ));
+    }
+    if let Some(payload) = response.payload {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&payload).map_err(io::Error::other)?
+        );
+    }
+    Ok(())
 }
 
 fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
@@ -351,6 +437,7 @@ fn print_help() {
     );
     println!("  get     show a workspace by ID");
     println!("  focus   focus a workspace by ID");
+    println!("  report-metadata  report workspace tokens (--source, --token, --clear-token, --ttl-ms, --seq)");
     println!("  move    reorder a workspace within its space");
     println!("  rename  rename a workspace by ID");
     println!("  close   close a workspace by ID");

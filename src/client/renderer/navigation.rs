@@ -563,6 +563,7 @@ enum SidebarRow<'a> {
         workspace_id: &'a str,
         name: &'a str,
         branch: Option<&'a str>,
+        tokens: &'a std::collections::HashMap<String, String>,
         is_linked_worktree: bool,
         indented: bool,
         last_child: bool,
@@ -635,6 +636,7 @@ fn sidebar_rows_with_collapsed<'a>(
                 workspace_id: &workspace.workspace_id,
                 name: &workspace.name,
                 branch: workspace.branch.as_deref(),
+                tokens: &workspace.tokens,
                 is_linked_worktree: workspace.is_linked_worktree,
                 indented,
                 last_child,
@@ -799,6 +801,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                 workspace_id,
                 name,
                 branch,
+                tokens,
                 is_linked_worktree,
                 indented,
                 last_child,
@@ -887,6 +890,12 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                             },
                         ));
                     }
+                }
+                if let Some(summary) = tokens.get("summary") {
+                    spans.push(Span::styled(
+                        format!(" · {summary}"),
+                        Style::default().fg(Color::DarkGray),
+                    ));
                 }
                 Line::from(spans)
             }
@@ -1411,6 +1420,7 @@ mod tests {
                             zoomed: false,
                         }],
                         active_tab_id: "tab-1".into(),
+                        tokens: std::collections::HashMap::new(),
                     },
                     WorkspaceView {
                         workspace_id: "workspace-2".into(),
@@ -1440,6 +1450,7 @@ mod tests {
                             },
                         ],
                         active_tab_id: "tab-3".into(),
+                        tokens: std::collections::HashMap::new(),
                     },
                 ],
                 active_workspace_id: Some("workspace-2".into()),

@@ -63,6 +63,18 @@ struct ReportMetadataRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct ReportWorkspaceMetadataRequest {
+    workspace_id: String,
+    source: String,
+    #[serde(default)]
+    tokens: std::collections::HashMap<String, Option<String>>,
+    #[serde(default)]
+    ttl_ms: Option<u64>,
+    #[serde(default)]
+    seq: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
 struct ReleaseAgentRequest {
     pane_id: String,
     source: String,
@@ -603,6 +615,49 @@ pub(crate) fn response_for_with_interactive(
                         ttl: payload.ttl_ms.map(std::time::Duration::from_millis),
                         seq: payload.seq,
                     },
+                )
+            })
+        }
+        "report_workspace_metadata" => {
+            let payload: ReportWorkspaceMetadataRequest =
+                match serde_json::from_value(request.payload) {
+                    Ok(payload) => payload,
+                    Err(error) => {
+                        return request_error(
+                            request.request_id,
+                            "invalid_payload",
+                            error.to_string(),
+                        )
+                    }
+                };
+            if payload.tokens.is_empty() {
+                return request_error(
+                    request.request_id,
+                    "invalid_metadata_request",
+                    "missing metadata field to set or clear".into(),
+                );
+            }
+            if payload
+                .ttl_ms
+                .is_some_and(|ttl| ttl == 0 || ttl > crate::metadata_tokens::MAX_TTL_MS)
+            {
+                return request_error(
+                    request.request_id,
+                    "invalid_metadata_ttl",
+                    format!(
+                        "ttl_ms must be between 1 and {}",
+                        crate::metadata_tokens::MAX_TTL_MS
+                    ),
+                );
+            }
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.report_workspace_metadata(
+                    &payload.workspace_id,
+                    payload.source,
+                    payload.tokens,
+                    payload.ttl_ms.map(std::time::Duration::from_millis),
+                    payload.seq,
                 )
             })
         }

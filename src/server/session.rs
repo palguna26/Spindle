@@ -274,6 +274,8 @@ pub struct WorkspaceView {
     pub worktree_group: Option<String>,
     pub tabs: Vec<TabView>,
     pub active_tab_id: String,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub tokens: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -335,6 +337,9 @@ pub struct Session {
     geometry_owner: Option<String>,
     geometry_owner_seen: Option<Instant>,
     last_git_branch_refresh: Instant,
+    workspace_metadata_tokens:
+        std::collections::HashMap<String, crate::metadata_tokens::MetadataTokens>,
+    workspace_metadata_token_sequences: std::collections::HashMap<(String, String), u64>,
 }
 
 impl Default for Session {
@@ -361,6 +366,7 @@ impl Default for Session {
                             zoomed: false,
                         }],
                         active_tab_id: "tab-1".into(),
+                        tokens: std::collections::HashMap::new(),
                     }],
                     active_workspace_id: Some("workspace-1".into()),
                 }],
@@ -382,6 +388,8 @@ impl Default for Session {
             geometry_owner: None,
             geometry_owner_seen: None,
             last_git_branch_refresh: Instant::now(),
+            workspace_metadata_tokens: std::collections::HashMap::new(),
+            workspace_metadata_token_sequences: std::collections::HashMap::new(),
         }
     }
 }
@@ -438,6 +446,8 @@ impl Session {
                     geometry_owner: None,
                     geometry_owner_seen: None,
                     last_git_branch_refresh: Instant::now(),
+                    workspace_metadata_tokens: std::collections::HashMap::new(),
+                    workspace_metadata_token_sequences: std::collections::HashMap::new(),
                 })
             }
             Err(SnapshotError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -894,6 +904,7 @@ impl Session {
                 zoomed: false,
             }],
             active_tab_id: tab_id,
+            tokens: std::collections::HashMap::new(),
         });
         space.active_workspace_id = Some(workspace_id.clone());
         self.sync_focus_to_active_tab()?;
@@ -932,6 +943,7 @@ impl Session {
                     zoomed: false,
                 }],
                 active_tab_id: tab_id,
+                tokens: std::collections::HashMap::new(),
             }],
             active_workspace_id: Some(workspace_id),
         });
@@ -1752,6 +1764,7 @@ impl Session {
                     zoomed: false,
                 }],
                 active_tab_id: tab_id.clone(),
+                tokens: std::collections::HashMap::new(),
             });
         if focus {
             self.snapshot.spaces[space_index].active_workspace_id = Some(workspace_id.clone());
@@ -2886,6 +2899,9 @@ impl Session {
     pub fn poll(&mut self) {
         let events = self.pane_manager.poll();
         self.record_pane_events(events);
+        for tokens in self.workspace_metadata_tokens.values_mut() {
+            tokens.expire_at(Instant::now());
+        }
     }
 
     pub fn report_agent(
@@ -3016,6 +3032,50 @@ impl Session {
             .map_err(|error| format!("{error:?}"))?;
         self.refresh_snapshot();
         Ok(serde_json::json!({ "pane_id": pane_id, "updated": changed }))
+    }
+
+    pub fn report_workspace_metadata(
+        &mut self,
+        workspace_id: &str,
+        source: String,
+        tokens: std::collections::HashMap<String, Option<String>>,
+        ttl: Option<Duration>,
+        seq: Option<u64>,
+    ) -> Result<Value, String> {
+        if !self
+            .snapshot
+            .spaces
+            .iter()
+            .flat_map(|space| space.workspaces.iter())
+            .any(|workspace| workspace.workspace_id == workspace_id)
+        {
+            return Err(format!("workspace '{workspace_id}' does not exist"));
+        }
+        let sequence_key = (workspace_id.to_owned(), source);
+        if seq.is_some_and(|next| {
+            self.workspace_metadata_token_sequences
+                .get(&sequence_key)
+                .is_some_and(|last| next <= *last)
+        }) {
+            return Ok(serde_json::json!({ "workspace_id": workspace_id, "updated": false }));
+        }
+        let store = self
+            .workspace_metadata_tokens
+            .entry(workspace_id.to_owned())
+            .or_default();
+        if store.key_count_after_patch(&tokens) > crate::metadata_tokens::MAX_KEYS {
+            return Err(format!(
+                "workspace metadata may contain at most {} tokens",
+                crate::metadata_tokens::MAX_KEYS
+            ));
+        }
+        if let Some(seq) = seq {
+            self.workspace_metadata_token_sequences
+                .insert(sequence_key, seq);
+        }
+        let changed = store.patch(tokens, ttl, Instant::now());
+        self.refresh_snapshot();
+        Ok(serde_json::json!({ "workspace_id": workspace_id, "updated": changed }))
     }
 
     pub fn report_metadata(
@@ -3411,6 +3471,15 @@ fn normalize_workspace_ids(snapshot: &mut SessionSnapshot) {
 impl Session {
     pub fn refresh_snapshot(&mut self) {
         self.refresh_git_branches();
+        for space in &mut self.snapshot.spaces {
+            for workspace in &mut space.workspaces {
+                workspace.tokens = self
+                    .workspace_metadata_tokens
+                    .get(&workspace.workspace_id)
+                    .map(crate::metadata_tokens::MetadataTokens::values)
+                    .unwrap_or_default();
+            }
+        }
         for pane in &mut self.snapshot.panes {
             if let Some(current) = self.pane_manager.get(&pane.pane_id) {
                 pane.status = current.status.clone();
@@ -3610,6 +3679,43 @@ mod tests {
                 && event.payload["tab_id"] == tab_id
                 && event.payload["label"] == "Build logs"
         }));
+    }
+
+    #[test]
+    fn workspace_metadata_tokens_are_scoped_and_sequence_checked() {
+        let mut session = Session::default();
+        let workspace_id = "workspace-1";
+        let tokens = std::collections::HashMap::from([("summary".into(), Some("indexing".into()))]);
+        session
+            .report_workspace_metadata(workspace_id, "agent:codex".into(), tokens, None, Some(2))
+            .unwrap();
+        assert_eq!(
+            session.snapshot().spaces[0].workspaces[0].tokens["summary"],
+            "indexing"
+        );
+        session
+            .report_workspace_metadata(
+                workspace_id,
+                "agent:codex".into(),
+                std::collections::HashMap::from([("summary".into(), Some("stale".into()))]),
+                None,
+                Some(1),
+            )
+            .unwrap();
+        assert_eq!(
+            session.snapshot().spaces[0].workspaces[0].tokens["summary"],
+            "indexing"
+        );
+        session
+            .report_workspace_metadata(
+                workspace_id,
+                "agent:codex".into(),
+                std::collections::HashMap::from([("summary".into(), None)]),
+                None,
+                Some(3),
+            )
+            .unwrap();
+        assert!(session.snapshot().spaces[0].workspaces[0].tokens.is_empty());
     }
 
     #[test]

@@ -1254,6 +1254,7 @@ mod tests {
                         zoomed: false,
                     }],
                     active_tab_id: "tab-1".into(),
+                    tokens: std::collections::HashMap::new(),
                 }],
                 active_workspace_id: Some("workspace-1".into()),
             }],
