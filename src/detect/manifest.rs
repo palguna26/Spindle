@@ -41,6 +41,7 @@ enum Matcher {
     LineRegex(&'static str),
     TrustDirectory,
     OpenCodePermission,
+    CopilotSelection,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -201,6 +202,32 @@ const CLINE_RULES: &[Rule] = &[
     },
 ];
 
+const COPILOT_RULES: &[Rule] = &[
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::CopilotSelection,
+    },
+    Rule {
+        priority: 110,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(6),
+        matcher: Matcher::LineRegex(r"^\s*◎\s+waiting for background agents(?:\s|·|$)"),
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::Any(&[
+            &["esc to cancel"],
+            &["esc cancel"],
+            &["esc again to cancel"],
+            &["esc interrupt"],
+        ]),
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -215,6 +242,10 @@ pub(crate) fn detect_gemini(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_cline(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CLINE_RULES)
+}
+
+pub(crate) fn detect_copilot(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, COPILOT_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -279,6 +310,13 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                         || text.contains("enter toggle"))
                     && (text.contains("↑↓ select") || text.contains("⇆ tab")))
         }
+        Matcher::CopilotSelection => {
+            (text.contains("esc to cancel") || text.contains("esc cancel"))
+                && (text.contains("enter to select")
+                    || text.contains("enter to confirm")
+                    || text.contains("enter to submit")
+                    || text.contains("enter accept"))
+        }
     }
 }
 
@@ -306,7 +344,9 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_cline, detect_codex, detect_gemini, detect_opencode, DetectionInput};
+    use super::{
+        detect_cline, detect_codex, detect_copilot, detect_gemini, detect_opencode, DetectionInput,
+    };
     use crate::detect::AgentState;
 
     fn detect(screen: &str, title: &str) -> Option<AgentState> {
@@ -335,6 +375,14 @@ mod tests {
 
     fn detect_cline_state(screen: &str) -> Option<AgentState> {
         detect_cline(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_copilot_state(screen: &str) -> Option<AgentState> {
+        detect_copilot(DetectionInput {
             screen,
             osc_title: "",
             _osc_progress: "",
@@ -420,5 +468,22 @@ mod tests {
             Some(AgentState::Working)
         );
         assert_eq!(detect_cline_state(""), None);
+    }
+
+    #[test]
+    fn copilot_manifest_matches_selection_and_background_rules() {
+        assert_eq!(
+            detect_copilot_state("Esc to cancel · Enter to select"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_copilot_state("◎ Waiting for background agents"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_copilot_state("Esc again to cancel"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_copilot_state("Enter to select"), None);
     }
 }
