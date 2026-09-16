@@ -8,11 +8,23 @@ pub(crate) use sidebar::SidebarConfig;
 
 pub(crate) const THEME_NAMES: &[&str] = &[
     "catppuccin",
+    "catppuccin-latte",
     "terminal",
     "tokyo-night",
+    "tokyo-night-day",
     "dracula",
     "nord",
     "gruvbox",
+    "gruvbox-light",
+    "one-dark",
+    "one-light",
+    "solarized",
+    "solarized-light",
+    "kanagawa",
+    "kanagawa-lotus",
+    "rose-pine",
+    "rose-pine-dawn",
+    "vesper",
 ];
 
 #[derive(Debug, Deserialize, Default)]

@@ -51,6 +51,10 @@ impl ThemePalette {
                 accent: Color::Rgb(203, 166, 247),
                 focused_border: Color::Rgb(245, 224, 220),
             },
+            "catppuccin-latte" => Self {
+                accent: Color::Rgb(136, 57, 239),
+                focused_border: Color::Rgb(76, 79, 105),
+            },
             "dracula" => Self {
                 accent: Color::Rgb(189, 147, 249),
                 focused_border: Color::Rgb(248, 248, 242),
@@ -66,6 +70,46 @@ impl ThemePalette {
             "tokyo-night" | "tokyonight" => Self {
                 accent: Color::Rgb(122, 162, 247),
                 focused_border: Color::Rgb(192, 202, 245),
+            },
+            "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => Self {
+                accent: Color::Rgb(46, 125, 233),
+                focused_border: Color::Rgb(52, 59, 88),
+            },
+            "gruvbox-light" => Self {
+                accent: Color::Rgb(7, 102, 120),
+                focused_border: Color::Rgb(60, 56, 54),
+            },
+            "one-dark" => Self {
+                accent: Color::Rgb(97, 175, 239),
+                focused_border: Color::Rgb(171, 178, 191),
+            },
+            "one-light" => Self {
+                accent: Color::Rgb(64, 120, 242),
+                focused_border: Color::Rgb(56, 58, 66),
+            },
+            "solarized" | "solarized-light" => Self {
+                accent: Color::Rgb(38, 139, 210),
+                focused_border: Color::Rgb(101, 123, 131),
+            },
+            "kanagawa" => Self {
+                accent: Color::Rgb(126, 156, 216),
+                focused_border: Color::Rgb(220, 215, 186),
+            },
+            "kanagawa-lotus" => Self {
+                accent: Color::Rgb(77, 105, 155),
+                focused_border: Color::Rgb(84, 83, 75),
+            },
+            "rose-pine" => Self {
+                accent: Color::Rgb(196, 167, 231),
+                focused_border: Color::Rgb(224, 222, 244),
+            },
+            "rose-pine-dawn" => Self {
+                accent: Color::Rgb(144, 122, 169),
+                focused_border: Color::Rgb(87, 82, 121),
+            },
+            "vesper" => Self {
+                accent: Color::Rgb(255, 199, 153),
+                focused_border: Color::White,
             },
             _ => Self {
                 accent: Color::Cyan,
@@ -1182,6 +1226,18 @@ mod tests {
                 reason: "failed".into()
             }),
             Color::Red
+        );
+    }
+
+    #[test]
+    fn herdr_theme_choices_have_distinct_renderer_accents() {
+        assert_eq!(
+            super::ThemePalette::from_name(Some("one-dark")).accent,
+            Color::Rgb(97, 175, 239)
+        );
+        assert_eq!(
+            super::ThemePalette::from_name(Some("catppuccin-latte")).accent,
+            Color::Rgb(136, 57, 239)
         );
     }
 
