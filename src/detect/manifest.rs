@@ -60,7 +60,9 @@ enum Matcher {
     AmpStatusFooter,
     AmpTitleIdle,
     AntigravityPermission,
+    #[allow(dead_code)]
     HermesDangerousApproval,
+    HermesDangerousApprovalExact,
     HermesClarification,
     HermesCredential,
     HermesConfirmation,
@@ -68,6 +70,9 @@ enum Matcher {
     KiroSubagentPermission,
     KiroSpinner,
     KiroIdle,
+    KimiCurrentApproval,
+    KimiQuestion,
+    KimiLegacyApproval,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -479,7 +484,7 @@ const HERMES_RULES: &[Rule] = &[
         priority: 900,
         state: AgentState::Blocked,
         region: Region::BottomNonEmpty(14),
-        matcher: Matcher::HermesDangerousApproval,
+        matcher: Matcher::HermesDangerousApprovalExact,
     },
     Rule {
         priority: 900,
@@ -552,6 +557,49 @@ const KIRO_RULES: &[Rule] = &[
     },
 ];
 
+const KIMI_RULES: &[Rule] = &[
+    Rule {
+        priority: 400,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::KimiCurrentApproval,
+    },
+    Rule {
+        priority: 390,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::KimiQuestion,
+    },
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::KimiLegacyApproval,
+    },
+    Rule {
+        priority: 120,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(3),
+        matcher: Matcher::LineRegex(
+            r"(?i)\bkimi[-\w.]*\s+thinking\b.*\[[1-9][0-9]*\s+agents?\s+running\]",
+        ),
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::LineRegex(r"^\s*(🌕|🌖|🌗|🌘|🌑|🌒|🌓|🌔)\s*$"),
+    },
+    Rule {
+        priority: 90,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::LineRegex(
+            r"(?i)^\s*[\u2800-\u28FF]+\s*(thinking\.\.\.|working\.\.\.|using )",
+        ),
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -610,6 +658,10 @@ pub(crate) fn detect_hermes(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_kiro(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, KIRO_RULES)
+}
+
+pub(crate) fn detect_kimi(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, KIMI_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -838,6 +890,36 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                 ]
                 .iter()
                 .any(|signal| text.contains(signal))
+                || (text.contains("↵ confirm")
+                    && text.contains(" choose")
+                    && ["approve", "reject", "revise"]
+                        .iter()
+                        .any(|signal| text.contains(signal))
+                    && text.lines().any(|line| {
+                        let line = line.trim_start().trim_start_matches('▶').trim_start();
+                        line.strip_prefix("approve ")
+                            .is_some_and(|question| question.trim_end().ends_with('?'))
+                    }))
+        }
+        Matcher::HermesDangerousApprovalExact => {
+            (text.contains("dangerous")
+                || text.contains("approval")
+                || (text.contains("allow once") && text.contains("deny"))
+                || text.lines().any(|line| {
+                    let line = line
+                        .trim_start()
+                        .trim_start_matches(['▸', '>'])
+                        .trim_start();
+                    line.starts_with("1. allow")
+                }))
+                && [
+                    "enter confirm",
+                    "enter to confirm",
+                    "↑/↓ to select",
+                    "show full command",
+                ]
+                .iter()
+                .any(|signal| text.contains(signal))
         }
         Matcher::HermesClarification => {
             (text.contains("hermes needs your")
@@ -924,6 +1006,43 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                             .is_some_and(char::is_alphabetic)
                 })
         }
+        Matcher::KimiCurrentApproval => {
+            text.contains("↵ confirm")
+                && [
+                    "run this command?",
+                    "write this file?",
+                    "apply these edits?",
+                    "stop this task?",
+                    "ready to build with this plan?",
+                ]
+                .iter()
+                .any(|signal| text.contains(signal))
+                && text.contains(" choose")
+                && ["approve", "reject", "revise"]
+                    .iter()
+                    .any(|signal| text.contains(signal))
+        }
+        Matcher::KimiQuestion => {
+            text.contains("↑↓ select")
+                && text.contains("esc cancel")
+                && text.lines().any(|line| {
+                    let line = line.trim_start();
+                    line == "question" || line.starts_with("? ")
+                })
+                && ["↵ choose", "↵ toggle", "↵ save"]
+                    .iter()
+                    .any(|signal| text.contains(signal))
+        }
+        Matcher::KimiLegacyApproval => {
+            text.contains("requesting approval")
+                && text.contains("reject")
+                && ["approve once", "approve for this session"]
+                    .iter()
+                    .any(|signal| text.contains(signal))
+                && ["1/2/3/4 choose", "↵ confirm"]
+                    .iter()
+                    .any(|signal| text.contains(signal))
+        }
     }
 }
 
@@ -998,8 +1117,8 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 mod tests {
     use super::{
         detect_amp, detect_antigravity, detect_cline, detect_codex, detect_copilot, detect_cursor,
-        detect_devin, detect_droid, detect_gemini, detect_hermes, detect_kilo, detect_kiro,
-        detect_opencode, detect_pi, detect_qoder, DetectionInput,
+        detect_devin, detect_droid, detect_gemini, detect_hermes, detect_kilo, detect_kimi,
+        detect_kiro, detect_opencode, detect_pi, detect_qoder, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -1117,6 +1236,14 @@ mod tests {
 
     fn detect_kiro_state(screen: &str) -> Option<AgentState> {
         detect_kiro(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_kimi_state(screen: &str) -> Option<AgentState> {
+        detect_kimi(DetectionInput {
             screen,
             osc_title: "",
             _osc_progress: "",
@@ -1431,5 +1558,31 @@ mod tests {
             Some(AgentState::Idle)
         );
         assert_eq!(detect_kiro_state("ordinary output"), None);
+    }
+
+    #[test]
+    fn kimi_manifest_matches_herdr_rules() {
+        assert_eq!(
+            detect_kimi_state("Run this command?\n↵ confirm · choose\nApprove · Reject · Revise"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_kimi_state("Question\n? Which option?\n↑↓ select · esc cancel\n↵ choose"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_kimi_state("Requesting approval\nApprove once · Reject\n1/2/3/4 choose"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_kimi_state("kimi-pro thinking [2 agents running]"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_kimi_state("🌔"), Some(AgentState::Working));
+        assert_eq!(
+            detect_kimi_state("⠋ using tools"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_kimi_state("⠋ searching"), None);
     }
 }
