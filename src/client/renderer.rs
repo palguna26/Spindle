@@ -300,7 +300,6 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
             }
         }
     }
-    let focused = snapshot.focused_pane_id.as_deref().unwrap_or("none");
     let chrome = if let Some((space_id, workspace_id)) = navigation_workspace {
         let name = snapshot
             .spaces
@@ -321,7 +320,8 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
             ),
             Span::raw(format!("  {name}  ↑/↓ choose  Enter open  Esc cancel")),
         ])
-    } else {
+    } else if !connected || snapshot.panes.is_empty() {
+        let focused = snapshot.focused_pane_id.as_deref().unwrap_or("none");
         Line::from(vec![
             Span::styled(" Spindle ", Style::default().fg(theme.accent)),
             Span::styled(
@@ -337,6 +337,8 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
             Span::raw(format!("  panes: {}", snapshot.panes.len())),
             Span::raw(format!("  {}", active_title(snapshot))),
         ])
+    } else {
+        return;
     };
     frame.render_widget(Paragraph::new(chrome), footer_area(frame.area()));
 }
