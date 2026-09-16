@@ -34,6 +34,11 @@ conflicting built-in chord, including when the actions differ. The behavior is
 covered by `configured_binding_wins_when_it_reuses_a_default_chord`; malformed
 bindings still preserve the default.
 
+Theme selection now exposes Herdr's full built-in theme list, including light,
+One, Solarized, Kanagawa, Rose Pine, and Vesper variants. The new choices map
+to matching Herdr accent colors and are covered by renderer tests; custom
+palette token overrides remain to be ported.
+
 Notification parity now includes `spindle notification show <title>` with
 Herdr-compatible `--body`, `--position`, and `--sound` arguments. Delivery
 uses the existing Windows platform notification and sound adapters and works
