@@ -419,6 +419,8 @@ approved design changes it.
   start/attach recovery hint for stale metadata, matching Herdr's explicit
   running/not-running server status. It also prints the client version, binary
   path, and protocol so users can identify which build they launched.
+  Sidebar width settings now accept Herdr-style `[ui] sidebar_width`,
+  `sidebar_min_width`, and `sidebar_max_width` values with safe bound fallback.
   Windows PTY children now use kill-on-close Job Objects so child tools do not
   outlive their pane; assignment safely falls back when Windows denies it.
 - [x] Make `spindle stop` wait for endpoint cleanup and retry Windows named-pipe
