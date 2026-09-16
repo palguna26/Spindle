@@ -84,6 +84,17 @@ mod tests {
             .as_object()
             .unwrap()
             .contains_key("report_agent_session"));
+        assert_eq!(
+            schema["operations"]["report_agent"]["payload"]["required"],
+            serde_json::json!(["pane_id", "source", "agent", "state"])
+        );
+        assert_eq!(
+            schema["operations"]["report_agent_session"]["payload"]["anyOf"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
         assert!(schema["operations"]
             .as_object()
             .unwrap()

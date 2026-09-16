@@ -30,6 +30,51 @@
     "stop_pane": {}, "restart_pane": {}, "focus_pane": {}, "swap_panes": {}, "rename_pane": {},
     "toggle_pane_zoom": {}, "toggle_right_click_passthrough": {}, "set_right_click_passthrough": {}, "move_pane": {}, "focus_next": {}, "focus_previous": {},
     "focus_direction": {}, "resize_pane": {}, "resize_pane_direction": {}, "set_split_ratio": {}, "close_pane": {}, "close_popup": {}, "close_overlay": {},
-    "report_agent": {}, "report_agent_session": {}, "release_agent": {}, "stop_server": {}
+    "report_agent": {
+      "payload": {
+        "type": "object",
+        "required": ["pane_id", "source", "agent", "state"],
+        "properties": {
+          "pane_id": { "type": "string" },
+          "source": { "type": "string" },
+          "agent": { "type": "string" },
+          "state": { "enum": ["unknown", "idle", "working", "blocked"] },
+          "seq": { "type": ["integer", "null"], "minimum": 0 },
+          "agent_session_id": { "type": ["string", "null"] },
+          "agent_session_path": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "report_agent_session": {
+      "payload": {
+        "type": "object",
+        "required": ["pane_id", "source", "agent"],
+        "properties": {
+          "pane_id": { "type": "string" },
+          "source": { "type": "string" },
+          "agent": { "type": "string" },
+          "seq": { "type": ["integer", "null"], "minimum": 0 },
+          "agent_session_id": { "type": ["string", "null"] },
+          "agent_session_path": { "type": ["string", "null"] }
+        },
+        "anyOf": [
+          { "required": ["agent_session_id"] },
+          { "required": ["agent_session_path"] }
+        ]
+      }
+    },
+    "release_agent": {
+      "payload": {
+        "type": "object",
+        "required": ["pane_id", "source", "agent"],
+        "properties": {
+          "pane_id": { "type": "string" },
+          "source": { "type": "string" },
+          "agent": { "type": "string" },
+          "seq": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    },
+    "stop_server": {}
   }
 }
