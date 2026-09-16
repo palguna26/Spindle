@@ -91,6 +91,9 @@ window, and the scroll offset is shared by tab hit-testing and rendering.
 Overflowing tab strips now expose clickable Herdr-style `<` and `>` controls
 that move the visible window without changing the active tab.
 
+Tab scroll limits and drag indicators use the same reduced content area as the
+scroll controls.
+
 An unset theme now defaults to Herdr's Catppuccin palette in both rendering
 and the settings overlay.
 

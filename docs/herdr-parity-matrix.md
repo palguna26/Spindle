@@ -358,3 +358,5 @@ Mouse-wheel scrolling over the strip changes the visible window while keeping
 rendering and click geometry aligned.
 Overflowing strips also expose clickable `<` and `>` controls for the same
 window movement.
+Scroll limits and drag indicators remain aligned with the control-reserved
+content area.
