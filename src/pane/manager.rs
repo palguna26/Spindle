@@ -1,3 +1,4 @@
+use super::agent_detection::AgentAuthority;
 use super::agent_detection::{observe_agent_process, AgentStartupGrace, PendingIdleConfirmation};
 use super::PaneEvent;
 use crate::detect::{self, AgentKind, AgentProcessScan, AgentState};
@@ -26,6 +27,7 @@ pub struct Pane {
     pub agent_state: Option<AgentState>,
     pub agent_done: bool,
     agent_missing_scans: u8,
+    agent_authority: Option<AgentAuthority>,
     pub scrollback: VecDeque<u8>,
     pub terminal: TerminalEmulator,
     session: PtySession,
@@ -92,6 +94,7 @@ impl PaneManager {
                 agent_state: None,
                 agent_done: false,
                 agent_missing_scans: 0,
+                agent_authority: None,
                 scrollback: VecDeque::with_capacity(self.scrollback_limit),
                 terminal: TerminalEmulator::new(rows, cols, self.scrollback_limit),
                 session,
@@ -164,7 +167,7 @@ impl PaneManager {
             let previous_agent_state = pane.agent_state;
             let mut agent_changed = false;
             let mut agent_exited = false;
-            if scan_agents && pane.status.is_running() {
+            if scan_agents && pane.status.is_running() && pane.agent_authority.is_none() {
                 let scan = pane
                     .session
                     .process_id()
@@ -211,31 +214,33 @@ impl PaneManager {
 
             if pane.status.is_running() {
                 let terminal = pane.terminal.snapshot();
-                if let Some(agent) = pane.agent.filter(|_| pane.agent_missing_scans == 0) {
-                    if pane.startup_grace.is_active(Instant::now()) {
-                        pane.pending_idle.clear();
-                    } else if !detect::should_skip_state_update(agent, &terminal.contents) {
-                        let next_state = detect::detect_state_with_osc(
-                            agent,
-                            &terminal.contents,
-                            &terminal.osc_title,
-                            &terminal.osc_progress,
-                        );
-                        let visible_idle = detect::has_visible_idle_signal(
-                            agent,
-                            &terminal.contents,
-                            &terminal.osc_title,
-                            &terminal.osc_progress,
-                        );
-                        if !pane.pending_idle.should_hold(
-                            pane.agent_state,
-                            next_state,
-                            visible_idle,
-                            agent_changed,
-                            false,
-                            Instant::now(),
-                        ) {
-                            pane.agent_state = Some(next_state);
+                if pane.agent_authority.is_none() {
+                    if let Some(agent) = pane.agent.filter(|_| pane.agent_missing_scans == 0) {
+                        if pane.startup_grace.is_active(Instant::now()) {
+                            pane.pending_idle.clear();
+                        } else if !detect::should_skip_state_update(agent, &terminal.contents) {
+                            let next_state = detect::detect_state_with_osc(
+                                agent,
+                                &terminal.contents,
+                                &terminal.osc_title,
+                                &terminal.osc_progress,
+                            );
+                            let visible_idle = detect::has_visible_idle_signal(
+                                agent,
+                                &terminal.contents,
+                                &terminal.osc_title,
+                                &terminal.osc_progress,
+                            );
+                            if !pane.pending_idle.should_hold(
+                                pane.agent_state,
+                                next_state,
+                                visible_idle,
+                                agent_changed,
+                                false,
+                                Instant::now(),
+                            ) {
+                                pane.agent_state = Some(next_state);
+                            }
                         }
                     }
                 } else {
@@ -314,6 +319,69 @@ impl PaneManager {
             .get(id)
             .map(|pane| pane.session.process_id())
             .ok_or_else(|| PaneManagerError::MissingPane(id.into()))
+    }
+
+    pub fn report_agent(
+        &mut self,
+        id: &str,
+        agent: AgentKind,
+        state: AgentState,
+        source: String,
+        seq: Option<u64>,
+    ) -> Result<bool, PaneManagerError> {
+        let pane = self
+            .panes
+            .get_mut(id)
+            .ok_or_else(|| PaneManagerError::MissingPane(id.into()))?;
+        if pane
+            .agent_authority
+            .as_ref()
+            .is_some_and(|authority| !authority.accepts(&source, seq))
+        {
+            return Ok(false);
+        }
+        let changed = pane.agent != Some(agent) || pane.agent_state != Some(state);
+        pane.agent = Some(agent);
+        pane.agent_state = Some(state);
+        pane.agent_done = false;
+        pane.agent_missing_scans = 0;
+        pane.pending_idle.clear();
+        pane.startup_grace.start(None, Instant::now());
+        pane.agent_authority = Some(AgentAuthority { source, seq });
+        Ok(changed)
+    }
+
+    pub fn release_agent(
+        &mut self,
+        id: &str,
+        source: &str,
+        agent: AgentKind,
+        seq: Option<u64>,
+    ) -> Result<bool, PaneManagerError> {
+        let pane = self
+            .panes
+            .get_mut(id)
+            .ok_or_else(|| PaneManagerError::MissingPane(id.into()))?;
+        if pane.agent != Some(agent)
+            || pane
+                .agent_authority
+                .as_ref()
+                .is_some_and(|authority| authority.source != source)
+            || pane
+                .agent_authority
+                .as_ref()
+                .is_some_and(|authority| !authority.accepts(source, seq))
+        {
+            return Ok(false);
+        }
+        pane.agent = None;
+        pane.agent_state = None;
+        pane.agent_done = false;
+        pane.agent_missing_scans = 0;
+        pane.agent_authority = None;
+        pane.pending_idle.clear();
+        pane.terminal.clear_agent_osc_evidence();
+        Ok(true)
     }
 }
 

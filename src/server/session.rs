@@ -2800,6 +2800,55 @@ impl Session {
         self.record_pane_events(events);
     }
 
+    pub fn report_agent(
+        &mut self,
+        pane_id: &str,
+        agent: crate::detect::AgentKind,
+        state: crate::detect::AgentState,
+        source: String,
+        seq: Option<u64>,
+    ) -> Result<Value, String> {
+        let changed = self
+            .pane_manager
+            .report_agent(pane_id, agent, state, source, seq)
+            .map_err(|error| format!("{error:?}"))?;
+        if changed {
+            self.record_pane_events(vec![PaneEvent::AgentStatusChanged {
+                pane_id: pane_id.into(),
+                agent_state: state,
+            }]);
+        }
+        self.refresh_snapshot();
+        Ok(serde_json::json!({ "pane_id": pane_id, "updated": changed }))
+    }
+
+    pub fn release_agent(
+        &mut self,
+        pane_id: &str,
+        source: &str,
+        agent: crate::detect::AgentKind,
+        seq: Option<u64>,
+    ) -> Result<Value, String> {
+        let final_status = self
+            .pane_manager
+            .get(pane_id)
+            .and_then(|pane| pane.agent_state);
+        let released = self
+            .pane_manager
+            .release_agent(pane_id, source, agent, seq)
+            .map_err(|error| format!("{error:?}"))?;
+        if released {
+            self.record_pane_events(vec![PaneEvent::AgentDetected {
+                pane_id: pane_id.into(),
+                agent: None,
+                released: true,
+                final_status,
+            }]);
+        }
+        self.refresh_snapshot();
+        Ok(serde_json::json!({ "pane_id": pane_id, "released": released }))
+    }
+
     fn record_pane_events(&mut self, events: Vec<PaneEvent>) {
         for event in events {
             let (name, payload) = match event {

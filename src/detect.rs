@@ -591,7 +591,12 @@ fn identify_process(name: &str) -> Option<AgentKind> {
         .iter()
         .find_map(|suffix| basename.strip_suffix(suffix))
         .unwrap_or(&basename);
-    match basename {
+    parse_agent_label(basename)
+}
+
+pub(crate) fn parse_agent_label(label: &str) -> Option<AgentKind> {
+    let basename = label.to_ascii_lowercase();
+    match basename.as_str() {
         "claude" | "claude-code" => Some(AgentKind::Claude),
         "pi" => Some(AgentKind::Pi),
         "qodercli" | "qoderclicn" | "qoder" | "qodercn" => Some(AgentKind::QoderCli),

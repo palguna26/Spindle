@@ -1,6 +1,23 @@
 use crate::detect::{AgentKind, AgentProcessScan, AgentState};
 use std::time::{Duration, Instant};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct AgentAuthority {
+    pub(super) source: String,
+    pub(super) seq: Option<u64>,
+}
+
+impl AgentAuthority {
+    pub(super) fn accepts(&self, source: &str, seq: Option<u64>) -> bool {
+        self.source != source
+            || match (self.seq, seq) {
+                (Some(current), Some(next)) => next > current,
+                (Some(_), None) => false,
+                _ => true,
+            }
+    }
+}
+
 pub(super) const IDLE_CONFIRM_INTERVAL: Duration = Duration::from_millis(100);
 pub(super) const IDLE_CONFIRM_CAP: Duration = Duration::from_millis(700);
 pub(super) const IDLE_CONFIRMATIONS: u8 = 3;
@@ -111,4 +128,31 @@ pub(super) fn observe_agent_process(
     }
     *missing_scans = missing_scans.saturating_add(1);
     (false, *missing_scans == AGENT_EXIT_CONFIRMATIONS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AgentAuthority;
+
+    #[test]
+    fn authority_accepts_newer_sequences_and_rejects_replays() {
+        let authority = AgentAuthority {
+            source: "herdr:codex".into(),
+            seq: Some(4),
+        };
+        assert!(!authority.accepts("herdr:codex", Some(4)));
+        assert!(!authority.accepts("herdr:codex", Some(3)));
+        assert!(authority.accepts("herdr:codex", Some(5)));
+        assert!(authority.accepts("custom:codex", Some(1)));
+    }
+
+    #[test]
+    fn authority_without_sequence_accepts_unsequenced_updates() {
+        let authority = AgentAuthority {
+            source: "custom:agent".into(),
+            seq: None,
+        };
+        assert!(authority.accepts("custom:agent", None));
+        assert!(authority.accepts("custom:agent", Some(1)));
+    }
 }

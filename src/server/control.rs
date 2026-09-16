@@ -12,6 +12,25 @@ struct PaneRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct ReportAgentRequest {
+    pane_id: String,
+    source: String,
+    agent: String,
+    state: crate::detect::AgentState,
+    #[serde(default)]
+    seq: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReleaseAgentRequest {
+    pane_id: String,
+    source: String,
+    agent: String,
+    #[serde(default)]
+    seq: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
 struct PaneSwapRequest {
     source_pane_id: String,
     target_pane_id: String,
@@ -412,6 +431,50 @@ pub(crate) fn response_for_with_interactive(
             };
             let mut session = session.lock().expect("session lock poisoned");
             session.process_info(&payload.pane_id)
+        }
+        "report_agent" => {
+            let payload: ReportAgentRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let Some(agent) = crate::detect::parse_agent_label(&payload.agent) else {
+                return request_error(
+                    request.request_id,
+                    "invalid_agent",
+                    format!("unknown agent: {}", payload.agent),
+                );
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.report_agent(
+                    &payload.pane_id,
+                    agent,
+                    payload.state,
+                    payload.source,
+                    payload.seq,
+                )
+            })
+        }
+        "release_agent" => {
+            let payload: ReleaseAgentRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let Some(agent) = crate::detect::parse_agent_label(&payload.agent) else {
+                return request_error(
+                    request.request_id,
+                    "invalid_agent",
+                    format!("unknown agent: {}", payload.agent),
+                );
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.release_agent(&payload.pane_id, &payload.source, agent, payload.seq)
+            })
         }
         "subscribe_events" => {
             let payload: EventsRequest = match serde_json::from_value(request.payload) {

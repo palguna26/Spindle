@@ -76,7 +76,7 @@ const BASH: &str = r#"_spindle() {
   elif [[ "$COMP_WORDS[1]" == "agent" ]]; then
     COMPREPLY=( $(compgen -W "list get focus start wait read send-keys prompt rename help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "pane" ]]; then
-    COMPREPLY=( $(compgen -W "list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize" -- "$cur") )
+    COMPREPLY=( $(compgen -W "list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent release-agent wait-output split resize" -- "$cur") )
   fi
 }
 complete -F _spindle spindle
@@ -102,7 +102,7 @@ complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subc
 complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from create' -l env -r
 complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from create' -l focus -l no-focus
 complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from list' -l workspace -r
-complete -c spindle -f -n '__fish_seen_subcommand_from pane' -a 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize'
+complete -c spindle -f -n '__fish_seen_subcommand_from pane' -a 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent release-agent wait-output split resize'
 complete -c spindle -f -n '__fish_seen_subcommand_from api' -a 'schema help'
 complete -c spindle -f -n '__fish_seen_subcommand_from agent' -a 'list get focus start wait read send-keys prompt rename help'
 "#;
@@ -115,7 +115,7 @@ _spindle() {
     workspace) _arguments '1:command:(list create get focus move rename close)' '2:options:(--cwd --label --env --focus --no-focus --group)' ;;
     worktree) _arguments '1:command:(list create open remove help)' '2:options:(--workspace --cwd --branch --base --path --label --focus --no-focus --force)' ;;
     tab) _arguments '1:command:(list create get focus move rename close)' '2:options:(--label --workspace --cwd --env --focus --no-focus)' ;;
-    pane) _arguments '1:command:(list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize)' ;;
+    pane) _arguments '1:command:(list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent release-agent wait-output split resize)' ;;
     api) _arguments '1:command:(schema help)' ;;
     agent) _arguments '1:command:(list get focus start wait read send-keys prompt rename help)' ;;
   esac
@@ -135,7 +135,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq 'tab' -and $words[2] -eq 'list') { '--workspace' }
     elseif ($words[1] -eq 'tab' -and $words[2] -eq 'create') { '--label --workspace --cwd --env --focus --no-focus' }
     elseif ($words[1] -eq 'tab') { 'list create get focus move rename close' }
-    elseif ($words[1] -eq 'pane') { 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize' }
+    elseif ($words[1] -eq 'pane') { 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent release-agent wait-output split resize' }
     elseif ($words[1] -eq 'agent') { 'list get focus start wait read send-keys prompt rename help' }
   $choices | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
@@ -154,7 +154,7 @@ edit:completion:argadd 'spindle workspace create' (--cwd --label --env --focus -
 edit:completion:argadd 'spindle tab list' (--workspace)
 edit:completion:argadd 'spindle tab create' (--label --workspace --cwd --env --focus --no-focus)
 edit:completion:argadd 'spindle tab' (list create get focus move rename close)
-edit:completion:argadd 'spindle pane' (list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move wait-output split resize)
+edit:completion:argadd 'spindle pane' (list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent release-agent wait-output split resize)
 edit:completion:argadd 'spindle agent' (list get focus start wait read send-keys prompt rename help)
 "#;
 
