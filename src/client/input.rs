@@ -155,18 +155,25 @@ impl Keymap {
     }
 
     pub fn is_prefix(&self, key: KeyEvent) -> bool {
-        key.code == self.prefix.0 && key.modifiers == self.prefix.1
+        normalize_key_combo((key.code, key.modifiers)) == normalize_key_combo(self.prefix)
     }
 
     pub fn navigate_workspace_direction(&self, key: KeyEvent) -> Option<bool> {
+        let key = normalize_key_combo((key.code, key.modifiers));
         if self
             .navigate_workspace_up
-            .contains(&(key.code, key.modifiers))
+            .iter()
+            .copied()
+            .map(normalize_key_combo)
+            .any(|binding| binding == key)
         {
             Some(false)
         } else if self
             .navigate_workspace_down
-            .contains(&(key.code, key.modifiers))
+            .iter()
+            .copied()
+            .map(normalize_key_combo)
+            .any(|binding| binding == key)
         {
             Some(true)
         } else {
@@ -175,12 +182,12 @@ impl Keymap {
     }
 
     pub fn action(&self, prefix_active: bool, key: KeyEvent) -> Action {
+        let key_combo = normalize_key_combo((key.code, key.modifiers));
         self.bindings
             .iter()
             .find(|binding| {
                 binding.prefix == prefix_active
-                    && binding.code == key.code
-                    && binding.modifiers == key.modifiers
+                    && normalize_key_combo((binding.code, binding.modifiers)) == key_combo
             })
             .map(|binding| binding.action)
             .unwrap_or_else(|| {
@@ -350,6 +357,19 @@ fn default_bindings() -> Vec<Binding> {
     bindings
 }
 
+// Herdr treats Shift+Tab and BackTab as one canonical terminal key.
+fn normalize_key_combo(
+    (mut code, mut modifiers): (KeyCode, KeyModifiers),
+) -> (KeyCode, KeyModifiers) {
+    if matches!(code, KeyCode::Tab) && modifiers.contains(KeyModifiers::SHIFT) {
+        code = KeyCode::BackTab;
+        modifiers.remove(KeyModifiers::SHIFT);
+    } else if matches!(code, KeyCode::BackTab) {
+        modifiers.remove(KeyModifiers::SHIFT);
+    }
+    (code, modifiers)
+}
+
 fn action_name(name: &str) -> Option<Action> {
     Some(match name {
         "detach" => Action::Detach,
@@ -431,7 +451,10 @@ fn parse_binding(value: &str) -> Option<(KeyCode, KeyModifiers, bool)> {
         };
     }
     let mut code = parse_key(&key)?;
-    if modifiers.contains(KeyModifiers::SHIFT) {
+    if matches!(code, KeyCode::Tab) && modifiers.contains(KeyModifiers::SHIFT) {
+        code = KeyCode::BackTab;
+        modifiers.remove(KeyModifiers::SHIFT);
+    } else if modifiers.contains(KeyModifiers::SHIFT) {
         if let KeyCode::Char(character) = code {
             code = KeyCode::Char(character.to_ascii_uppercase());
         }
@@ -450,6 +473,7 @@ fn parse_key(value: &str) -> Option<KeyCode> {
         "enter" => KeyCode::Enter,
         "esc" | "escape" => KeyCode::Esc,
         "tab" => KeyCode::Tab,
+        "backtab" => KeyCode::BackTab,
         "left" => KeyCode::Left,
         "right" => KeyCode::Right,
         "up" => KeyCode::Up,
@@ -478,7 +502,7 @@ fn key_label(code: KeyCode, modifiers: KeyModifiers) -> String {
     if modifiers.contains(KeyModifiers::SUPER) {
         label.push_str("Super+");
     }
-    if modifiers.contains(KeyModifiers::SHIFT) {
+    if modifiers.contains(KeyModifiers::SHIFT) && !matches!(code, KeyCode::BackTab) {
         label.push_str("Shift+");
     }
     match code {
@@ -486,6 +510,7 @@ fn key_label(code: KeyCode, modifiers: KeyModifiers) -> String {
         KeyCode::Enter => format!("{label}Enter"),
         KeyCode::Esc => format!("{label}Esc"),
         KeyCode::Tab => format!("{label}Tab"),
+        KeyCode::BackTab => format!("{label}Shift+Tab"),
         KeyCode::Left => format!("{label}Left"),
         KeyCode::Right => format!("{label}Right"),
         KeyCode::Up => format!("{label}Up"),
@@ -772,6 +797,30 @@ mod tests {
         assert_eq!(
             keymap.action(true, KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
             Action::NewTab
+        );
+    }
+
+    #[test]
+    fn shift_tab_and_backtab_match_the_same_herdr_binding() {
+        let keymap = Keymap::from_config(&Config {
+            bindings: BTreeMap::from([(
+                String::from("focus_previous"),
+                vec![String::from("prefix+shift+tab")],
+            )]),
+            ..Config::default()
+        });
+
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Tab, KeyModifiers::SHIFT)),
+            Action::FocusPrevious
+        );
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE)),
+            Action::FocusPrevious
+        );
+        assert_eq!(
+            keymap.binding_label(Action::FocusPrevious),
+            "prefix+Shift+Tab"
         );
     }
 }
