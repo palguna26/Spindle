@@ -142,7 +142,7 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Add Herdr's default `Ctrl-b`, then `Shift+w` rename-workspace shortcut.
 - [x] Add Herdr's default `Ctrl-b`, then `Shift+d` close-workspace shortcut;
   keep Spindle's type-name confirmation before stopping its panes.
-- [ ] Match Herdr's workspace navigation bindings: `Ctrl-b w` previews
+- [x] Match Herdr's workspace navigation bindings: `Ctrl-b w` previews
   workspaces; `Ctrl-b g` opens a searchable space/workspace/tab/pane tree with
   Herdr-style movement, filters, expansion, activation, and cancellation. The
   navigator is implemented; searches now auto-expand collapsed branches to
