@@ -41,7 +41,8 @@ those inputs. Mouse-aware terminal apps receive mouse input when they request
 it.
 
 Ctrl-click a visible `http://` or `https://` URL in a pane to open it in your
-default browser. OSC 8 hyperlinks are not supported yet.
+default browser. OSC 8 hyperlinks are also supported; Ctrl-click opens their
+target when the link is visible in the pane.
 
 Useful commands:
 
