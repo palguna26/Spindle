@@ -529,10 +529,10 @@ The bundled control schema now advertises the implemented `report_agent`,
 checks the session-report entry.
 
 Display metadata now has a first slice: `report_metadata` can set or clear
-source-sequenced display-agent labels and custom display titles. The client
-renders labels consistently in pane, sidebar, and navigator views while
-preserving terminal titles and lifecycle state. Herdr's state labels, tokens,
-and TTL expiry remain deliberately pending.
+source-sequenced display-agent labels, custom display titles, and custom state
+labels. The client renders these labels consistently in pane and navigator
+views while preserving terminal titles and semantic lifecycle state. Herdr's
+metadata tokens and TTL expiry remain deliberately pending.
 
 ## Verification gates
 
