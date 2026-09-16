@@ -102,10 +102,14 @@ commit `68d86ad` as partial startup work; do not count it as completion.
 - [x] On terminal resize or layout change, send each PTY its actual pane size,
   not the full terminal size.
 - [x] Add small-terminal and many-pane geometry tests using Ratatui TestBackend.
+- [x] Match Herdr alternate-screen geometry: full-screen applications such as
+  `vim` and `less` reclaim the scrollbar column, and rendering, PTY sizing,
+  cursor placement, selection, and mouse hit testing use that same geometry.
 
 Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 `src/layout.rs`. Spindle: `src/client/renderer.rs`, `src/model/layout.rs`, and
-`resize_panes` in `src/client/app.rs`.
+`resize_panes` in `src/client/app.rs`, plus Herdr's alternate-screen branch in
+`src/ui/panes.rs`.
 
 ## 3. Port mouse-first navigation and pane controls
 
