@@ -1831,6 +1831,7 @@ fn handle_mouse(
                 mouse_state.agent_priority_sort,
                 &mouse_state.collapsed_worktree_groups,
                 mouse_state.tab_scroll,
+                mouse_state.agent_sidebar_scroll,
             );
             let agent_pane = if let Some(renderer::ClickTarget::Agent {
                 space_id,
@@ -1996,6 +1997,7 @@ fn handle_mouse(
                 mouse_state.agent_priority_sort,
                 &mouse_state.collapsed_worktree_groups,
                 mouse_state.tab_scroll,
+                mouse_state.agent_sidebar_scroll,
             )
         {
             if let Some(workspace) = active_workspace(snapshot) {
@@ -2277,6 +2279,7 @@ fn handle_mouse(
         mouse_state.agent_priority_sort,
         &mouse_state.collapsed_worktree_groups,
         mouse_state.tab_scroll,
+        mouse_state.agent_sidebar_scroll,
     ) else {
         return Ok(());
     };
@@ -2326,6 +2329,9 @@ fn handle_mouse(
         }
         renderer::ClickTarget::SidebarScroll(offset) => {
             mouse_state.sidebar_scroll = offset;
+        }
+        renderer::ClickTarget::AgentSidebarScroll(offset) => {
+            mouse_state.agent_sidebar_scroll = offset;
         }
         renderer::ClickTarget::SplitBorder(_) => {}
         renderer::ClickTarget::Space(space_id) => {

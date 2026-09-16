@@ -63,6 +63,7 @@ impl ContextMenu {
             | ClickTarget::NewTab
             | ClickTarget::ToggleAgentSort
             | ClickTarget::SidebarScroll(_)
+            | ClickTarget::AgentSidebarScroll(_)
             | ClickTarget::Space(_)
             | ClickTarget::TabScrollLeft
             | ClickTarget::TabScrollRight

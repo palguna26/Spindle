@@ -19,6 +19,7 @@ pub enum ClickTarget {
     SidebarToggle,
     ToggleAgentSort,
     SidebarScroll(usize),
+    AgentSidebarScroll(usize),
     Space(String),
     Workspace {
         space_id: String,
@@ -105,6 +106,7 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups(
         agent_priority_sort,
         collapsed_groups,
         0,
+        0,
     )
 }
 
@@ -118,6 +120,7 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
     agent_priority_sort: bool,
     collapsed_groups: &HashSet<String>,
     tab_scroll: usize,
+    agent_sidebar_scroll: usize,
 ) -> Option<ClickTarget> {
     if !matches!(
         mouse.kind,
@@ -158,6 +161,7 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
                 sidebar_scroll,
                 agent_priority_sort,
                 collapsed_groups,
+                agent_sidebar_scroll,
             );
         }
         let body = sidebar_body(main.sidebar);
@@ -247,6 +251,7 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
     None
 }
 
+#[allow(clippy::too_many_arguments)]
 fn hit_test_split_sidebar(
     snapshot: &SessionSnapshot,
     area: Rect,
@@ -255,6 +260,7 @@ fn hit_test_split_sidebar(
     workspace_scroll: usize,
     agent_priority_sort: bool,
     collapsed_groups: &HashSet<String>,
+    agent_scroll: usize,
 ) -> Option<ClickTarget> {
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
     let workspace_rows = rows
@@ -289,7 +295,16 @@ fn hit_test_split_sidebar(
     );
     if contains(agent_area, x, y) {
         let agent_visual = sidebar_visual_rows(&agent_rows, false, &sidebar_config);
-        let visual_row = usize::from(y.saturating_sub(agent_area.y));
+        let max_scroll = agent_visual
+            .len()
+            .saturating_sub(usize::from(agent_area.height));
+        if max_scroll > 0 && x == agent_area.right().saturating_sub(1) {
+            return Some(ClickTarget::AgentSidebarScroll(
+                sidebar_scroll_for_track_row(agent_area, agent_visual.len(), max_scroll, y),
+            ));
+        }
+        let visual_row = usize::from(y.saturating_sub(agent_area.y))
+            .saturating_add(agent_scroll.min(max_scroll));
         let (Some(row), _) = agent_visual.get(visual_row)? else {
             return None;
         };
@@ -1531,6 +1546,10 @@ fn render_split_sidebar(
         .len()
         .saturating_sub(usize::from(workspace_body.height));
     let workspace_start = workspace_scroll.min(workspace_max);
+    let agent_max = agent_visual
+        .len()
+        .saturating_sub(usize::from(agent_body.height));
+    let agent_start = agent_scroll.min(agent_max);
     let workspace_lines = split_sidebar_lines(
         &workspace_rows,
         &workspace_visual,
@@ -1548,7 +1567,7 @@ fn render_split_sidebar(
     let agent_lines = split_sidebar_lines(
         &agent_rows,
         &agent_visual,
-        agent_scroll,
+        agent_start,
         agent_body.height,
         snapshot,
         None,
@@ -1590,6 +1609,28 @@ fn render_split_sidebar(
         agent_area,
     );
     frame.render_widget(Paragraph::new(agent_lines), agent_body);
+    if workspace_max > 0 && workspace_body.width > 1 && workspace_body.height > 0 {
+        render_sidebar_scrollbar(
+            frame,
+            workspace_body,
+            workspace_start,
+            workspace_max,
+            workspace_visual.len(),
+            overlay0,
+            surface_dim,
+        );
+    }
+    if agent_max > 0 && agent_body.width > 1 && agent_body.height > 0 {
+        render_sidebar_scrollbar(
+            frame,
+            agent_body,
+            agent_start,
+            agent_max,
+            agent_visual.len(),
+            overlay0,
+            surface_dim,
+        );
+    }
     if !sections.divider.is_empty() {
         frame.render_widget(
             Paragraph::new("─".repeat(usize::from(sections.divider.width)))
