@@ -791,3 +791,7 @@ Transient mode-bar note: prefix, copy, and resize feedback now uses Herdr's
 bottom tab row when the desktop tab bar is configured at the bottom. The
 bottom-tab pane and tab constraints keep that tab row to one line at the
 terminal bottom.
+
+Sidebar text-token note: workspace and agent rows now use Herdr's `text` and
+`subtext0` palette tokens, including the Tokyo Night Day defaults and
+`[theme.custom] text`/`subtext0` overrides.

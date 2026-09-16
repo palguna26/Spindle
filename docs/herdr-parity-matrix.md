@@ -360,3 +360,7 @@ Overflowing strips also expose clickable `<` and `>` controls for the same
 window movement.
 Scroll limits and drag indicators remain aligned with the control-reserved
 content area.
+
+Sidebar workspace and agent metadata now use Herdr's `text` and `subtext0`
+tokens, including case-insensitive theme names and `[theme.custom] text` and
+`subtext0` overrides.
