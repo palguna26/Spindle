@@ -129,6 +129,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Show Herdr-style live tab and workspace drop indicators while dragging,
   using the same insertion-index hit model as the eventual reorder request.
 - [x] Right-click workspaces, tabs, and panes for context-specific actions.
+- [x] Close a workspace with linked worktree children as a Herdr-style grouped
+  close from the context menu, with explicit type-name confirmation.
 - [x] Support pane split, close, rename, zoom/focus actions from menus where
   the matching Herdr action exists, including swapping a clicked pane with the
   previously focused pane.
