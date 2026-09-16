@@ -15,6 +15,11 @@ Pane wait note: `spindle pane wait-output` now supports Herdr's `--regex`
 matcher alongside literal `--match`, `visible`/`recent`/`recent-unwrapped`
 sources, and `--raw`, including mutual-exclusion and invalid-pattern validation.
 
+Agent hook parity now includes `spindle pane report-agent` and
+`spindle pane release-agent`. Reports are source/sequence aware, and reported
+state remains authoritative until that source releases the pane, matching
+Herdr's pane hook lifecycle handlers.
+
 CLI parity now includes Herdr's `pane current --pane ID` and `--current`
 selector forms, with `SPINDLE_PANE_ID`/`HERDR_PANE_ID` environment fallback.
 The same selectors now work with `spindle pane read`.

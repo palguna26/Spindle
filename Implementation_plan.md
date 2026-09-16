@@ -28,6 +28,11 @@ Latest structure milestone: agent lifecycle detection is separated into
 manager still owns pane I/O and delegates startup grace, idle confirmation,
 and process-exit confirmation to that module.
 
+Latest API milestone: `report_agent` and `release_agent` are available through
+the pane CLI and control protocol. Hook reports retain source and sequence
+authority so stale updates are ignored and process/screen polling cannot
+overwrite an active integration report.
+
 ## 0. Establish the parity matrix
 
 - [ ] Compare Herdr's README, quick-start, keyboard guide, CLI guide, and
