@@ -119,7 +119,11 @@ impl Target {
     }
 
     fn command(self) -> &'static str {
-        self.label()
+        match self {
+            // Herdr exposes Antigravity CLI under its installed `agy` binary.
+            Self::AntigravityCli => "agy",
+            _ => self.label(),
+        }
     }
 
     fn path(self) -> PathBuf {
@@ -1920,6 +1924,7 @@ mod tests {
         assert_eq!(Target::Kilo.label(), "kilo");
         assert_eq!(Target::Hermes.label(), "hermes");
         assert_eq!(Target::AntigravityCli.label(), "antigravity-cli");
+        assert_eq!(Target::AntigravityCli.command(), "agy");
     }
 
     #[test]
