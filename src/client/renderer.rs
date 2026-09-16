@@ -127,6 +127,103 @@ impl ThemePalette {
         palette
     }
 
+    pub(super) fn pane_status_color(config: &crate::config::Config, status: &PaneStatus) -> Color {
+        let name = config
+            .theme_name
+            .as_deref()
+            .unwrap_or("catppuccin")
+            .to_ascii_lowercase();
+        let (yellow, teal, red) = match name.as_str() {
+            "catppuccin" => (
+                Color::Rgb(249, 226, 175),
+                Color::Rgb(148, 226, 213),
+                Color::Rgb(243, 139, 168),
+            ),
+            "catppuccin-latte" => (
+                Color::Rgb(223, 142, 29),
+                Color::Rgb(23, 146, 153),
+                Color::Rgb(210, 15, 57),
+            ),
+            "terminal" => (Color::Yellow, Color::Cyan, Color::LightRed),
+            "tokyo-night" | "tokyonight" => (
+                Color::Rgb(224, 175, 104),
+                Color::Rgb(125, 207, 255),
+                Color::Rgb(247, 118, 142),
+            ),
+            "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => (
+                Color::Rgb(140, 108, 62),
+                Color::Rgb(17, 140, 116),
+                Color::Rgb(245, 42, 101),
+            ),
+            "dracula" => (
+                Color::Rgb(241, 250, 140),
+                Color::Rgb(139, 233, 253),
+                Color::Rgb(255, 85, 85),
+            ),
+            "nord" => (
+                Color::Rgb(235, 203, 139),
+                Color::Rgb(143, 188, 187),
+                Color::Rgb(191, 97, 106),
+            ),
+            "gruvbox" => (
+                Color::Rgb(250, 189, 47),
+                Color::Rgb(142, 192, 124),
+                Color::Rgb(251, 73, 52),
+            ),
+            "gruvbox-light" => (
+                Color::Rgb(181, 118, 20),
+                Color::Rgb(66, 123, 88),
+                Color::Rgb(157, 0, 6),
+            ),
+            "one-dark" => (
+                Color::Rgb(229, 192, 123),
+                Color::Rgb(86, 182, 194),
+                Color::Rgb(224, 108, 117),
+            ),
+            "one-light" => (
+                Color::Rgb(193, 132, 1),
+                Color::Rgb(1, 132, 188),
+                Color::Rgb(228, 86, 73),
+            ),
+            "solarized" | "solarized-light" => (
+                Color::Rgb(181, 137, 0),
+                Color::Rgb(42, 161, 152),
+                Color::Rgb(220, 50, 47),
+            ),
+            "kanagawa" => (
+                Color::Rgb(192, 163, 110),
+                Color::Rgb(127, 180, 202),
+                Color::Rgb(195, 64, 67),
+            ),
+            "kanagawa-lotus" => (
+                Color::Rgb(119, 113, 63),
+                Color::Rgb(78, 140, 162),
+                Color::Rgb(200, 64, 83),
+            ),
+            "rose-pine" => (
+                Color::Rgb(246, 193, 119),
+                Color::Rgb(156, 207, 216),
+                Color::Rgb(235, 111, 146),
+            ),
+            "rose-pine-dawn" => (
+                Color::Rgb(234, 157, 52),
+                Color::Rgb(86, 148, 159),
+                Color::Rgb(180, 99, 122),
+            ),
+            "vesper" => (
+                Color::Rgb(255, 199, 153),
+                Color::Rgb(102, 221, 204),
+                Color::Rgb(255, 128, 128),
+            ),
+            _ => (Color::Yellow, Color::Cyan, Color::Red),
+        };
+        match status {
+            PaneStatus::Running => yellow,
+            PaneStatus::Completed { .. } => teal,
+            PaneStatus::Halted { .. } | PaneStatus::Interrupted { .. } => red,
+        }
+    }
+
     pub(super) fn panel_bg(config: &crate::config::Config) -> Color {
         if let Some(value) = config.theme_custom_panel_bg.as_deref() {
             if let Some(color) = parse_theme_color(value) {
@@ -700,7 +797,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
             let border_color = if snapshot.focused_pane_id.as_deref() == Some(&pane_rect.pane_id) {
                 theme.focused_border
             } else {
-                status_color(&pane.status)
+                ThemePalette::pane_status_color(&config, &pane.status)
             };
             let borders = pane_borders_for_rect(
                 pane_rect.rect,
@@ -1563,7 +1660,13 @@ fn pane_title(pane: &crate::server::session::PaneView) -> Line<'static> {
     let indicator = pane.status.indicator().to_string();
     let title = pane_title_text(pane);
     Line::from(vec![
-        Span::styled(indicator, Style::default().fg(status_color(&pane.status))),
+        Span::styled(
+            indicator,
+            Style::default().fg(ThemePalette::pane_status_color(
+                &crate::config::load(),
+                &pane.status,
+            )),
+        ),
         Span::raw(title[pane.status.indicator().len_utf8()..].to_string()),
     ])
 }
@@ -1661,6 +1764,25 @@ mod tests {
                 reason: "failed".into()
             }),
             Color::Red
+        );
+    }
+
+    #[test]
+    fn pane_status_colors_follow_herdr_theme_palette() {
+        let config = crate::config::Config {
+            theme_name: Some("dracula".into()),
+            ..crate::config::Config::default()
+        };
+        assert_eq!(
+            super::ThemePalette::pane_status_color(&config, &PaneStatus::Running),
+            Color::Rgb(241, 250, 140)
+        );
+        assert_eq!(
+            super::ThemePalette::pane_status_color(
+                &config,
+                &PaneStatus::Completed { exit_code: 0 }
+            ),
+            Color::Rgb(139, 233, 253)
         );
     }
 
@@ -2237,7 +2359,7 @@ mod tests {
         assert!(pane_title_text(&pane).contains("Review shell"));
         assert_eq!(
             pane_title(&pane).spans[0].style.fg,
-            Some(Color::Rgb(255, 165, 0))
+            Some(Color::Rgb(249, 226, 175))
         );
         pane.agent_state = Some(crate::detect::AgentState::Idle);
         pane.agent_done = true;
