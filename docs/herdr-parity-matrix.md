@@ -342,3 +342,7 @@ mobile layouts.
 Tab-strip rendering now follows Herdr's surface treatment: inactive tabs use
 `surface0`, while the active tab uses the accent-filled state; the
 `[theme.custom] surface0` override is supported.
+
+Tab labels and the new-tab control now use Herdr's `overlay0`/`overlay1`
+contrast tokens, with matching `[theme.custom] overlay0` and `overlay1`
+overrides.

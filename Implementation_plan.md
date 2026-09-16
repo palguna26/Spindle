@@ -72,6 +72,9 @@ The tab strip now uses Herdr's `surface0` token for inactive tabs and fills the
 active tab with the selected accent color; `[theme.custom] surface0` is
 supported.
 
+Tab label contrast now follows Herdr's `overlay0`/`overlay1` tokens, including
+`[theme.custom] overlay0` and `[theme.custom] overlay1` overrides.
+
 An unset theme now defaults to Herdr's Catppuccin palette in both rendering
 and the settings overlay.
 
