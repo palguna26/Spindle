@@ -126,6 +126,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   dimensions.
 - [x] Drag workspace rows in the sidebar to reorder them with Herdr's
   insertion-index semantics; a click without a move still switches workspace.
+- [x] Show Herdr-style live tab and workspace drop indicators while dragging,
+  using the same insertion-index hit model as the eventual reorder request.
 - [x] Right-click workspaces, tabs, and panes for context-specific actions.
 - [x] Support pane split, close, rename, zoom/focus actions from menus where
   the matching Herdr action exists, including swapping a clicked pane with the
