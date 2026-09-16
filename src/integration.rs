@@ -20,6 +20,8 @@ const KIMI_HOOK_ASSET: &str = include_str!("integration/assets/kimi-agent-state.
 const KIMI_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const KIMI_BEGIN: &str = "# >>> spindle kimi integration";
 const KIMI_END: &str = "# <<< spindle kimi integration";
+const QODERCLI_HOOK_ASSET: &str = include_str!("integration/assets/qodercli-agent-state.ps1");
+const QODERCLI_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -44,10 +46,11 @@ pub(crate) enum Target {
     Devin,
     Droid,
     Kimi,
+    Qodercli,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 10] = [
+    pub(crate) const ALL: [Self; 11] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
@@ -58,6 +61,7 @@ impl Target {
         Self::Devin,
         Self::Droid,
         Self::Kimi,
+        Self::Qodercli,
     ];
 
     fn label(self) -> &'static str {
@@ -72,6 +76,7 @@ impl Target {
             Self::Devin => "devin",
             Self::Droid => "droid",
             Self::Kimi => "kimi",
+            Self::Qodercli => "qodercli",
         }
     }
 
@@ -95,6 +100,7 @@ impl Target {
             Self::Devin => devin_dir().join(DEVIN_HOOK_NAME),
             Self::Droid => droid_dir().join("hooks").join(DROID_HOOK_NAME),
             Self::Kimi => kimi_dir().join("hooks").join(KIMI_HOOK_NAME),
+            Self::Qodercli => qodercli_dir().join("hooks").join(QODERCLI_HOOK_NAME),
         }
     }
 
@@ -496,6 +502,55 @@ pub(crate) fn uninstall_kimi() -> std::io::Result<Vec<String>> {
     }
     Ok(vec![format!(
         "{} kimi integration hook {}",
+        if removed_hook || changed {
+            "removed"
+        } else {
+            "did not find"
+        },
+        hook_path.display()
+    )])
+}
+
+pub(crate) fn install_qodercli() -> std::io::Result<Vec<String>> {
+    let dir = qodercli_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "qodercli config directory not found at {}. install qodercli first",
+            dir.display()
+        )));
+    }
+    let hooks_dir = dir.join("hooks");
+    std::fs::create_dir_all(&hooks_dir)?;
+    let hook_path = hooks_dir.join(QODERCLI_HOOK_NAME);
+    std::fs::write(&hook_path, QODERCLI_HOOK_ASSET)?;
+    let settings_path = dir.join("settings.json");
+    let mut config = read_json_object(&settings_path, "qodercli settings")?;
+    ensure_qodercli_hooks(&mut config, &settings_path, &hook_path)?;
+    std::fs::write(&settings_path, serde_json::to_string_pretty(&config)?)?;
+    Ok(vec![
+        format!(
+            "installed qodercli integration hook to {}",
+            hook_path.display()
+        ),
+        format!("ensured qodercli settings at {}", settings_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_qodercli() -> std::io::Result<Vec<String>> {
+    let dir = qodercli_dir();
+    let hook_path = dir.join("hooks").join(QODERCLI_HOOK_NAME);
+    let settings_path = dir.join("settings.json");
+    let removed_hook = remove_file_if_exists(&hook_path)?;
+    let mut changed = false;
+    if settings_path.is_file() {
+        let mut config = read_json_object(&settings_path, "qodercli settings")?;
+        changed = remove_qodercli_hooks(&mut config, &hook_path)?;
+        if changed {
+            std::fs::write(&settings_path, serde_json::to_string_pretty(&config)?)?;
+        }
+    }
+    Ok(vec![format!(
+        "{} qodercli integration hook {}",
         if removed_hook || changed {
             "removed"
         } else {
@@ -962,6 +1017,80 @@ fn kimi_dir() -> PathBuf {
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| home_dir().join(".kimi-code"))
+}
+
+fn qodercli_dir() -> PathBuf {
+    env::var_os("QODERCLI_CONFIG_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".qoder"))
+}
+
+fn qodercli_events() -> [(&'static str, &'static str); 1] {
+    [("SessionStart", "session")]
+}
+fn qodercli_removed_events() -> [(&'static str, &'static str); 12] {
+    [
+        ("SessionStart", "idle"),
+        ("UserPromptSubmit", "working"),
+        ("PreToolUse", "working"),
+        ("PostToolUse", "working"),
+        ("PostToolUseFailure", "working"),
+        ("SubagentStart", "working"),
+        ("SubagentStop", "working"),
+        ("PreCompact", "working"),
+        ("PermissionRequest", "blocked"),
+        ("PermissionResult", "working"),
+        ("Stop", "idle"),
+        ("SessionEnd", "release"),
+    ]
+}
+
+fn qodercli_command(path: &std::path::Path, action: &str) -> String {
+    format!("{} {}", direct_hook_command(path), action)
+}
+fn ensure_qodercli_hooks(
+    config: &mut Value,
+    path: &std::path::Path,
+    hook_path: &std::path::Path,
+) -> std::io::Result<()> {
+    let root = config.as_object_mut().ok_or_else(|| {
+        std::io::Error::other(format!(
+            "qodercli settings at {} must be a JSON object",
+            path.display()
+        ))
+    })?;
+    let hooks = root
+        .entry("hooks")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or_else(|| std::io::Error::other("qodercli settings hooks must be a JSON object"))?;
+    for (event, action) in qodercli_removed_events()
+        .into_iter()
+        .chain(qodercli_events())
+    {
+        remove_devin_hook(hooks, event, &qodercli_command(hook_path, action))?;
+    }
+    let entries = hooks
+        .entry("SessionStart")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .ok_or_else(|| std::io::Error::other("qodercli SessionStart hooks must be an array"))?;
+    entries.push(json!({"matcher":"*","hooks":[{"type":"command","command":qodercli_command(hook_path,"session"),"timeout":10}]}));
+    Ok(())
+}
+fn remove_qodercli_hooks(config: &mut Value, hook_path: &std::path::Path) -> std::io::Result<bool> {
+    let Some(hooks) = config.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return Ok(false);
+    };
+    let mut changed = false;
+    for (event, action) in qodercli_events()
+        .into_iter()
+        .chain(qodercli_removed_events())
+    {
+        changed |= remove_devin_hook(hooks, event, &qodercli_command(hook_path, action))?;
+    }
+    Ok(changed)
 }
 
 fn kimi_events() -> [(&'static str, Option<&'static str>, &'static str); 12] {
@@ -1496,6 +1625,7 @@ mod tests {
         assert_eq!(Target::Devin.label(), "devin");
         assert_eq!(Target::Droid.label(), "droid");
         assert_eq!(Target::Kimi.label(), "kimi");
+        assert_eq!(Target::Qodercli.label(), "qodercli");
     }
 
     #[test]
@@ -1509,6 +1639,7 @@ mod tests {
         assert!(Target::Devin.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Droid.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Kimi.path().ends_with("spindle-agent-state.ps1"));
+        assert!(Target::Qodercli.path().ends_with("spindle-agent-state.ps1"));
     }
 
     #[test]

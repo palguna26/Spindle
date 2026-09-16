@@ -67,6 +67,12 @@ pub(super) fn run(args: &[String]) -> io::Result<()> {
         [command, target] if command == "uninstall" && target == "kimi" => {
             print_messages(crate::integration::uninstall_kimi()?)
         }
+        [command, target] if command == "install" && target == "qodercli" => {
+            print_messages(crate::integration::install_qodercli()?)
+        }
+        [command, target] if command == "uninstall" && target == "qodercli" => {
+            print_messages(crate::integration::uninstall_qodercli()?)
+        }
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -103,6 +109,8 @@ fn print_help() {
     eprintln!("       spindle integration uninstall droid");
     eprintln!("       spindle integration install kimi");
     eprintln!("       spindle integration uninstall kimi");
+    eprintln!("       spindle integration install qodercli");
+    eprintln!("       spindle integration uninstall qodercli");
 }
 
 fn print_messages(messages: Vec<String>) -> io::Result<()> {
