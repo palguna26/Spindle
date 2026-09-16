@@ -43,6 +43,35 @@ pub(super) fn sections(area: Rect, split_ratio: f32) -> SidebarSections {
     }
 }
 
+/// Herdr reserves a header row and footer row in the workspace section.
+pub(super) fn workspace_body(sections: SidebarSections) -> Rect {
+    Rect::new(
+        sections.workspaces.x,
+        sections.workspaces.y.saturating_add(1),
+        sections.workspaces.width,
+        sections.workspaces.height.saturating_sub(2),
+    )
+}
+
+/// Herdr keeps the divider row, agent heading, and a blank spacer above rows.
+pub(super) fn agent_header(sections: SidebarSections) -> Rect {
+    Rect::new(
+        sections.agents.x,
+        sections.agents.y.saturating_add(1),
+        sections.agents.width,
+        u16::from(sections.agents.height >= 2),
+    )
+}
+
+pub(super) fn agent_body(sections: SidebarSections) -> Rect {
+    Rect::new(
+        sections.agents.x,
+        sections.agents.y.saturating_add(3),
+        sections.agents.width,
+        sections.agents.height.saturating_sub(3),
+    )
+}
+
 fn section_heights(total_height: u16, split_ratio: f32) -> (u16, u16) {
     if total_height == 0 {
         return (0, 0);
@@ -87,5 +116,18 @@ mod tests {
         assert_eq!(sections.workspaces.height, 3);
         assert_eq!(sections.agents.height, 2);
         assert!(sections.divider.is_empty());
+    }
+
+    #[test]
+    fn reserves_herdr_sidebar_chrome_rows() {
+        let sections = sections(Rect::new(0, 0, 20, 20), 0.5);
+        assert_eq!(workspace_body(sections).y, sections.workspaces.y + 1);
+        assert_eq!(
+            workspace_body(sections).height,
+            sections.workspaces.height - 2
+        );
+        assert_eq!(agent_header(sections).y, sections.agents.y + 1);
+        assert_eq!(agent_body(sections).y, sections.agents.y + 3);
+        assert_eq!(agent_body(sections).height, sections.agents.height - 3);
     }
 }

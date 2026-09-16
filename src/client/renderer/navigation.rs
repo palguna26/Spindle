@@ -155,6 +155,18 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
             return Some(ClickTarget::ToggleAgentSort);
         }
         if !sidebar_collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
+            let sections = crate::client::sidebar::sections(sidebar_body(main.sidebar), 0.5);
+            let workspace_footer = sections.workspaces.bottom().saturating_sub(1);
+            if y == workspace_footer {
+                if x > main.sidebar.x && x < main.sidebar.x.saturating_add(6) {
+                    return Some(ClickTarget::NewWorkspace);
+                }
+                if x >= sections.workspaces.right().saturating_sub(5)
+                    && x < sections.workspaces.right()
+                {
+                    return Some(ClickTarget::GlobalMenu);
+                }
+            }
             return hit_test_split_sidebar(
                 snapshot,
                 main.sidebar,
@@ -279,24 +291,20 @@ fn hit_test_split_sidebar(
         .collect::<Vec<_>>();
     let sidebar_config = crate::config::load().sidebar;
     let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
+    let workspace_body = crate::client::sidebar::workspace_body(sections);
     let workspace_visual = sidebar_visual_rows(&workspace_rows, false, &sidebar_config);
-    if contains(sections.workspaces, x, y) {
+    if contains(workspace_body, x, y) {
         let max_scroll = workspace_visual
             .len()
-            .saturating_sub(usize::from(sections.workspaces.height));
-        let visual_row = usize::from(y.saturating_sub(sections.workspaces.y))
+            .saturating_sub(usize::from(workspace_body.height));
+        let visual_row = usize::from(y.saturating_sub(workspace_body.y))
             .saturating_add(workspace_scroll.min(max_scroll));
         let (Some(row), _) = workspace_visual.get(visual_row)? else {
             return None;
         };
         return sidebar_click_target(workspace_rows.get(*row));
     }
-    let agent_area = Rect::new(
-        sections.agents.x,
-        sections.agents.y.saturating_add(2),
-        sections.agents.width,
-        sections.agents.height.saturating_sub(2),
-    );
+    let agent_area = crate::client::sidebar::agent_body(sections);
     if contains(agent_area, x, y) {
         let agent_visual = sidebar_visual_rows(&agent_rows, false, &sidebar_config);
         let max_scroll = agent_visual
@@ -520,6 +528,12 @@ pub fn sidebar_scroll_max_with_sort_and_groups(
 ) -> usize {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
+    let body = if !collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
+        let sections = crate::client::sidebar::sections(body, 0.5);
+        crate::client::sidebar::workspace_body(sections)
+    } else {
+        body
+    };
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
     let visual_rows = sidebar_visual_rows(&rows, collapsed, &crate::config::load().sidebar);
     visual_rows.len().saturating_sub(usize::from(body.height))
@@ -548,7 +562,7 @@ pub fn agent_sidebar_scroll_max(
         .filter(|row| matches!(row, SidebarRow::Agent { .. }))
         .collect::<Vec<_>>();
     let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
-    let height = sections.agents.height.saturating_sub(2);
+    let height = crate::client::sidebar::agent_body(sections).height;
     sidebar_visual_rows(&agents, false, &crate::config::load().sidebar)
         .len()
         .saturating_sub(usize::from(height))
@@ -565,12 +579,7 @@ pub fn agent_sidebar_scroll_region(
         return false;
     }
     let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
-    let panel = Rect::new(
-        sections.agents.x,
-        sections.agents.y.saturating_add(2),
-        sections.agents.width,
-        sections.agents.height.saturating_sub(2),
-    );
+    let panel = crate::client::sidebar::agent_body(sections);
     contains(panel, x, y)
 }
 
@@ -596,12 +605,7 @@ pub fn agent_sidebar_scroll_thumb_grab_offset(
         .filter(|row| matches!(row, SidebarRow::Agent { .. }))
         .collect::<Vec<_>>();
     let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
-    let body = Rect::new(
-        sections.agents.x,
-        sections.agents.y.saturating_add(2),
-        sections.agents.width,
-        sections.agents.height.saturating_sub(2),
-    );
+    let body = crate::client::sidebar::agent_body(sections);
     let visual_rows = sidebar_visual_rows(&agents, false, &crate::config::load().sidebar);
     let max_scroll = visual_rows.len().saturating_sub(usize::from(body.height));
     if max_scroll == 0 || body.width <= 1 || x != body.right().saturating_sub(1) {
@@ -630,12 +634,7 @@ pub fn agent_sidebar_scroll_offset_from_drag_row(
         .filter(|row| matches!(row, SidebarRow::Agent { .. }))
         .collect::<Vec<_>>();
     let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
-    let body = Rect::new(
-        sections.agents.x,
-        sections.agents.y.saturating_add(2),
-        sections.agents.width,
-        sections.agents.height.saturating_sub(2),
-    );
+    let body = crate::client::sidebar::agent_body(sections);
     let visual_rows = sidebar_visual_rows(&agents, false, &crate::config::load().sidebar).len();
     let max_scroll = visual_rows.saturating_sub(usize::from(body.height));
     let Some((_, thumb_height)) = sidebar_scrollbar_thumb(body, 0, max_scroll, visual_rows) else {
@@ -1617,19 +1616,9 @@ fn render_split_sidebar(
         .filter(|row| matches!(row, SidebarRow::Agent { .. }))
         .collect::<Vec<_>>();
     let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
-    let agent_area = Rect::new(
-        sections.agents.x,
-        sections.agents.y.saturating_add(1),
-        sections.agents.width,
-        sections.agents.height.saturating_sub(1),
-    );
-    let workspace_body = sections.workspaces;
-    let agent_body = Rect::new(
-        agent_area.x,
-        agent_area.y.saturating_add(1),
-        agent_area.width,
-        agent_area.height.saturating_sub(1),
-    );
+    let workspace_body = crate::client::sidebar::workspace_body(sections);
+    let agent_header = crate::client::sidebar::agent_header(sections);
+    let agent_body = crate::client::sidebar::agent_body(sections);
     let workspace_visual = sidebar_visual_rows(&workspace_rows, false, &sidebar_config);
     let agent_visual = sidebar_visual_rows(&agent_rows, false, &sidebar_config);
     let workspace_max = workspace_visual
@@ -1682,7 +1671,35 @@ fn render_split_sidebar(
             ),
         area,
     );
+    frame.render_widget(
+        Paragraph::new(" spaces").style(Style::default().bg(sidebar_bg).fg(overlay0)),
+        Rect::new(
+            sections.workspaces.x,
+            sections.workspaces.y,
+            sections.workspaces.width,
+            u16::from(!sections.workspaces.is_empty()),
+        ),
+    );
     frame.render_widget(Paragraph::new(workspace_lines), workspace_body);
+    let workspace_footer = sections.workspaces.bottom().saturating_sub(1);
+    if !sections.workspaces.is_empty() {
+        let footer = Rect::new(
+            sections.workspaces.x,
+            workspace_footer,
+            sections.workspaces.width,
+            1,
+        );
+        frame.render_widget(
+            Paragraph::new(" new").style(Style::default().fg(overlay0).bg(sidebar_bg)),
+            footer,
+        );
+        frame.render_widget(
+            Paragraph::new("menu")
+                .alignment(Alignment::Right)
+                .style(Style::default().fg(overlay0).bg(sidebar_bg)),
+            footer,
+        );
+    }
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("  Agents", Style::default().add_modifier(Modifier::BOLD)),
@@ -1696,7 +1713,7 @@ fn render_split_sidebar(
             ),
         ]))
         .style(Style::default().bg(sidebar_bg)),
-        agent_area,
+        agent_header,
     );
     frame.render_widget(Paragraph::new(agent_lines), agent_body);
     if workspace_max > 0 && workspace_body.width > 1 && workspace_body.height > 0 {
@@ -2970,7 +2987,7 @@ mod tests {
             })
             .expect("focused agent row exists");
         let sections = crate::client::sidebar::sections(super::sidebar_body(sidebar), 0.5);
-        let focused_y = sections.agents.y.saturating_add(2) + focused_row as u16;
+        let focused_y = sections.agents.y.saturating_add(3) + focused_row as u16;
         assert_eq!(
             buffer.cell((sidebar.x + 8, focused_y)).unwrap().bg,
             ratatui::style::Color::Rgb(30, 30, 46)
@@ -2987,7 +3004,7 @@ mod tests {
         let area = Rect::new(0, 0, 100, 30);
         let sidebar = main_areas(area).sidebar;
         let sections = crate::client::sidebar::sections(super::sidebar_body(sidebar), 0.5);
-        let agent_y = sections.agents.y.saturating_add(2);
+        let agent_y = sections.agents.y.saturating_add(3);
         assert_eq!(
             hit_test_with_sidebar_scroll_and_sort(
                 &snapshot,
