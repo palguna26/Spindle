@@ -18,6 +18,9 @@ structured metadata; the default text output remains backward compatible.
 Plugin pane descriptions are preserved and exported in the pane invocation
 context, matching Herdr's manifest metadata contract.
 
+Numeric manifest popup dimensions are honored for plugin panes; CLI dimensions
+override manifest defaults.
+
 API parity now includes `spindle api snapshot`, which returns the live session
 snapshot as pretty JSON; Bash, Fish, Zsh, PowerShell, and Elvish completions
 include the command. Windows server startup uses the Herdr-compatible direct

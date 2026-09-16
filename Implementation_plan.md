@@ -63,6 +63,9 @@ existing tab-separated text form stable.
 Plugin pane manifests now also retain their optional description and pass it
 with the entrypoint context when a pane is opened.
 
+Numeric manifest `width` and `height` values now set popup dimensions, with
+explicit CLI values taking precedence.
+
 ## 0. Establish the parity matrix
 
 - [ ] Compare Herdr's README, quick-start, keyboard guide, CLI guide, and
