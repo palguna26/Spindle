@@ -127,96 +127,116 @@ impl ThemePalette {
         palette
     }
 
-    pub(super) fn pane_status_color(config: &crate::config::Config, status: &PaneStatus) -> Color {
+    fn semantic_status_colors(config: &crate::config::Config) -> (Color, Color, Color, Color) {
         let name = config
             .theme_name
             .as_deref()
             .unwrap_or("catppuccin")
             .to_ascii_lowercase();
-        let (yellow, teal, red) = match name.as_str() {
+        match name.as_str() {
             "catppuccin" => (
+                Color::Rgb(166, 227, 161),
                 Color::Rgb(249, 226, 175),
-                Color::Rgb(148, 226, 213),
                 Color::Rgb(243, 139, 168),
+                Color::Rgb(148, 226, 213),
             ),
             "catppuccin-latte" => (
+                Color::Rgb(64, 160, 43),
                 Color::Rgb(223, 142, 29),
-                Color::Rgb(23, 146, 153),
                 Color::Rgb(210, 15, 57),
+                Color::Rgb(23, 146, 153),
             ),
-            "terminal" => (Color::Yellow, Color::Cyan, Color::LightRed),
+            "terminal" => (Color::Green, Color::Yellow, Color::LightRed, Color::Cyan),
             "tokyo-night" | "tokyonight" => (
+                Color::Rgb(158, 206, 106),
                 Color::Rgb(224, 175, 104),
-                Color::Rgb(125, 207, 255),
                 Color::Rgb(247, 118, 142),
+                Color::Rgb(125, 207, 255),
             ),
             "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => (
+                Color::Rgb(88, 117, 57),
                 Color::Rgb(140, 108, 62),
-                Color::Rgb(17, 140, 116),
                 Color::Rgb(245, 42, 101),
+                Color::Rgb(17, 140, 116),
             ),
             "dracula" => (
+                Color::Rgb(80, 250, 123),
                 Color::Rgb(241, 250, 140),
-                Color::Rgb(139, 233, 253),
                 Color::Rgb(255, 85, 85),
+                Color::Rgb(139, 233, 253),
             ),
             "nord" => (
+                Color::Rgb(163, 190, 140),
                 Color::Rgb(235, 203, 139),
-                Color::Rgb(143, 188, 187),
                 Color::Rgb(191, 97, 106),
+                Color::Rgb(143, 188, 187),
             ),
             "gruvbox" => (
+                Color::Rgb(184, 187, 38),
                 Color::Rgb(250, 189, 47),
-                Color::Rgb(142, 192, 124),
                 Color::Rgb(251, 73, 52),
+                Color::Rgb(142, 192, 124),
             ),
             "gruvbox-light" => (
+                Color::Rgb(121, 116, 14),
                 Color::Rgb(181, 118, 20),
-                Color::Rgb(66, 123, 88),
                 Color::Rgb(157, 0, 6),
+                Color::Rgb(66, 123, 88),
             ),
             "one-dark" => (
+                Color::Rgb(152, 195, 121),
                 Color::Rgb(229, 192, 123),
-                Color::Rgb(86, 182, 194),
                 Color::Rgb(224, 108, 117),
+                Color::Rgb(86, 182, 194),
             ),
             "one-light" => (
+                Color::Rgb(80, 161, 79),
                 Color::Rgb(193, 132, 1),
-                Color::Rgb(1, 132, 188),
                 Color::Rgb(228, 86, 73),
+                Color::Rgb(1, 132, 188),
             ),
             "solarized" | "solarized-light" => (
+                Color::Rgb(133, 153, 0),
                 Color::Rgb(181, 137, 0),
-                Color::Rgb(42, 161, 152),
                 Color::Rgb(220, 50, 47),
+                Color::Rgb(42, 161, 152),
             ),
             "kanagawa" => (
+                Color::Rgb(118, 148, 106),
                 Color::Rgb(192, 163, 110),
-                Color::Rgb(127, 180, 202),
                 Color::Rgb(195, 64, 67),
+                Color::Rgb(127, 180, 202),
             ),
             "kanagawa-lotus" => (
+                Color::Rgb(111, 137, 78),
                 Color::Rgb(119, 113, 63),
-                Color::Rgb(78, 140, 162),
                 Color::Rgb(200, 64, 83),
+                Color::Rgb(78, 140, 162),
             ),
             "rose-pine" => (
+                Color::Rgb(49, 116, 143),
                 Color::Rgb(246, 193, 119),
-                Color::Rgb(156, 207, 216),
                 Color::Rgb(235, 111, 146),
+                Color::Rgb(156, 207, 216),
             ),
             "rose-pine-dawn" => (
+                Color::Rgb(40, 105, 131),
                 Color::Rgb(234, 157, 52),
-                Color::Rgb(86, 148, 159),
                 Color::Rgb(180, 99, 122),
+                Color::Rgb(86, 148, 159),
             ),
             "vesper" => (
+                Color::Rgb(153, 255, 228),
                 Color::Rgb(255, 199, 153),
-                Color::Rgb(102, 221, 204),
                 Color::Rgb(255, 128, 128),
+                Color::Rgb(102, 221, 204),
             ),
-            _ => (Color::Yellow, Color::Cyan, Color::Red),
-        };
+            _ => (Color::Green, Color::Yellow, Color::Red, Color::Cyan),
+        }
+    }
+
+    pub(super) fn pane_status_color(config: &crate::config::Config, status: &PaneStatus) -> Color {
+        let (_, yellow, red, teal) = Self::semantic_status_colors(config);
         match status {
             PaneStatus::Running => yellow,
             PaneStatus::Completed { .. } => teal,
@@ -228,21 +248,13 @@ impl ThemePalette {
         config: &crate::config::Config,
         state: crate::detect::AgentDisplayState,
     ) -> Color {
+        let (green, yellow, red, teal) = Self::semantic_status_colors(config);
         match state {
             crate::detect::AgentDisplayState::Unknown => Self::overlay0(config),
-            crate::detect::AgentDisplayState::Idle => Color::Green,
-            crate::detect::AgentDisplayState::Working => {
-                Self::pane_status_color(config, &PaneStatus::Running)
-            }
-            crate::detect::AgentDisplayState::Blocked => Self::pane_status_color(
-                config,
-                &PaneStatus::Halted {
-                    reason: String::new(),
-                },
-            ),
-            crate::detect::AgentDisplayState::Done => {
-                Self::pane_status_color(config, &PaneStatus::Completed { exit_code: 0 })
-            }
+            crate::detect::AgentDisplayState::Idle => green,
+            crate::detect::AgentDisplayState::Working => yellow,
+            crate::detect::AgentDisplayState::Blocked => red,
+            crate::detect::AgentDisplayState::Done => teal,
         }
     }
 
@@ -1804,6 +1816,21 @@ mod tests {
                 &PaneStatus::Completed { exit_code: 0 }
             ),
             Color::Rgb(139, 233, 253)
+        );
+    }
+
+    #[test]
+    fn agent_idle_uses_herdr_theme_green() {
+        let config = crate::config::Config {
+            theme_name: Some("dracula".into()),
+            ..crate::config::Config::default()
+        };
+        assert_eq!(
+            super::ThemePalette::agent_status_color(
+                &config,
+                crate::detect::AgentDisplayState::Idle
+            ),
+            Color::Rgb(80, 250, 123)
         );
     }
 
