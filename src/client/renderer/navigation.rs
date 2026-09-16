@@ -200,10 +200,14 @@ pub fn workspace_drop_target(
         .iter()
         .find(|space| space.space_id == *space_id)?
         .workspaces;
-    let target_position = workspaces
+    let roots: Vec<_> = workspaces
+        .iter()
+        .filter(|workspace| !workspace.is_linked_worktree)
+        .collect();
+    let target_position = roots
         .iter()
         .position(|workspace| workspace.workspace_id == *workspace_id)?;
-    let source_position = workspaces
+    let source_position = roots
         .iter()
         .position(|workspace| workspace.workspace_id == source_workspace_id)?;
     let insert_index = if source_position < target_position {

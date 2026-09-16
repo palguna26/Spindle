@@ -989,20 +989,35 @@ impl Session {
             return Err(format!("workspace '{workspace_id}' does not exist"));
         };
 
-        let workspaces = &mut self.snapshot.spaces[space_index].workspaces;
-        if insert_index > workspaces.len() {
+        let workspaces = &self.snapshot.spaces[space_index].workspaces;
+        let source = &workspaces[workspace_index];
+        if source.is_linked_worktree {
             return Err(format!(
-                "insert index {insert_index} is out of bounds for {} workspaces",
-                workspaces.len()
+                "linked worktree workspace '{workspace_id}' moves with its primary workspace"
             ));
         }
-        let target_index = if workspace_index < insert_index {
+        let group = source.worktree_group.as_deref();
+        let roots: Vec<_> = workspaces
+            .iter()
+            .filter(|workspace| !workspace.is_linked_worktree)
+            .collect();
+        let source_root_index = roots
+            .iter()
+            .position(|workspace| workspace.workspace_id == workspace_id)
+            .expect("non-linked workspace is a root");
+        if insert_index > roots.len() {
+            return Err(format!(
+                "insert index {insert_index} is out of bounds for {} root workspaces",
+                roots.len()
+            ));
+        }
+        let target_index = if source_root_index < insert_index {
             insert_index.saturating_sub(1)
         } else {
             insert_index
         }
-        .min(workspaces.len().saturating_sub(1));
-        if workspace_index == target_index {
+        .min(roots.len().saturating_sub(1));
+        if source_root_index == target_index {
             return Ok(serde_json::json!({
                 "workspace_id": workspace_id,
                 "insert_index": insert_index,
@@ -1010,14 +1025,58 @@ impl Session {
             }));
         }
 
-        let moved = workspaces.remove(workspace_index);
-        workspaces.insert(target_index, moved);
+        let moved_ids: Vec<_> = workspaces
+            .iter()
+            .filter(|workspace| {
+                workspace.workspace_id == workspace_id
+                    || group.is_some_and(|group| workspace.worktree_group.as_deref() == Some(group))
+            })
+            .map(|workspace| workspace.workspace_id.clone())
+            .collect();
+        let mut blocks: Vec<Vec<_>> = Vec::new();
+        for workspace in workspaces {
+            if workspace.is_linked_worktree {
+                continue;
+            }
+            let block_ids: Vec<_> = workspaces
+                .iter()
+                .filter(|candidate| {
+                    candidate.workspace_id == workspace.workspace_id
+                        || workspace
+                            .worktree_group
+                            .as_deref()
+                            .is_some_and(|group| candidate.worktree_group.as_deref() == Some(group))
+                })
+                .map(|candidate| candidate.workspace_id.clone())
+                .collect();
+            if !blocks.iter().any(|block| block == &block_ids) {
+                blocks.push(block_ids);
+            }
+        }
+        let moved_block_index = blocks
+            .iter()
+            .position(|block| block.iter().any(|id| id == workspace_id))
+            .expect("workspace block exists");
+        let moved_block = blocks.remove(moved_block_index);
+        blocks.insert(target_index, moved_block);
+        let ordered_ids: Vec<_> = blocks.into_iter().flatten().collect();
+        let old_workspaces = std::mem::take(&mut self.snapshot.spaces[space_index].workspaces);
+        self.snapshot.spaces[space_index].workspaces = ordered_ids
+            .into_iter()
+            .filter_map(|id| {
+                old_workspaces
+                    .iter()
+                    .find(|workspace| workspace.workspace_id == id)
+                    .cloned()
+            })
+            .collect();
         self.record_event(
             "workspace_moved",
             serde_json::json!({
                 "workspace_id": workspace_id,
                 "space_id": self.snapshot.spaces[space_index].space_id,
                 "insert_index": insert_index,
+                "workspace_ids": moved_ids,
             }),
         );
         Ok(serde_json::json!({
@@ -4760,5 +4819,34 @@ mod tests {
                 && event.payload["workspace_id"] == first
                 && event.payload["space_id"] == space_id
         }));
+    }
+
+    #[test]
+    fn moving_a_worktree_workspace_keeps_its_group_together() {
+        let mut session = Session::default();
+        let primary = session.snapshot.spaces[0].workspaces[0]
+            .workspace_id
+            .clone();
+        let linked = session.create_workspace("Linked".into()).unwrap()["workspace_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let other = session.create_workspace("Other".into()).unwrap()["workspace_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let workspaces = &mut session.snapshot.spaces[0].workspaces;
+        workspaces[0].worktree_group = Some("group-1".into());
+        workspaces[1].worktree_group = Some("group-1".into());
+        workspaces[1].is_linked_worktree = true;
+
+        session.move_workspace_anywhere(&primary, 2).unwrap();
+        let ids: Vec<_> = session.snapshot.spaces[0]
+            .workspaces
+            .iter()
+            .map(|workspace| workspace.workspace_id.as_str())
+            .collect();
+        assert_eq!(ids, vec![other.as_str(), primary.as_str(), linked.as_str()]);
+        assert!(session.move_workspace_anywhere(&linked, 0).is_err());
     }
 }

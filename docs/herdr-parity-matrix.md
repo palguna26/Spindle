@@ -44,7 +44,8 @@ changing focus.
 changing the focused tab, and emits the Herdr-compatible `tab.moved` plugin
 lifecycle event.
 `spindle workspace move ID INSERT_INDEX` reorders a workspace within its space
-without changing the active workspace, and emits `workspace.moved` for plugins.
+without changing the active workspace, preserves linked-worktree groups, and
+emits `workspace.moved` for plugins; linked children cannot be moved alone.
 Plugin lifecycle parity now also covers the Herdr `tab.closed` and
 `workspace.focused`, `workspace.created`, `workspace.renamed`, `workspace.moved`, and
 `workspace.closed`, plus `pane.moved`, `layout.updated`, `pane.agent_detected`,
