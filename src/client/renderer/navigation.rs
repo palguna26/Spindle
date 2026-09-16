@@ -820,6 +820,7 @@ fn render_agent_token_row(
     ))
 }
 
+#[derive(Clone, Copy)]
 enum SidebarRow<'a> {
     Space {
         space_id: &'a str,
@@ -1086,6 +1087,19 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
     collapsed_groups: &HashSet<String>,
     sidebar_section_split: f32,
 ) {
+    if !collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
+        render_split_sidebar(
+            frame,
+            snapshot,
+            area,
+            scroll,
+            agent_priority_sort,
+            navigation_workspace,
+            collapsed_groups,
+            sidebar_section_split,
+        );
+        return;
+    }
     let config = crate::config::load();
     let accent = super::ThemePalette::from_config(&config).accent;
     let text = super::ThemePalette::text(&config);
@@ -1309,6 +1323,280 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
             surface_dim,
         );
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_split_sidebar(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    workspace_scroll: usize,
+    agent_priority_sort: bool,
+    navigation_workspace: Option<(&str, &str)>,
+    collapsed_groups: &HashSet<String>,
+    split_ratio: f32,
+) {
+    let config = crate::config::load();
+    let accent = super::ThemePalette::from_config(&config).accent;
+    let text = super::ThemePalette::text(&config);
+    let subtext0 = super::ThemePalette::subtext0(&config);
+    let overlay0 = super::ThemePalette::overlay0(&config);
+    let sidebar_bg = super::ThemePalette::sidebar_bg(&config);
+    let active_row_bg = super::ThemePalette::active_row_bg(&config);
+    let surface_dim = super::ThemePalette::surface_dim(&config);
+    let sidebar_config = config.sidebar.clone();
+    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
+    let workspace_rows = rows
+        .iter()
+        .copied()
+        .filter(|row| matches!(row, SidebarRow::Space { .. } | SidebarRow::Workspace { .. }))
+        .collect::<Vec<_>>();
+    let agent_rows = rows
+        .iter()
+        .copied()
+        .filter(|row| matches!(row, SidebarRow::Agent { .. }))
+        .collect::<Vec<_>>();
+    let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
+    let agent_area = Rect::new(
+        sections.agents.x,
+        sections.agents.y.saturating_add(1),
+        sections.agents.width,
+        sections.agents.height.saturating_sub(1),
+    );
+    let workspace_body = sections.workspaces;
+    let agent_body = Rect::new(
+        agent_area.x,
+        agent_area.y.saturating_add(1),
+        agent_area.width,
+        agent_area.height.saturating_sub(1),
+    );
+    let workspace_visual = sidebar_visual_rows(&workspace_rows, false, &sidebar_config);
+    let agent_visual = sidebar_visual_rows(&agent_rows, false, &sidebar_config);
+    let workspace_max = workspace_visual
+        .len()
+        .saturating_sub(usize::from(workspace_body.height));
+    let workspace_start = workspace_scroll.min(workspace_max);
+    let workspace_lines = split_sidebar_lines(
+        &workspace_rows,
+        &workspace_visual,
+        workspace_start,
+        workspace_body.height,
+        snapshot,
+        navigation_workspace,
+        &config,
+        &sidebar_config,
+        text,
+        subtext0,
+        overlay0,
+        active_row_bg,
+    );
+    let agent_lines = split_sidebar_lines(
+        &agent_rows,
+        &agent_visual,
+        0,
+        agent_body.height,
+        snapshot,
+        None,
+        &config,
+        &sidebar_config,
+        text,
+        subtext0,
+        overlay0,
+        active_row_bg,
+    );
+    frame.render_widget(
+        Paragraph::new("")
+            .style(Style::default().bg(sidebar_bg))
+            .block(
+                ratatui::widgets::Block::default()
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .title(sidebar_title(
+                        area,
+                        agent_priority_sort,
+                        navigation_workspace.is_some(),
+                    )),
+            ),
+        area,
+    );
+    frame.render_widget(Paragraph::new(workspace_lines), workspace_body);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("  Agents", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                if agent_priority_sort {
+                    " · priority"
+                } else {
+                    " · grouped"
+                },
+                Style::default().fg(overlay0),
+            ),
+        ]))
+        .style(Style::default().bg(sidebar_bg)),
+        agent_area,
+    );
+    frame.render_widget(Paragraph::new(agent_lines), agent_body);
+    if !sections.divider.is_empty() {
+        frame.render_widget(
+            Paragraph::new("─".repeat(usize::from(sections.divider.width)))
+                .style(Style::default().fg(surface_dim).bg(sidebar_bg)),
+            sections.divider,
+        );
+    }
+    if !area.is_empty() {
+        let y = area.bottom().saturating_sub(1);
+        let x = area.right().saturating_sub(2);
+        if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
+            cell.set_symbol("<");
+            cell.set_fg(accent);
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn split_sidebar_lines(
+    rows: &[SidebarRow<'_>],
+    visual_rows: &[(Option<usize>, usize)],
+    start: usize,
+    height: u16,
+    snapshot: &SessionSnapshot,
+    navigation_workspace: Option<(&str, &str)>,
+    config: &crate::config::Config,
+    sidebar_config: &crate::config::SidebarConfig,
+    text: Color,
+    subtext0: Color,
+    overlay0: Color,
+    active_row_bg: Color,
+) -> Vec<Line<'static>> {
+    visual_rows
+        .iter()
+        .skip(start)
+        .take(usize::from(height))
+        .map(|(row_index, line_index)| {
+            let Some(row_index) = row_index else {
+                return Line::default();
+            };
+            match rows[*row_index] {
+                SidebarRow::Space { space_id, name } => {
+                    let active = space_id == snapshot.active_space_id;
+                    let marker = if active { "● " } else { "○ " };
+                    Line::from(vec![
+                        Span::styled(
+                            marker,
+                            Style::default().fg(if active {
+                                super::ThemePalette::from_config(config).accent
+                            } else {
+                                overlay0
+                            }),
+                        ),
+                        Span::styled(
+                            name.to_owned(),
+                            Style::default().add_modifier(Modifier::BOLD),
+                        ),
+                    ])
+                }
+                SidebarRow::Workspace {
+                    space_id,
+                    workspace_id,
+                    name,
+                    branch,
+                    tokens,
+                    agent_state,
+                    is_linked_worktree,
+                    indented,
+                    last_child,
+                } => {
+                    let active = snapshot
+                        .spaces
+                        .iter()
+                        .find(|space| space.space_id == space_id)
+                        .and_then(|space| space.active_workspace_id.as_deref())
+                        == Some(workspace_id);
+                    let previewed = navigation_workspace.is_some_and(|(space, workspace)| {
+                        space == space_id && workspace == workspace_id
+                    });
+                    let indent = if indented {
+                        if last_child {
+                            "  └─ "
+                        } else {
+                            "  ├─ "
+                        }
+                    } else {
+                        "  "
+                    };
+                    let display_name = if is_linked_worktree {
+                        format!(
+                            "↳ {}",
+                            branch
+                                .and_then(|value| value.strip_prefix("worktree/"))
+                                .unwrap_or(name)
+                        )
+                    } else {
+                        name.to_owned()
+                    };
+                    let row = sidebar_config
+                        .spaces
+                        .rows
+                        .get(*line_index)
+                        .cloned()
+                        .unwrap_or_default();
+                    let line = render_space_token_row(
+                        &row,
+                        &display_name,
+                        branch.filter(|_| !is_linked_worktree),
+                        agent_state,
+                        tokens,
+                        active,
+                        indent,
+                        text,
+                        subtext0,
+                        overlay0,
+                        config,
+                    );
+                    if previewed {
+                        line.style(Style::default().bg(active_row_bg))
+                    } else {
+                        line
+                    }
+                }
+                SidebarRow::Agent {
+                    pane,
+                    tab_name,
+                    workspace_name,
+                    ..
+                } => {
+                    let focused = snapshot.focused_pane_id.as_deref() == Some(&pane.pane_id);
+                    let row = sidebar_config
+                        .agents
+                        .rows_for_agent(pane.agent)
+                        .get(*line_index)
+                        .cloned()
+                        .unwrap_or_default();
+                    let line = append_summary(
+                        render_agent_token_row(
+                            &row,
+                            pane,
+                            tab_name,
+                            workspace_name,
+                            focused,
+                            active_row_bg,
+                            text,
+                            subtext0,
+                            overlay0,
+                            config,
+                        ),
+                        &pane.tokens,
+                        overlay0,
+                    );
+                    if focused {
+                        line.style(Style::default().bg(active_row_bg))
+                    } else {
+                        line
+                    }
+                }
+                SidebarRow::AgentHeader => Line::default(),
+            }
+        })
+        .collect()
 }
 
 fn visible_metadata_tokens(
@@ -2361,19 +2649,25 @@ mod tests {
             .unwrap();
         let buffer = terminal.backend().buffer();
         let rows = super::sidebar_rows_with_collapsed(&snapshot, false, &HashSet::new());
-        let visual = super::sidebar_visual_rows(&rows, false, &crate::config::load().sidebar);
+        let agent_rows = rows
+            .iter()
+            .copied()
+            .filter(|row| matches!(row, super::SidebarRow::Agent { .. }))
+            .collect::<Vec<_>>();
+        let visual = super::sidebar_visual_rows(&agent_rows, false, &crate::config::load().sidebar);
         let focused_row = visual
             .iter()
             .enumerate()
             .find_map(|(index, (row, _))| {
                 matches!(
-                    row.and_then(|row| rows.get(row)),
+                    row.and_then(|row| agent_rows.get(row)),
                     Some(super::SidebarRow::Agent { pane, .. }) if pane.pane_id == "pane-2"
                 )
                 .then_some(index)
             })
             .expect("focused agent row exists");
-        let focused_y = super::sidebar_body(sidebar).y + focused_row as u16;
+        let sections = crate::client::sidebar::sections(super::sidebar_body(sidebar), 0.5);
+        let focused_y = sections.agents.y.saturating_add(2) + focused_row as u16;
         assert_eq!(
             buffer.cell((sidebar.x + 8, focused_y)).unwrap().bg,
             ratatui::style::Color::Rgb(30, 30, 46)
