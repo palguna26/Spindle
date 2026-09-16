@@ -39,6 +39,14 @@ struct FileConfig {
     notifications: NotificationsConfig,
     #[serde(default)]
     ui: UiConfig,
+    #[serde(default)]
+    terminal: TerminalConfig,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct TerminalConfig {
+    default_shell: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -342,6 +350,7 @@ pub struct Config {
     pub(crate) hide_tab_bar_when_single_tab: bool,
     pub(crate) right_click_passthrough_modifier: Option<KeyModifiers>,
     pub(crate) redraw_on_focus_gained: bool,
+    pub(crate) default_shell: Option<String>,
 }
 
 impl Default for Config {
@@ -394,6 +403,7 @@ impl Default for Config {
             hide_tab_bar_when_single_tab: false,
             right_click_passthrough_modifier: None,
             redraw_on_focus_gained: true,
+            default_shell: None,
         }
     }
 }
@@ -493,6 +503,10 @@ pub fn load_from(path: &std::path::Path) -> Config {
             &file.ui.right_click_passthrough_modifier,
         ),
         redraw_on_focus_gained: file.ui.redraw_on_focus_gained,
+        default_shell: file
+            .terminal
+            .default_shell
+            .filter(|shell| !shell.trim().is_empty()),
     }
 }
 
@@ -615,6 +629,9 @@ enabled = true
 delivery = "herdr"
 delay_seconds = 1
 sound = true
+
+[terminal]
+# default_shell = "powershell.exe"
 
 [ui]
 sidebar_width = 26
@@ -745,6 +762,17 @@ mod tests {
         assert_eq!(config.prefix.as_deref(), Some("ctrl+a"));
         assert_eq!(config.bindings["new_tab"], vec!["prefix+t"]);
         assert_eq!(config.bindings["next_tab"].len(), 2);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_herdr_style_terminal_default_shell() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-terminal-config-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[terminal]\ndefault_shell = \"pwsh.exe\"\n").unwrap();
+        assert_eq!(load_from(&path).default_shell.as_deref(), Some("pwsh.exe"));
         std::fs::remove_file(path).unwrap();
     }
 

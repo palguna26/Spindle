@@ -3877,13 +3877,38 @@ fn pane_request(terminal_size: (u16, u16)) -> serde_json::Value {
         .map(|path| path.to_string_lossy().into_owned())
         .unwrap_or_else(|_| ".".into());
     let (cols, rows) = pane_size(terminal_size);
+    let (command, args) = default_shell();
     json!({
-        "command": "powershell.exe",
-        "args": ["-NoLogo", "-NoProfile"],
+        "command": command,
+        "args": args,
         "cwd": cwd,
         "cols": cols,
         "rows": rows
     })
+}
+
+fn default_shell() -> (String, Vec<String>) {
+    let configured = crate::config::load().default_shell;
+    let command = configured
+        .or_else(|| std::env::var("SHELL").ok())
+        .filter(|shell| !shell.trim().is_empty())
+        .unwrap_or_else(|| {
+            if cfg!(windows) {
+                "powershell.exe".into()
+            } else {
+                "sh".into()
+            }
+        });
+    let args = if command
+        .rsplit(['/', '\\'])
+        .next()
+        .is_some_and(|name| name.eq_ignore_ascii_case("powershell.exe"))
+    {
+        vec!["-NoLogo".into(), "-NoProfile".into()]
+    } else {
+        Vec::new()
+    };
+    (command, args)
 }
 
 fn pane_request_for_snapshot(
