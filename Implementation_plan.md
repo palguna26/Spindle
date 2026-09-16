@@ -429,6 +429,9 @@ approved design changes it.
   non-interactive `Activity` tab behavior.
   `[ui] prompt_new_workspace_name = true` now enables Herdr-style naming
   prompts across workspace creation entry points; it defaults to false.
+  `[ui] copy_on_select` now matches Herdr's mouse-selection behavior and
+  defaults to true; disabling it leaves the selection visible until copied
+  explicitly.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
