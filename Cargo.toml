@@ -13,6 +13,7 @@ toml = "0.8"
 portable-pty = "0.9"
 ratatui = { version = "0.30.2", default-features = false, features = ["crossterm_0_28", "layout-cache"] }
 crossterm = "0.28"
+jsonc-parser = { version = "0.33.1", default-features = false, features = ["cst", "serde_json"] }
 regex = "1"
 vt100 = "0.16.2"
 unicode-width = "0.2"

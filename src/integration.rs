@@ -1,6 +1,8 @@
 use std::env;
 use std::path::PathBuf;
 
+use jsonc_parser::cst::{CstInputValue, CstRootNode};
+use jsonc_parser::ParseOptions;
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -8,6 +10,9 @@ const CODEX_HOOK_ASSET: &str = include_str!("integration/assets/codex-agent-stat
 const CODEX_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const OPENCODE_PLUGIN_ASSET: &str = include_str!("integration/assets/opencode-agent-state.js");
 const OPENCODE_PLUGIN_NAME: &str = "spindle-agent-state.js";
+const OPENCODE_TUI_ASSET: &str = include_str!("integration/assets/opencode-tui-session.js");
+const OPENCODE_TUI_NAME: &str = "spindle-tui-session.js";
+const OPENCODE_TUI_SPEC: &str = "./spindle-tui-session.js";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Target {
@@ -196,20 +201,161 @@ pub(crate) fn install_opencode() -> std::io::Result<Vec<String>> {
     std::fs::create_dir_all(&plugins)?;
     let plugin_path = plugins.join(OPENCODE_PLUGIN_NAME);
     std::fs::write(&plugin_path, OPENCODE_PLUGIN_ASSET)?;
-    Ok(vec![format!(
-        "installed opencode integration plugin to {}",
-        plugin_path.display()
-    )])
+    let tui_path = dir.join(OPENCODE_TUI_NAME);
+    std::fs::write(&tui_path, OPENCODE_TUI_ASSET)?;
+    let tui_config = add_tui_plugin(&dir, OPENCODE_TUI_SPEC)?;
+    Ok(vec![
+        format!(
+            "installed opencode integration plugin to {}",
+            plugin_path.display()
+        ),
+        format!("installed opencode TUI plugin to {}", tui_path.display()),
+        format!("ensured opencode TUI config at {}", tui_config.display()),
+    ])
 }
 
 pub(crate) fn uninstall_opencode() -> std::io::Result<Vec<String>> {
-    let plugin_path = opencode_dir().join("plugins").join(OPENCODE_PLUGIN_NAME);
-    let removed = remove_file_if_exists(&plugin_path)?;
-    Ok(vec![format!(
-        "{} opencode integration plugin {}",
-        if removed { "removed" } else { "did not find" },
-        plugin_path.display()
-    )])
+    let dir = opencode_dir();
+    let plugin_path = dir.join("plugins").join(OPENCODE_PLUGIN_NAME);
+    let tui_path = dir.join(OPENCODE_TUI_NAME);
+    let removed_plugin = remove_file_if_exists(&plugin_path)?;
+    let removed_tui = remove_file_if_exists(&tui_path)?;
+    let removed_config = remove_tui_plugin(&dir, OPENCODE_TUI_SPEC)?;
+    Ok(vec![
+        format!(
+            "{} opencode integration plugin {}",
+            if removed_plugin {
+                "removed"
+            } else {
+                "did not find"
+            },
+            plugin_path.display()
+        ),
+        format!(
+            "{} opencode TUI plugin {}",
+            if removed_tui {
+                "removed"
+            } else {
+                "did not find"
+            },
+            tui_path.display()
+        ),
+        format!(
+            "{} opencode TUI config entry",
+            if removed_config {
+                "removed"
+            } else {
+                "did not find"
+            }
+        ),
+    ])
+}
+
+fn add_tui_plugin(dir: &std::path::Path, plugin_spec: &str) -> std::io::Result<PathBuf> {
+    let path = dir.join("tui.jsonc");
+    let content = if path.is_file() {
+        std::fs::read_to_string(&path)?
+    } else {
+        "{}\n".into()
+    };
+    let root = parse_jsonc_root(&content, &path)?;
+    let object = root_object(&root, &path)?;
+    if let Some(property) = object.get("plugin") {
+        let plugins = property
+            .array_value()
+            .ok_or_else(|| std::io::Error::other("OpenCode TUI plugin list must be an array"))?;
+        if !plugins.elements().iter().any(|entry| {
+            entry
+                .to_serde_value()
+                .is_some_and(|value| plugin_entry_matches(&value, plugin_spec))
+        }) {
+            plugins.append(CstInputValue::String(plugin_spec.to_owned()));
+        }
+    } else {
+        object.append(
+            "plugin",
+            CstInputValue::Array(vec![CstInputValue::String(plugin_spec.to_owned())]),
+        );
+    }
+    std::fs::write(&path, root.to_string())?;
+    Ok(path)
+}
+
+fn remove_tui_plugin(dir: &std::path::Path, plugin_spec: &str) -> std::io::Result<bool> {
+    let path = dir.join("tui.jsonc");
+    if !path.is_file() {
+        return Ok(false);
+    }
+    let content = std::fs::read_to_string(&path)?;
+    let root = parse_jsonc_root(&content, &path)?;
+    let object = root_object(&root, &path)?;
+    let Some(property) = object.get("plugin") else {
+        return Ok(false);
+    };
+    let plugins = property
+        .array_value()
+        .ok_or_else(|| std::io::Error::other("OpenCode TUI plugin list must be an array"))?;
+    let mut removed = false;
+    for entry in plugins.elements() {
+        if entry
+            .to_serde_value()
+            .is_some_and(|value| plugin_entry_matches(&value, plugin_spec))
+        {
+            entry.remove();
+            removed = true;
+        }
+    }
+    if removed {
+        if plugins.elements().is_empty() {
+            property.remove();
+        }
+        std::fs::write(&path, root.to_string())?;
+    }
+    Ok(removed)
+}
+
+fn parse_jsonc_root(content: &str, path: &std::path::Path) -> std::io::Result<CstRootNode> {
+    CstRootNode::parse(
+        content,
+        &ParseOptions {
+            allow_comments: true,
+            allow_loose_object_property_names: false,
+            allow_trailing_commas: true,
+            allow_missing_commas: false,
+            allow_single_quoted_strings: false,
+            allow_hexadecimal_numbers: false,
+            allow_unary_plus_numbers: false,
+        },
+    )
+    .map_err(|error| {
+        std::io::Error::other(format!(
+            "failed to parse OpenCode TUI config at {}: {error}",
+            path.display()
+        ))
+    })
+}
+
+fn root_object(
+    root: &CstRootNode,
+    path: &std::path::Path,
+) -> std::io::Result<jsonc_parser::cst::CstObject> {
+    root.value()
+        .and_then(|value| value.as_object())
+        .ok_or_else(|| {
+            std::io::Error::other(format!(
+                "OpenCode TUI config at {} must be a JSON object",
+                path.display()
+            ))
+        })
+}
+
+fn plugin_entry_matches(value: &Value, plugin_spec: &str) -> bool {
+    value.as_str() == Some(plugin_spec)
+        || value
+            .as_array()
+            .and_then(|parts| parts.first())
+            .and_then(Value::as_str)
+            == Some(plugin_spec)
 }
 
 fn codex_dir() -> PathBuf {
@@ -324,7 +470,7 @@ fn remove_file_if_exists(path: &std::path::Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Target, OPENCODE_PLUGIN_NAME};
+    use super::{Target, OPENCODE_PLUGIN_NAME, OPENCODE_TUI_SPEC};
 
     #[test]
     fn targets_match_herdr_names() {
@@ -359,5 +505,43 @@ mod tests {
         assert_eq!(entries[0]["hooks"][0]["command"], "custom-hook");
         assert_eq!(entries[0]["hooks"][1]["command"], command);
         assert!(config["other"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn opencode_tui_registration_preserves_jsonc_and_is_idempotent() {
+        let dir = std::env::temp_dir().join(format!(
+            "spindle-opencode-tui-config-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tui.jsonc");
+        std::fs::write(
+            &path,
+            "{\n  // Keep this comment.\n  \"theme\": \"system\",\n  \"plugin\": [\"custom\",],\n}\n",
+        )
+        .unwrap();
+
+        super::add_tui_plugin(&dir, OPENCODE_TUI_SPEC).unwrap();
+        super::add_tui_plugin(&dir, OPENCODE_TUI_SPEC).unwrap();
+        let installed = std::fs::read_to_string(&path).unwrap();
+        assert!(installed.contains("// Keep this comment."));
+        let root = super::parse_jsonc_root(&installed, &path).unwrap();
+        let value = root.value().unwrap().to_serde_value().unwrap();
+        assert_eq!(
+            value["plugin"],
+            serde_json::json!(["custom", OPENCODE_TUI_SPEC])
+        );
+
+        assert!(super::remove_tui_plugin(&dir, OPENCODE_TUI_SPEC).unwrap());
+        let removed = std::fs::read_to_string(&path).unwrap();
+        assert!(removed.contains("// Keep this comment."));
+        let root = super::parse_jsonc_root(&removed, &path).unwrap();
+        let value = root.value().unwrap().to_serde_value().unwrap();
+        assert_eq!(value["plugin"], serde_json::json!(["custom"]));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
