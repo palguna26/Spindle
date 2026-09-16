@@ -34,7 +34,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy)]
 struct ThemePalette {
@@ -168,6 +168,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
         agent_priority_sort,
         navigation_workspace,
         &HashSet::new(),
+        &HashMap::new(),
     );
 }
 
@@ -182,6 +183,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
     agent_priority_sort: bool,
     navigation_workspace: Option<(&str, &str)>,
     collapsed_groups: &HashSet<String>,
+    scroll_offsets: &HashMap<String, usize>,
 ) {
     let theme = ThemePalette::from_name(crate::config::load().theme_name.as_deref());
     let main = layout::main_areas_for_snapshot(snapshot, frame.area(), sidebar_collapsed);
@@ -252,6 +254,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
                     inner,
                     pane,
                     snapshot.focused_pane_id.as_deref() == Some(&pane_rect.pane_id),
+                    scroll_offsets.get(&pane_rect.pane_id).copied().unwrap_or(0),
                 );
             }
             if show_host_cursor
@@ -337,6 +340,7 @@ fn render_pane_scrollbar(
     inner: Rect,
     pane: &crate::server::session::PaneView,
     focused: bool,
+    offset: usize,
 ) {
     if inner.width == 0 || inner.height == 0 || pane.scrollback_bytes == 0 {
         return;
@@ -355,7 +359,12 @@ fn render_pane_scrollbar(
     let thumb_height = (usize::from(inner.height) * usize::from(inner.height) / total_rows)
         .max(1)
         .min(usize::from(inner.height)) as u16;
-    let thumb_top = track.bottom().saturating_sub(thumb_height);
+    let max_offset = total_rows.saturating_sub(usize::from(inner.height));
+    let scrolled_from_top = max_offset.saturating_sub(offset.min(max_offset));
+    let available = usize::from(track.height.saturating_sub(thumb_height));
+    let thumb_top = track
+        .y
+        .saturating_add(((scrolled_from_top * available) / max_offset.max(1)) as u16);
     for row in track.y..track.bottom() {
         if let Some(cell) = frame.buffer_mut().cell_mut((track.x, row)) {
             cell.set_symbol(if row >= thumb_top { "█" } else { "│" });

@@ -7,7 +7,7 @@ use super::mouse::should_forward_pane_mouse;
 use super::mouse::{
     clear_mouse_capture, pane_mouse_target, should_forward_pane_mouse_with_modifier,
     visible_web_url_at_point, CachedScrollbackView, MouseState, PaneClick, PaneMouseCapture,
-    SplitDrag, TabDrag, WorkspaceDrag,
+    PaneScrollbarDrag, SplitDrag, TabDrag, WorkspaceDrag,
 };
 use super::navigator::{Navigator, Outcome as NavigatorOutcome, Target as NavigatorTarget};
 use super::palette::{move_selection, Command};
@@ -396,6 +396,7 @@ fn event_loop(
                         .as_ref()
                         .map(|(space, workspace)| (space.as_str(), workspace.as_str())),
                     &mouse_state.collapsed_worktree_groups,
+                    &mouse_state.scroll_offsets,
                 );
                 if let Some(insert_index) = mouse_state
                     .tab_drag
@@ -1607,6 +1608,47 @@ fn handle_mouse(
     rename_prompt: &mut Option<RenamePrompt>,
 ) -> Result<(), ClientError> {
     let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
+    if let Some(drag) = mouse_state.pane_scrollbar_drag.as_ref() {
+        match mouse.kind {
+            MouseEventKind::Drag(MouseButton::Left) => {
+                if let Some(pane) = snapshot
+                    .panes
+                    .iter()
+                    .find(|pane| pane.pane_id == drag.pane_id)
+                {
+                    let max_offset = scrollbar_max_offset(pane, drag.track.height);
+                    mouse_state.scroll_offsets.insert(
+                        drag.pane_id.clone(),
+                        scrollbar_offset_from_row(max_offset, drag.track, mouse.row),
+                    );
+                }
+                return Ok(());
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                mouse_state.pane_scrollbar_drag = None;
+                return Ok(());
+            }
+            _ => {}
+        }
+    }
+    if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+        if let Some((pane_id, track)) =
+            pane_scrollbar_at(snapshot, area, mouse, mouse_state.sidebar_collapsed)
+        {
+            let pane = snapshot
+                .panes
+                .iter()
+                .find(|pane| pane.pane_id == pane_id)
+                .expect("scrollbar target pane exists");
+            let max_offset = scrollbar_max_offset(pane, track.height);
+            mouse_state.scroll_offsets.insert(
+                pane_id.clone(),
+                scrollbar_offset_from_row(max_offset, track, mouse.row),
+            );
+            mouse_state.pane_scrollbar_drag = Some(PaneScrollbarDrag { pane_id, track });
+            return Ok(());
+        }
+    }
     if matches!(
         mouse.kind,
         MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
@@ -2291,6 +2333,59 @@ fn adjust_scrollback_offset(current: usize, toward_history: bool, lines: usize) 
     } else {
         current.saturating_sub(lines.max(1))
     }
+}
+
+fn pane_scrollbar_at(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    mouse: MouseEvent,
+    sidebar_collapsed: bool,
+) -> Option<(String, Rect)> {
+    let config = crate::config::load();
+    if !config.pane_scrollbars {
+        return None;
+    }
+    let pane_area = renderer::pane_content_area_for_snapshot(snapshot, area, sidebar_collapsed);
+    let panes = renderer::pane_rectangles(snapshot, pane_area);
+    panes.into_iter().find_map(|pane| {
+        let borders = renderer::pane_borders_for_rect(
+            pane.rect,
+            &renderer::pane_rectangles(snapshot, pane_area),
+            config.pane_borders,
+            config.pane_outer_borders,
+            config.pane_gaps,
+        );
+        let inner = renderer::pane_inner_area(pane.rect, borders, true);
+        let track = Rect::new(inner.right(), inner.y, 1, inner.height);
+        let view = snapshot
+            .panes
+            .iter()
+            .find(|view| view.pane_id == pane.pane_id)?;
+        (track.contains((mouse.column, mouse.row).into())
+            && scrollbar_max_offset(view, track.height) > 0)
+            .then_some((pane.pane_id, track))
+    })
+}
+
+fn scrollbar_max_offset(pane: &crate::server::session::PaneView, viewport_height: u16) -> usize {
+    let total_rows = pane.screen.lines().count().max(1).saturating_add(
+        pane.scrollback
+            .iter()
+            .filter(|byte| **byte == b'\n')
+            .count(),
+    );
+    total_rows.saturating_sub(usize::from(viewport_height))
+}
+
+fn scrollbar_offset_from_row(max_offset: usize, track: Rect, row: u16) -> usize {
+    if max_offset == 0 || track.height <= 1 {
+        return 0;
+    }
+    let position = usize::from(
+        row.clamp(track.y, track.bottom() - 1)
+            .saturating_sub(track.y),
+    );
+    max_offset.saturating_sub(position * max_offset / usize::from(track.height - 1))
 }
 
 fn forward_mouse_to_pane(

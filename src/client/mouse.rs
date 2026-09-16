@@ -34,6 +34,11 @@ pub(super) struct TabDrag {
     pub(super) insert_index: Option<usize>,
 }
 
+pub(super) struct PaneScrollbarDrag {
+    pub(super) pane_id: String,
+    pub(super) track: Rect,
+}
+
 #[derive(Default)]
 pub(super) struct MouseState {
     pub(super) sidebar_collapsed: bool,
@@ -46,6 +51,7 @@ pub(super) struct MouseState {
     pub(super) split_drag: Option<SplitDrag>,
     pub(super) workspace_drag: Option<WorkspaceDrag>,
     pub(super) tab_drag: Option<TabDrag>,
+    pub(super) pane_scrollbar_drag: Option<PaneScrollbarDrag>,
     pub(super) pane_capture: Option<PaneMouseCapture>,
     pub(super) selection: Option<TextSelection>,
     pub(super) last_click: Option<PaneClick>,
