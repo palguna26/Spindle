@@ -8,8 +8,8 @@
   "operations": {
     "ping": {}, "attach": {}, "detach": {}, "get_snapshot": {}, "stream_events": {}, "subscribe_events": {},
     "create_space": {}, "switch_space": {}, "rename_space": {}, "delete_space": {},
-    "create_workspace": {}, "switch_workspace": {}, "focus_workspace": {}, "rename_workspace": {}, "delete_workspace": {},
-    "create_tab": {}, "switch_tab": {}, "rename_tab": {}, "close_tab": {},
+    "create_workspace": {}, "switch_workspace": {}, "focus_workspace": {}, "rename_workspace": {}, "move_workspace": {}, "delete_workspace": {},
+    "create_tab": {}, "switch_tab": {}, "rename_tab": {}, "move_tab": {}, "close_tab": {},
     "create_pane": {
       "payload": {
         "type": "object",

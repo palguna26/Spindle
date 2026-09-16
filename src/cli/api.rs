@@ -80,5 +80,13 @@ mod tests {
             .as_object()
             .unwrap()
             .contains_key("close_overlay"));
+        assert!(schema["operations"]
+            .as_object()
+            .unwrap()
+            .contains_key("move_tab"));
+        assert!(schema["operations"]
+            .as_object()
+            .unwrap()
+            .contains_key("move_workspace"));
     }
 }
