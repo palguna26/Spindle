@@ -44,6 +44,7 @@ pub(super) struct PaneScrollbarDrag {
 pub(super) struct MouseState {
     pub(super) sidebar_collapsed: bool,
     pub(super) agent_priority_sort: bool,
+    pub(super) agent_priority_sort_overridden: bool,
     pub(super) sidebar_section_split: f32,
     pub(super) copy_on_select: bool,
     pub(super) mouse_scroll_lines: usize,

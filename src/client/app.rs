@@ -153,6 +153,18 @@ fn initial_sidebar_section_split(preferences: &super::preferences::ClientPrefere
         .clamp(0.1, 0.9)
 }
 
+fn agent_sort_after_config_reload(
+    config_priority: bool,
+    current_priority: bool,
+    overridden: bool,
+) -> bool {
+    if overridden {
+        current_priority
+    } else {
+        config_priority
+    }
+}
+
 fn should_draw_host_cursor(mode: crate::config::HostCursorMode) -> bool {
     match mode {
         crate::config::HostCursorMode::Auto => {
@@ -188,6 +200,9 @@ fn event_loop(
     let mut mouse_state = MouseState {
         sidebar_collapsed,
         agent_priority_sort,
+        agent_priority_sort_overridden: super::preferences::load(preferences_path)
+            .agent_priority_sort
+            .is_some(),
         sidebar_section_split: initial_sidebar_section_split(&super::preferences::load(
             preferences_path,
         )),
@@ -213,6 +228,11 @@ fn event_loop(
         }
         mouse_state.copy_on_select = config.copy_on_select;
         mouse_state.mouse_scroll_lines = config.mouse_scroll_lines;
+        mouse_state.agent_priority_sort = agent_sort_after_config_reload(
+            config.agent_priority_sort,
+            mouse_state.agent_priority_sort,
+            mouse_state.agent_priority_sort_overridden,
+        );
         keymap = Keymap::from_config(&config);
         if !config.notifications_enabled {
             notifications.clear();
@@ -2366,6 +2386,7 @@ fn handle_mouse(
             store_client_preferences(mouse_state);
         }
         renderer::ClickTarget::ToggleAgentSort => {
+            mouse_state.agent_priority_sort_overridden = true;
             mouse_state.agent_priority_sort = !mouse_state.agent_priority_sort;
             mouse_state.sidebar_scroll = 0;
             mouse_state.agent_sidebar_scroll = 0;
@@ -4450,6 +4471,13 @@ mod tests {
             &Default::default(),
             &config
         ));
+    }
+
+    #[test]
+    fn agent_sort_reload_preserves_manual_client_override() {
+        assert!(super::agent_sort_after_config_reload(true, false, false));
+        assert!(!super::agent_sort_after_config_reload(false, true, false));
+        assert!(super::agent_sort_after_config_reload(false, true, true));
     }
 
     #[test]
