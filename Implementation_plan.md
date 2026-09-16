@@ -464,6 +464,8 @@ approved design changes it.
   `[ui] pane_borders = "auto"|"always"|"off"` now follows Herdr's lone-pane
   and split-pane border policy; `pane_outer_borders` and `pane_gaps` control
   outer frames and shared split edges.
+  `[ui] pane_scrollbars` now reserves a stable one-column gutter, keeps PTY
+  width in sync, and draws a scrollback indicator when history overflows.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
