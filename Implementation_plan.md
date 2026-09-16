@@ -599,7 +599,9 @@ Terminal verification is still pending.
   verifies the unavailable-scan behavior, matching Herdr's best-effort scan
   boundary in `src/pane/agent_detection.rs`.
 - [ ] Test detection fixtures and status transitions; verify Codex and OpenCode
-  side-by-side on Windows.
+  side-by-side on Windows. Codex prompt-scoped blocker regions now match
+  Herdr, with fixtures proving stale scrollback blockers are ignored; live
+  Codex/OpenCode verification remains.
 
 Reference: Herdr `src/pane/agent_detection.rs`, `src/detect/`,
 `src/ui/sidebar.rs`, and `src/client/shell/agent_sidebar.rs`. Spindle currently
