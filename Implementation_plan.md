@@ -537,7 +537,9 @@ labels. The client renders these labels consistently in pane and navigator
 views while preserving terminal titles and semantic lifecycle state. Metadata
 tokens now support per-source sequence ordering, individual clears, bounded
 key storage, and TTL expiry in the pane poll loop. Richer source-scoped
-metadata application rules remain pending.
+metadata application rules remain pending. Workspace metadata tokens now follow
+Herdr's separate workspace report path, with API/CLI reporting, sequence
+ordering, TTL expiry, snapshot exposure, and sidebar rendering.
 
 ## Verification gates
 
