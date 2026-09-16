@@ -443,6 +443,9 @@ approved design changes it.
   true; when disabled, workspace actions close directly like Herdr.
   `[ui] hide_tab_bar_when_single_tab` defaults to false like Herdr; when enabled,
   the desktop tab row is removed for single-tab workspaces.
+  Configured `move_tab_previous`, `move_tab_next`, and directional
+  `resize_pane_*` actions now execute through the existing tab-move and layout
+  resize control operations; like Herdr, all are unset by default.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
