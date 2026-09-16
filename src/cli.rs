@@ -27,6 +27,7 @@ pub(super) fn parse_env_assignment(value: &str) -> io::Result<(String, String)> 
 mod agent;
 mod api;
 mod completion;
+mod notification;
 mod pane;
 mod plugin;
 mod status;
@@ -74,6 +75,9 @@ pub fn run() -> io::Result<()> {
         }
         "plugin" => {
             return plugin::run(&env::args().skip(2).collect::<Vec<_>>());
+        }
+        "notification" => {
+            return notification::run(&env::args().skip(2).collect::<Vec<_>>());
         }
         _ => {}
     }
@@ -243,7 +247,7 @@ fn print_help() {
     println!("Spindle - persistent parallel coding-agent sessions");
     println!();
     println!(
-        "Usage: spindle [start|attach|stop|list|status|doctor|workspace|worktree|tab|pane|agent|help]"
+        "Usage: spindle [start|attach|stop|list|status|doctor|workspace|worktree|tab|pane|agent|notification|help]"
     );
     println!();
     println!("Commands:");
@@ -260,6 +264,7 @@ fn print_help() {
     );
     println!("  api snapshot/schema  inspect the session or control API schema");
     println!("  plugin link/list/unlink/enable/disable/action/pane  manage local plugins");
+    println!("  notification show  show a desktop notification");
     println!("  workspace list/create/close/report-metadata  manage workspaces in the current project session");
     println!("  workspace get <id>  show a workspace by ID");
     println!("  workspace focus <id>  focus a workspace by ID");

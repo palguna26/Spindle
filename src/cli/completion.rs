@@ -42,7 +42,7 @@ const BASH: &str = r#"_spindle() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
   if (( COMP_CWORD == 1 )); then
-    COMPREPLY=( $(compgen -W "start attach stop list status doctor config workspace worktree tab pane agent completion api help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start attach stop list status doctor config workspace worktree tab pane agent notification completion api help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "completion" ]]; then
     COMPREPLY=( $(compgen -W "bash elvish fish powershell zsh" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "status" ]]; then
@@ -79,6 +79,8 @@ const BASH: &str = r#"_spindle() {
     COMPREPLY=( $(compgen -W "snapshot schema help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "agent" ]]; then
     COMPREPLY=( $(compgen -W "list get focus start wait read send-keys prompt rename help" -- "$cur") )
+  elif [[ "$COMP_WORDS[1]" == "notification" ]]; then
+    COMPREPLY=( $(compgen -W "show help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "pane" ]]; then
     COMPREPLY=( $(compgen -W "list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent wait-output split resize" -- "$cur") )
   fi
@@ -86,7 +88,7 @@ const BASH: &str = r#"_spindle() {
 complete -F _spindle spindle
 "#;
 
-const FISH: &str = r#"complete -c spindle -f -n '__fish_use_subcommand' -a 'start attach stop list status doctor config workspace worktree tab pane agent completion api help'
+const FISH: &str = r#"complete -c spindle -f -n '__fish_use_subcommand' -a 'start attach stop list status doctor config workspace worktree tab pane agent notification completion api help'
 complete -c spindle -f -n '__fish_seen_subcommand_from completion' -a 'bash elvish fish powershell zsh'
 complete -c spindle -f -n '__fish_seen_subcommand_from status' -a 'server client --json'
 complete -c spindle -f -n '__fish_seen_subcommand_from workspace' -a 'list create get focus report-metadata move rename close'
@@ -111,11 +113,13 @@ complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subc
 complete -c spindle -f -n '__fish_seen_subcommand_from pane' -a 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent wait-output split resize'
 complete -c spindle -f -n '__fish_seen_subcommand_from api' -a 'snapshot schema help'
 complete -c spindle -f -n '__fish_seen_subcommand_from agent' -a 'list get focus start wait read send-keys prompt rename help'
+complete -c spindle -f -n '__fish_seen_subcommand_from notification' -a 'show help'
+complete -c spindle -f -n '__fish_seen_subcommand_from notification; and __fish_seen_subcommand_from show' -l body -r -l position -r -l sound -r
 "#;
 
 const ZSH: &str = r#"#compdef spindle
 _spindle() {
-  _arguments '1:command:(start attach stop list status doctor config workspace worktree tab pane agent completion api help)' '*::argument:->args'
+  _arguments '1:command:(start attach stop list status doctor config workspace worktree tab pane agent notification completion api help)' '*::argument:->args'
   case $words[2] in
     completion) _arguments '1:shell:(bash elvish fish powershell zsh)' ;;
     status) _arguments '1:scope:(server client)' '2:options:(--json)' ;;
@@ -125,6 +129,7 @@ _spindle() {
     pane) _arguments '1:command:(list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent wait-output split resize)' ;;
     api) _arguments '1:command:(snapshot schema help)' ;;
     agent) _arguments '1:command:(list get focus start wait read send-keys prompt rename help)' ;;
+    notification) _arguments '1:command:(show help)' '2:options:(--body --position --sound)' ;;
   esac
 }
 _spindle "$@"
@@ -133,7 +138,7 @@ _spindle "$@"
 const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spindle -ScriptBlock {
   param($wordToComplete, $commandAst, $cursorPosition)
   $words = $commandAst.ToString().Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
-  $choices = if ($words.Count -le 1) { 'start attach stop list status doctor config workspace worktree tab pane agent completion api help' }
+  $choices = if ($words.Count -le 1) { 'start attach stop list status doctor config workspace worktree tab pane agent notification completion api help' }
     elseif ($words[1] -eq 'completion') { 'bash elvish fish powershell zsh' }
     elseif ($words[1] -eq 'status') { 'server client --json' }
     elseif ($words[1] -eq 'workspace' -and $words[2] -eq 'create') { '--cwd --label --env --focus --no-focus' }
@@ -147,12 +152,13 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq 'pane') { 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent wait-output split resize' }
     elseif ($words[1] -eq 'api') { 'snapshot schema help' }
     elseif ($words[1] -eq 'agent') { 'list get focus start wait read send-keys prompt rename help' }
+    elseif ($words[1] -eq 'notification') { 'show help --body --position --sound' }
   $choices | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
 "#;
 
 const ELVISH: &str = r#"# Add to ~/.elvish/rc.elv:
-edit:completion:argadd spindle (start attach stop list status doctor config workspace worktree tab pane agent completion api help)
+edit:completion:argadd spindle (start attach stop list status doctor config workspace worktree tab pane agent notification completion api help)
 edit:completion:argadd 'spindle status' (server client --json)
 edit:completion:argadd 'spindle api' (snapshot schema help)
 edit:completion:argadd 'spindle workspace' (list create get focus report-metadata move rename close)
@@ -169,6 +175,8 @@ edit:completion:argadd 'spindle tab create' (--label --workspace --cwd --env --f
 edit:completion:argadd 'spindle tab' (list create get focus move rename close)
 edit:completion:argadd 'spindle pane' (list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent wait-output split resize)
 edit:completion:argadd 'spindle agent' (list get focus start wait read send-keys prompt rename help)
+edit:completion:argadd 'spindle notification' (show help)
+edit:completion:argadd 'spindle notification show' (--body --position --sound)
 "#;
 
 #[cfg(test)]
