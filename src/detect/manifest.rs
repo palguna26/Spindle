@@ -64,6 +64,10 @@ enum Matcher {
     HermesClarification,
     HermesCredential,
     HermesConfirmation,
+    KiroToolPermission,
+    KiroSubagentPermission,
+    KiroSpinner,
+    KiroIdle,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -515,6 +519,39 @@ const HERMES_RULES: &[Rule] = &[
     },
 ];
 
+const KIRO_RULES: &[Rule] = &[
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::KiroToolPermission,
+    },
+    Rule {
+        priority: 290,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::KiroSubagentPermission,
+    },
+    Rule {
+        priority: 200,
+        state: AgentState::Idle,
+        region: Region::BottomNonEmpty(5),
+        matcher: Matcher::KiroIdle,
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::Contains(&["kiro is working"]),
+    },
+    Rule {
+        priority: 90,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::KiroSpinner,
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -569,6 +606,10 @@ pub(crate) fn detect_kilo(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_hermes(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, HERMES_RULES)
+}
+
+pub(crate) fn detect_kiro(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, KIRO_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -838,6 +879,51 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                 .iter()
                 .any(|signal| text.contains(signal))
         }
+        Matcher::KiroToolPermission => {
+            text.contains("requires approval")
+                && [
+                    "yes, single permission",
+                    "trust, always allow",
+                    "no (tab to edit)",
+                    "esc to close",
+                ]
+                .iter()
+                .any(|signal| text.contains(signal))
+        }
+        Matcher::KiroSubagentPermission => {
+            text.contains("pending from subagents")
+                && ["tool approval", "tool approvals"]
+                    .iter()
+                    .any(|signal| text.contains(signal))
+                && [
+                    "approve all pending",
+                    "configure individually",
+                    "exit (cancel subagents)",
+                ]
+                .iter()
+                .any(|signal| text.contains(signal))
+        }
+        Matcher::KiroIdle => {
+            text.contains("ask a question or describe a task")
+                && text.contains("/copy to clipboard")
+                && !text.contains("kiro is working")
+                && !text.contains("esc to cancel")
+        }
+        Matcher::KiroSpinner => {
+            text.contains("esc to cancel")
+                && text.lines().any(|line| {
+                    let line = line.trim_start();
+                    let Some(spinner) = line.chars().next() else {
+                        return false;
+                    };
+                    matches!(spinner, '◔' | '◑' | '◕' | '●')
+                        && line[spinner.len_utf8()..]
+                            .trim_start()
+                            .chars()
+                            .next()
+                            .is_some_and(char::is_alphabetic)
+                })
+        }
     }
 }
 
@@ -912,8 +998,8 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 mod tests {
     use super::{
         detect_amp, detect_antigravity, detect_cline, detect_codex, detect_copilot, detect_cursor,
-        detect_devin, detect_droid, detect_gemini, detect_hermes, detect_kilo, detect_opencode,
-        detect_pi, detect_qoder, DetectionInput,
+        detect_devin, detect_droid, detect_gemini, detect_hermes, detect_kilo, detect_kiro,
+        detect_opencode, detect_pi, detect_qoder, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -1025,6 +1111,14 @@ mod tests {
         detect_hermes(DetectionInput {
             screen,
             osc_title: title,
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_kiro_state(screen: &str) -> Option<AgentState> {
+        detect_kiro(DetectionInput {
+            screen,
+            osc_title: "",
             _osc_progress: "",
         })
     }
@@ -1312,5 +1406,30 @@ mod tests {
             detect_hermes_state("ordinary output", "✓ Ready"),
             Some(AgentState::Idle)
         );
+    }
+
+    #[test]
+    fn kiro_manifest_matches_herdr_rules() {
+        assert_eq!(
+            detect_kiro_state("Tool requires approval\nYes, single permission"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_kiro_state("Pending from subagents: tool approval\nExit (cancel subagents)"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_kiro_state("Kiro is working"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_kiro_state("Esc to cancel\n◑ Searching"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_kiro_state("Ask a question or describe a task\n/copy to clipboard"),
+            Some(AgentState::Idle)
+        );
+        assert_eq!(detect_kiro_state("ordinary output"), None);
     }
 }
