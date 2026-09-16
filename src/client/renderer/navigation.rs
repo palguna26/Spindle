@@ -822,6 +822,13 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
     let body = sidebar_body(area);
     let metadata_width = usize::from(body.width);
+    let show_branch = crate::config::load()
+        .sidebar
+        .spaces
+        .rows
+        .iter()
+        .flatten()
+        .any(|token| token == "branch");
     let max_scroll = rows.len().saturating_sub(usize::from(body.height));
     let start = scroll.min(max_scroll);
     let lines = rows
@@ -935,7 +942,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                         Style::default().fg(if active { Color::White } else { Color::Gray })
                     },
                 ));
-                if !*is_linked_worktree {
+                if show_branch && !*is_linked_worktree {
                     if let Some(branch) = branch.filter(|branch| !branch.is_empty()) {
                         spans.push(Span::styled(
                             format!(" · {branch}"),

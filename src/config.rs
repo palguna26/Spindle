@@ -3,6 +3,9 @@ use serde::{de, Deserialize, Deserializer};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+mod sidebar;
+pub(crate) use sidebar::SidebarConfig;
+
 pub(crate) const THEME_NAMES: &[&str] = &[
     "catppuccin",
     "terminal",
@@ -27,6 +30,8 @@ struct FileConfig {
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 struct UiConfig {
+    #[serde(default)]
+    sidebar: SidebarConfig,
     sidebar_width: u16,
     sidebar_min_width: u16,
     sidebar_max_width: u16,
@@ -126,6 +131,7 @@ pub(crate) enum HostCursorMode {
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
+            sidebar: SidebarConfig::default(),
             sidebar_width: 26,
             sidebar_min_width: 18,
             sidebar_max_width: 36,
@@ -242,6 +248,7 @@ pub(crate) struct CustomCommand {
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub(crate) sidebar: SidebarConfig,
     pub prefix: Option<String>,
     pub bindings: BTreeMap<String, Vec<String>>,
     pub(crate) custom_commands: Vec<CustomCommand>,
@@ -276,6 +283,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            sidebar: SidebarConfig::default(),
             prefix: None,
             bindings: BTreeMap::new(),
             custom_commands: Vec::new(),
@@ -334,7 +342,11 @@ pub fn load_from(path: &std::path::Path) -> Config {
     let Ok(file) = toml::from_str::<FileConfig>(&content) else {
         return Config::default();
     };
+    if sidebar::validate(&file.ui.sidebar).is_err() {
+        return Config::default();
+    }
     Config {
+        sidebar: file.ui.sidebar,
         prefix: file.keys.prefix,
         bindings: file
             .keys
@@ -472,6 +484,15 @@ confirm_close = true
 hide_tab_bar_when_single_tab = false
 right_click_passthrough_modifier = ""
 redraw_on_focus_gained = true
+
+# Herdr-style sidebar layouts. Tokens are rendered in the next sidebar layer.
+[ui.sidebar.agents]
+rows = [["state_icon", "machine", "workspace", "tab"], ["agent"]]
+row_gap = 0
+
+[ui.sidebar.spaces]
+rows = [["state_icon", "workspace"], ["branch", "git_status"]]
+row_gap = 0
 "#
 }
 
@@ -640,6 +661,21 @@ mod tests {
         ));
         std::fs::write(&path, "[ui]\nsidebar_start_collapsed = true\n").unwrap();
         assert!(load_from(&path).sidebar_start_collapsed);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_herdr_sidebar_rows() {
+        let path =
+            std::env::temp_dir().join(format!("spindle-sidebar-rows-{}.toml", std::process::id()));
+        std::fs::write(
+            &path,
+            "[ui.sidebar.spaces]\nrows = [[\"state_icon\", \"workspace\"]]\n",
+        )
+        .unwrap();
+        let config = load_from(&path);
+        assert_eq!(config.sidebar.spaces.rows.len(), 1);
+        assert_eq!(config.sidebar.spaces.rows[0][1], "workspace");
         std::fs::remove_file(path).unwrap();
     }
 
