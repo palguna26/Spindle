@@ -1326,6 +1326,7 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
     let (first_tab, widths) = tab_window(tab_area.width, workspace.tabs.len(), active_index);
+    let visible_end = first_tab.saturating_add(widths.len());
     let mut x = tab_area.x;
     for (tab, width) in workspace.tabs.iter().skip(first_tab).zip(widths) {
         let rect = Rect::new(x, area.y, width, area.height);
@@ -1353,6 +1354,24 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
             rect,
         );
         x = x.saturating_add(width);
+    }
+    let marker_style = Style::default()
+        .fg(super::ThemePalette::overlay0(&config))
+        .bg(surface0);
+    if first_tab > 0 {
+        if let Some(cell) = frame.buffer_mut().cell_mut((tab_area.x, area.y)) {
+            cell.set_symbol("…");
+            cell.set_style(marker_style);
+        }
+    }
+    if visible_end < workspace.tabs.len() {
+        if let Some(cell) = frame
+            .buffer_mut()
+            .cell_mut((tab_area.right().saturating_sub(1), area.y))
+        {
+            cell.set_symbol("…");
+            cell.set_style(marker_style);
+        }
     }
     if area.width >= 4 {
         frame.render_widget(
