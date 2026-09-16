@@ -66,6 +66,7 @@ pub fn run(
         startup_error,
         preferences.sidebar_collapsed,
         preferences.agent_priority_sort,
+        preferences.collapsed_worktree_groups,
         &preferences_path,
     );
     restore_terminal(&mut terminal).map_err(ClientError::Io)?;
@@ -95,12 +96,30 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io
     terminal.show_cursor()
 }
 
+fn store_client_preferences(mouse_state: &MouseState) {
+    let mut collapsed_worktree_groups = mouse_state
+        .collapsed_worktree_groups
+        .iter()
+        .cloned()
+        .collect::<Vec<_>>();
+    collapsed_worktree_groups.sort_unstable();
+    let _ = super::preferences::store(
+        &mouse_state.preferences_path,
+        super::preferences::ClientPreferences {
+            sidebar_collapsed: mouse_state.sidebar_collapsed,
+            agent_priority_sort: mouse_state.agent_priority_sort,
+            collapsed_worktree_groups,
+        },
+    );
+}
+
 fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     client: &ControlClient,
     mut startup_error: Option<String>,
     sidebar_collapsed: bool,
     agent_priority_sort: bool,
+    collapsed_worktree_groups: Vec<String>,
     preferences_path: &std::path::Path,
 ) -> Result<(), ClientError> {
     let mut prefix_active = false;
@@ -119,6 +138,7 @@ fn event_loop(
         sidebar_collapsed,
         agent_priority_sort,
         preferences_path: preferences_path.to_path_buf(),
+        collapsed_worktree_groups: collapsed_worktree_groups.into_iter().collect(),
         ..MouseState::default()
     };
     let mut was_connected = true;
@@ -910,13 +930,7 @@ fn event_loop(
             mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
             mouse_state.selection = None;
             mouse_state.last_click = None;
-            let _ = super::preferences::store(
-                &mouse_state.preferences_path,
-                super::preferences::ClientPreferences {
-                    sidebar_collapsed: mouse_state.sidebar_collapsed,
-                    agent_priority_sort: mouse_state.agent_priority_sort,
-                },
-            );
+            store_client_preferences(&mouse_state);
             prefix_active = false;
             continue;
         }
@@ -1877,24 +1891,12 @@ fn handle_mouse(
             mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
             mouse_state.selection = None;
             mouse_state.last_click = None;
-            let _ = super::preferences::store(
-                &mouse_state.preferences_path,
-                super::preferences::ClientPreferences {
-                    sidebar_collapsed: mouse_state.sidebar_collapsed,
-                    agent_priority_sort: mouse_state.agent_priority_sort,
-                },
-            );
+            store_client_preferences(mouse_state);
         }
         renderer::ClickTarget::ToggleAgentSort => {
             mouse_state.agent_priority_sort = !mouse_state.agent_priority_sort;
             mouse_state.sidebar_scroll = 0;
-            let _ = super::preferences::store(
-                &mouse_state.preferences_path,
-                super::preferences::ClientPreferences {
-                    sidebar_collapsed: mouse_state.sidebar_collapsed,
-                    agent_priority_sort: mouse_state.agent_priority_sort,
-                },
-            );
+            store_client_preferences(mouse_state);
         }
         renderer::ClickTarget::SidebarScroll(offset) => {
             mouse_state.sidebar_scroll = offset;
