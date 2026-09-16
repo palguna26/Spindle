@@ -6,6 +6,11 @@ intentionally rejected and ignored, matching Herdr's
 
 Reference: `C:\Users\Palguna\.opensrc\repos\github.com\herdrdev\herdr\master`.
 
+Agent lifecycle state is now isolated in `src/pane/agent_detection.rs`, following
+Herdr's `src/pane/agent_detection.rs`; process grace, idle confirmation, and
+agent-exit confirmation keep the same behavior while the manager stays focused
+on pane I/O.
+
 Pane wait note: `spindle pane wait-output` now supports Herdr's `--regex`
 matcher alongside literal `--match`, `visible`/`recent`/`recent-unwrapped`
 sources, and `--raw`, including mutual-exclusion and invalid-pattern validation.

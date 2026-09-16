@@ -23,6 +23,11 @@ Spindle code, and the Herdr reference checkout.
 - Do not claim UX parity from unit tests alone. Run Spindle beside Herdr on
   Windows and verify the interactions listed below.
 
+Latest structure milestone: agent lifecycle detection is separated into
+`src/pane/agent_detection.rs`, matching Herdr's corresponding module. The
+manager still owns pane I/O and delegates startup grace, idle confirmation,
+and process-exit confirmation to that module.
+
 ## 0. Establish the parity matrix
 
 - [ ] Compare Herdr's README, quick-start, keyboard guide, CLI guide, and
