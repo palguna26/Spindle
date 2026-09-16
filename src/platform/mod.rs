@@ -14,6 +14,13 @@ pub(crate) enum NotificationSound {
     Finished,
 }
 
+pub(crate) fn configure_server_daemon_command(command: &mut std::process::Command) {
+    #[cfg(windows)]
+    windows::configure_server_daemon_command(command);
+    #[cfg(not(windows))]
+    fallback::configure_server_daemon_command(command);
+}
+
 #[cfg(not(windows))]
 pub(crate) fn play_notification_sound(_sound: NotificationSound) -> std::io::Result<bool> {
     use std::io::Write;

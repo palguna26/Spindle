@@ -14,6 +14,12 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use super::NotificationSound;
 
+pub(crate) fn configure_server_daemon_command(command: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    use windows_sys::Win32::System::Threading::{CREATE_BREAKAWAY_FROM_JOB, DETACHED_PROCESS};
+    command.creation_flags(DETACHED_PROCESS | CREATE_BREAKAWAY_FROM_JOB);
+}
+
 pub(crate) fn play_notification_sound(sound: NotificationSound) -> io::Result<bool> {
     let kind = match sound {
         NotificationSound::Attention => MB_ICONEXCLAMATION,
