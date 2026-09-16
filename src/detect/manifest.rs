@@ -59,6 +59,7 @@ enum Matcher {
     AmpTitleSpinner,
     AmpStatusFooter,
     AmpTitleIdle,
+    AntigravityPermission,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -417,6 +418,27 @@ const AMP_RULES: &[Rule] = &[
     },
 ];
 
+const ANTIGRAVITY_RULES: &[Rule] = &[
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::AntigravityPermission,
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::LineRegex(r"^\s*[\u2800-\u28FF]+\s+\p{Alphabetic}+\w*ing\b"),
+    },
+    Rule {
+        priority: 90,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(5),
+        matcher: Matcher::LineRegex(r"(?i)·\s*[1-9][0-9]*\s+task"),
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -459,6 +481,10 @@ pub(crate) fn detect_cursor(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_amp(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, AMP_RULES)
+}
+
+pub(crate) fn detect_antigravity(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, ANTIGRAVITY_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -663,6 +689,11 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                 && !Regex::new(r"^[\u{2800}-\u{28ff}] ").is_ok_and(|regex| regex.is_match(text))
                 && !text.contains("plugin confirmation needed")
         }
+        Matcher::AntigravityPermission => {
+            text.contains("requesting permission for:")
+                && (text.contains("do you want to proceed?")
+                    || (text.contains("tab amend") && text.contains("edit command")))
+        }
     }
 }
 
@@ -736,8 +767,9 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_amp, detect_cline, detect_codex, detect_copilot, detect_cursor, detect_devin,
-        detect_droid, detect_gemini, detect_opencode, detect_pi, detect_qoder, DetectionInput,
+        detect_amp, detect_antigravity, detect_cline, detect_codex, detect_copilot, detect_cursor,
+        detect_devin, detect_droid, detect_gemini, detect_opencode, detect_pi, detect_qoder,
+        DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -825,6 +857,14 @@ mod tests {
         detect_amp(DetectionInput {
             screen,
             osc_title: title,
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_antigravity_state(screen: &str) -> Option<AgentState> {
+        detect_antigravity(DetectionInput {
+            screen,
+            osc_title: "",
             _osc_progress: "",
         })
     }
@@ -1042,5 +1082,22 @@ mod tests {
             detect_amp_state("", "Plugin confirmation needed - amp - workspace"),
             Some(AgentState::Blocked)
         );
+    }
+
+    #[test]
+    fn antigravity_manifest_matches_herdr_rules() {
+        assert_eq!(
+            detect_antigravity_state("Requesting permission for: command\nDo you want to proceed?"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_antigravity_state("⠋ Thinking"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_antigravity_state("· 2 task"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_antigravity_state("· 0 task"), None);
     }
 }
