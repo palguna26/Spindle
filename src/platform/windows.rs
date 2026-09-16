@@ -14,10 +14,119 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use super::NotificationSound;
 
-pub(crate) fn configure_server_daemon_command(command: &mut std::process::Command) {
-    use std::os::windows::process::CommandExt;
-    use windows_sys::Win32::System::Threading::{CREATE_BREAKAWAY_FROM_JOB, DETACHED_PROCESS};
-    command.creation_flags(DETACHED_PROCESS | CREATE_BREAKAWAY_FROM_JOB);
+pub(crate) fn launch_server_daemon(command: &mut std::process::Command) -> io::Result<u32> {
+    #[allow(non_camel_case_types)]
+    #[derive(serde::Deserialize)]
+    struct Win32_Process;
+
+    #[derive(serde::Serialize)]
+    #[allow(non_camel_case_types)]
+    struct Win32_ProcessStartup {
+        #[serde(rename = "CreateFlags")]
+        create_flags: u32,
+        #[serde(rename = "EnvironmentVariables")]
+        environment_variables: Vec<String>,
+    }
+
+    #[derive(serde::Serialize)]
+    struct CreateInput {
+        #[serde(rename = "CommandLine")]
+        command_line: String,
+        #[serde(rename = "CurrentDirectory")]
+        current_directory: String,
+        #[serde(rename = "ProcessStartupInformation")]
+        process_startup_information: Win32_ProcessStartup,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct CreateOutput {
+        #[serde(rename = "ProcessId")]
+        process_id: Option<u32>,
+        #[serde(rename = "ReturnValue")]
+        return_value: u32,
+    }
+
+    let current_directory = command
+        .get_current_dir()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let mut environment = std::collections::BTreeMap::<String, String>::new();
+    for (key, value) in std::env::vars() {
+        environment.insert(key, value);
+    }
+    for (key, value) in command.get_envs() {
+        let key = key.to_string_lossy().into_owned();
+        match value {
+            Some(value) => {
+                environment.insert(key, value.to_string_lossy().into_owned());
+            }
+            None => {
+                environment.remove(&key);
+            }
+        }
+    }
+    let input = CreateInput {
+        command_line: windows_command_line(command)?,
+        current_directory: current_directory.to_string_lossy().into_owned(),
+        process_startup_information: Win32_ProcessStartup {
+            create_flags: windows_sys::Win32::System::Threading::DETACHED_PROCESS,
+            environment_variables: environment
+                .into_iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect(),
+        },
+    };
+    let connection = wmi::WMIConnection::new()
+        .map_err(|error| io::Error::other(format!("failed to connect to WMI: {error}")))?;
+    let output: CreateOutput = connection
+        .exec_class_method::<Win32_Process, _>("Create", &input)
+        .map_err(|error| io::Error::other(format!("WMI process creation failed: {error}")))?;
+    if output.return_value != 0 {
+        return Err(io::Error::other(format!(
+            "WMI process creation returned error {}",
+            output.return_value
+        )));
+    }
+    output
+        .process_id
+        .ok_or_else(|| io::Error::other("WMI process creation returned no process id"))
+}
+
+fn windows_command_line(command: &std::process::Command) -> io::Result<String> {
+    std::iter::once(command.get_program())
+        .chain(command.get_args())
+        .map(|value| {
+            let value = value
+                .to_str()
+                .ok_or_else(|| io::Error::other("server command contains invalid Unicode"))?;
+            Ok(quote_windows_arg(value))
+        })
+        .collect::<io::Result<Vec<_>>>()
+        .map(|parts| parts.join(" "))
+}
+
+fn quote_windows_arg(value: &str) -> String {
+    if !value.is_empty() && !value.chars().any(|ch| " \t\"".contains(ch)) {
+        return value.to_owned();
+    }
+    let mut quoted = String::from("\"");
+    let mut slashes = 0;
+    for ch in value.chars() {
+        if ch == '\\' {
+            slashes += 1;
+        } else if ch == '"' {
+            quoted.push_str(&"\\".repeat(slashes * 2 + 1));
+            quoted.push(ch);
+            slashes = 0;
+        } else {
+            quoted.push_str(&"\\".repeat(slashes));
+            quoted.push(ch);
+            slashes = 0;
+        }
+    }
+    quoted.push_str(&"\\".repeat(slashes * 2));
+    quoted.push('"');
+    quoted
 }
 
 pub(crate) fn play_notification_sound(sound: NotificationSound) -> io::Result<bool> {

@@ -38,3 +38,4 @@ windows-sys = { version = "0.59", features = [
     "Win32_UI_WindowsAndMessaging",
     "Wdk_System_Threading",
 ] }
+wmi = { version = "0.18.4", default-features = false }

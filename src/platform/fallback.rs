@@ -8,4 +8,6 @@ pub(crate) fn should_draw_host_cursor_by_default() -> bool {
     false
 }
 
-pub(crate) fn configure_server_daemon_command(_command: &mut std::process::Command) {}
+pub(crate) fn launch_server_daemon(command: &mut std::process::Command) -> io::Result<u32> {
+    command.spawn().map(|child| child.id())
+}

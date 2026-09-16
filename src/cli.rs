@@ -155,13 +155,12 @@ fn start_server_with_output(project: &Project, show_status: bool) -> io::Result<
     }
     let executable = env::current_exe()?;
     let mut server = Command::new(executable);
-    crate::platform::configure_server_daemon_command(&mut server);
     server
         .args(["run-server", &project.state_dir.to_string_lossy()])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
+        .stderr(Stdio::null());
+    crate::platform::launch_server_daemon(&mut server)?;
     // Detached Windows processes can take longer to initialize than the
     // endpoint file creation. Keep startup bounded, but allow the listener
     // and restored session to become ready under normal system load.
