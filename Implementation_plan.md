@@ -280,7 +280,9 @@ buffer from its existing 64 KiB pane byte ring, so no protocol change is
 needed; history is limited to that retained ring. Keyboard flow, motions,
 search direction/repeat and case rules, selection/copy, and live-output
 viewport pinning are covered by client tests. Full tests, strict Clippy, release
-build, Windows smoke, and installer smoke passed. Direct interactive Windows
+build, Windows smoke, and installer smoke passed. A direct release-client PTY
+check also confirmed the live initial pane, help overlay, named-tab creation
+with a new shell, and clean `Ctrl-b q` detach. Direct interactive Windows
 Terminal verification is still pending.
 
 ## 4. Add agent-aware workspace status
