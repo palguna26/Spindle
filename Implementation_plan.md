@@ -38,6 +38,10 @@ Latest input milestone: Spindle now canonicalizes `Shift+Tab` and `BackTab`
 before matching configured or built-in bindings, following Herdr's
 `src/config/keybinds.rs::normalize_key_combo` behavior.
 
+Latest mode feedback milestone: prefix mode now renders a transient bottom
+bar with cancel, prefix, workspace navigation, and help bindings, matching
+Herdr's `src/client/shell/render.rs::render_mode_bar` behavior.
+
 Latest first-run milestone: Spindle now shows a persistent welcome overlay
 when `onboarding` is absent or true, matching Herdr's `Config::should_show_onboarding`
 behavior. Enter or Esc records `onboarding = false` without removing other
