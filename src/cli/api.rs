@@ -122,6 +122,10 @@ mod tests {
         assert!(schema["operations"]
             .as_object()
             .unwrap()
+            .contains_key("clear_agent_authority"));
+        assert!(schema["operations"]
+            .as_object()
+            .unwrap()
             .contains_key("move_tab"));
         assert!(schema["operations"]
             .as_object()

@@ -757,6 +757,10 @@ approved design changes it.
   from state authority, pane views expose the metadata, stale same-source
   sequences are ignored, and release/restart clears transient identity.
 
+- [x] Add Herdr's `clear_agent_authority` lifecycle operation. It clears a
+  hook's ownership and session identity while preserving the detected agent
+  and state, with source/sequence protection in the server API and CLI.
+
 Reference areas: Herdr `src/main.rs`, `src/config/`, `src/terminal/`,
 `src/client/notifications.rs`, `src/integration/`, `src/remote/`,
 `src/plugin_paths.rs`, `src/plugin_command.rs`, `src/cli/plugin.rs`, and
