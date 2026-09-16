@@ -163,15 +163,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
         navigation_workspace,
     );
     render_tabs(frame, snapshot, main.tabs);
-    let panes = pane_rectangles(snapshot, main.panes)
-        .into_iter()
-        .filter(|pane_rect| {
-            snapshot
-                .panes
-                .iter()
-                .any(|pane| pane.pane_id == pane_rect.pane_id)
-        })
-        .collect::<Vec<_>>();
+    let panes = pane_rectangles(snapshot, main.panes);
     if panes.is_empty() {
         let message = if active_workspace(snapshot).is_some() {
             format!(

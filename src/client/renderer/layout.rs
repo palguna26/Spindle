@@ -89,6 +89,12 @@ pub(crate) fn pane_rectangles(snapshot: &SessionSnapshot, area: Rect) -> Vec<Pan
     } else if let Some(layout) = tab.layout.as_ref() {
         collect_pane_rectangles(layout, area, &mut panes);
     }
+    panes.retain(|pane| {
+        snapshot
+            .panes
+            .iter()
+            .any(|known| known.pane_id == pane.pane_id)
+    });
     panes
 }
 
