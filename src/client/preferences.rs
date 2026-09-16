@@ -10,6 +10,8 @@ pub(super) struct ClientPreferences {
     pub(super) sidebar_collapsed: Option<bool>,
     #[serde(default)]
     pub(super) agent_priority_sort: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) sidebar_section_split_percent: Option<u8>,
     #[serde(default)]
     pub(super) collapsed_worktree_groups: Vec<String>,
 }
@@ -90,12 +92,14 @@ mod tests {
             ClientPreferences {
                 sidebar_collapsed: Some(true),
                 agent_priority_sort: true,
+                sidebar_section_split_percent: Some(50),
                 collapsed_worktree_groups: vec!["repo-a".into(), "repo-b".into()],
             },
         )
         .unwrap();
         assert_eq!(load(&path).sidebar_collapsed, Some(true));
         assert!(load(&path).agent_priority_sort);
+        assert_eq!(load(&path).sidebar_section_split_percent, Some(50));
         assert_eq!(load(&path).collapsed_worktree_groups, ["repo-a", "repo-b"]);
         store(&path, ClientPreferences::default()).unwrap();
         assert_eq!(load(&path).sidebar_collapsed, None);

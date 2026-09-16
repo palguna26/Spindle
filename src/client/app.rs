@@ -126,6 +126,9 @@ fn store_client_preferences(mouse_state: &MouseState) {
         super::preferences::ClientPreferences {
             sidebar_collapsed: Some(mouse_state.sidebar_collapsed),
             agent_priority_sort: mouse_state.agent_priority_sort,
+            sidebar_section_split_percent: Some(
+                (mouse_state.sidebar_section_split.clamp(0.1, 0.9) * 100.0).round() as u8,
+            ),
             collapsed_worktree_groups,
         },
     );
@@ -138,6 +141,14 @@ fn initial_sidebar_collapsed(
     preferences
         .sidebar_collapsed
         .unwrap_or(config.sidebar_start_collapsed)
+}
+
+fn initial_sidebar_section_split(preferences: &super::preferences::ClientPreferences) -> f32 {
+    preferences
+        .sidebar_section_split_percent
+        .map(|percent| f32::from(percent) / 100.0)
+        .unwrap_or(0.5)
+        .clamp(0.1, 0.9)
 }
 
 fn should_draw_host_cursor(mode: crate::config::HostCursorMode) -> bool {
@@ -175,6 +186,9 @@ fn event_loop(
     let mut mouse_state = MouseState {
         sidebar_collapsed,
         agent_priority_sort,
+        sidebar_section_split: initial_sidebar_section_split(&super::preferences::load(
+            preferences_path,
+        )),
         preferences_path: preferences_path.to_path_buf(),
         collapsed_worktree_groups: collapsed_worktree_groups.into_iter().collect(),
         ..MouseState::default()
