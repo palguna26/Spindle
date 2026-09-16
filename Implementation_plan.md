@@ -32,6 +32,9 @@ Latest API milestone: `report_agent` and `release_agent` are available through
 the pane CLI and control protocol. Hook reports retain source and sequence
 authority so stale updates are ignored and process/screen polling cannot
 overwrite an active integration report.
+The release binary was verified on Windows with a live pane: a newer report
+was applied, an older report was ignored, and release returned the pane to
+detector control.
 
 ## 0. Establish the parity matrix
 

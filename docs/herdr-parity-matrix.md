@@ -19,6 +19,8 @@ Agent hook parity now includes `spindle pane report-agent` and
 `spindle pane release-agent`. Reports are source/sequence aware, and reported
 state remains authoritative until that source releases the pane, matching
 Herdr's pane hook lifecycle handlers.
+Verified with the release binary on Windows: sequence 4 `working` was retained,
+stale sequence 3 `idle` was ignored, and sequence 5 released the pane.
 
 CLI parity now includes Herdr's `pane current --pane ID` and `--current`
 selector forms, with `SPINDLE_PANE_ID`/`HERDR_PANE_ID` environment fallback.
