@@ -411,6 +411,7 @@ fn event_loop(
                         RenameTarget::Tab => "Rename tab",
                         RenameTarget::Workspace => "Rename workspace",
                         RenameTarget::CreateWorkspace => "Create workspace",
+                        RenameTarget::CreateTab => "Create tab",
                         RenameTarget::Space => "Rename space",
                         RenameTarget::CreateSpace => "Create space",
                         RenameTarget::DeleteWorkspace => "Delete workspace: type its name",
@@ -758,9 +759,11 @@ fn event_loop(
             } else if key.code == KeyCode::Enter {
                 let command = Command::ALL[palette_selected];
                 palette_open = false;
-                if let Some(target) = rename_target(command.action()) {
-                    rename_prompt = Some(RenamePrompt::new(target));
-                    continue;
+                if command.action() != Action::NewTab || config.prompt_new_tab_name {
+                    if let Some(target) = rename_target(command.action()) {
+                        rename_prompt = Some(RenamePrompt::new(target));
+                        continue;
+                    }
                 }
                 match execute_action(command.action(), client, &snapshot, terminal_size) {
                     Ok(true) => break,
@@ -1038,6 +1041,10 @@ fn event_loop(
                 }
             }
             Action::NewTab => {
+                if config.prompt_new_tab_name && active_workspace(&snapshot).is_some() {
+                    rename_prompt = Some(RenamePrompt::new(RenameTarget::CreateTab));
+                    continue;
+                }
                 let result = if active_workspace(&snapshot).is_some() {
                     request_action(
                         client,
@@ -2563,6 +2570,7 @@ fn rename_target(action: Action) -> Option<RenameTarget> {
         Action::RenameActiveTab => Some(RenameTarget::Tab),
         Action::RenameActiveWorkspace => Some(RenameTarget::Workspace),
         Action::CreateWorkspace => Some(RenameTarget::CreateWorkspace),
+        Action::NewTab => Some(RenameTarget::CreateTab),
         Action::RenameActiveSpace => Some(RenameTarget::Space),
         Action::CreateSpace => Some(RenameTarget::CreateSpace),
         Action::DeleteActiveWorkspace => Some(RenameTarget::DeleteWorkspace),
@@ -2680,6 +2688,17 @@ fn submit_rename(
                 "create_workspace",
                 json!({ "name": name, "repository_path": repository_path }),
                 "create workspace",
+            )?;
+            ensure_active_default_pane(client, terminal_size)?;
+            return Ok(());
+        }
+        RenameTarget::CreateTab => {
+            request_action(
+                client,
+                "create-tab",
+                "create_tab",
+                json!({ "name": name }),
+                "create tab",
             )?;
             ensure_active_default_pane(client, terminal_size)?;
             return Ok(());
@@ -3686,13 +3705,14 @@ mod tests {
         adjacent_tab_id, adjacent_workspace_id, adjust_scrollback_offset, apply_scrollback_views,
         current_snapshot, ensure_active_default_pane, indexed_workspace_selection, input_pane_id,
         key_code_bytes, move_workspace_selection, page_key_bytes, pane_mouse_target, pane_size,
-        reconnect_requires_reattach, record_action_error, renderer, require_server_success,
-        should_forward_pane_mouse, snapshot_has_focused_pane, startup_error_action,
-        uses_mobile_navigation, visible_web_url_at_point, workspace_has_linked_children,
-        workspace_id_by_name, workspace_picker_key, CachedScrollbackView, ControlClient, PaneClick,
-        PaneMouseCapture, SplitDirection, SplitDrag, StartupErrorAction, WorkspacePickerKey,
+        reconnect_requires_reattach, record_action_error, rename_target, renderer,
+        require_server_success, should_forward_pane_mouse, snapshot_has_focused_pane,
+        startup_error_action, uses_mobile_navigation, visible_web_url_at_point,
+        workspace_has_linked_children, workspace_id_by_name, workspace_picker_key,
+        CachedScrollbackView, ControlClient, PaneClick, PaneMouseCapture, SplitDirection,
+        SplitDrag, StartupErrorAction, WorkspacePickerKey,
     };
-    use crate::client::input::Keymap;
+    use crate::client::input::{Action, Keymap};
     use crate::config::Config;
     use crate::protocol::{ProtocolError, Response, PROTOCOL_VERSION};
     use crate::server::session::Session;
@@ -3813,6 +3833,14 @@ mod tests {
             &Default::default(),
             &config
         ));
+    }
+
+    #[test]
+    fn new_tab_action_opens_a_create_tab_prompt() {
+        assert_eq!(
+            rename_target(Action::NewTab),
+            Some(super::RenameTarget::CreateTab)
+        );
     }
 
     #[test]

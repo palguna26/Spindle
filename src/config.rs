@@ -31,6 +31,7 @@ struct UiConfig {
     sidebar_max_width: u16,
     mobile_width_threshold: u16,
     sidebar_start_collapsed: bool,
+    prompt_new_tab_name: bool,
 }
 
 impl Default for UiConfig {
@@ -41,6 +42,7 @@ impl Default for UiConfig {
             sidebar_max_width: 36,
             mobile_width_threshold: 64,
             sidebar_start_collapsed: false,
+            prompt_new_tab_name: true,
         }
     }
 }
@@ -149,6 +151,7 @@ pub struct Config {
     pub(crate) sidebar_max_width: u16,
     pub(crate) mobile_width_threshold: u16,
     pub(crate) sidebar_start_collapsed: bool,
+    pub(crate) prompt_new_tab_name: bool,
 }
 
 impl Default for Config {
@@ -167,6 +170,7 @@ impl Default for Config {
             sidebar_max_width: 36,
             mobile_width_threshold: 64,
             sidebar_start_collapsed: false,
+            prompt_new_tab_name: true,
         }
     }
 }
@@ -227,6 +231,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         sidebar_max_width: file.ui.sidebar_max_width,
         mobile_width_threshold: file.ui.mobile_width_threshold,
         sidebar_start_collapsed: file.ui.sidebar_start_collapsed,
+        prompt_new_tab_name: file.ui.prompt_new_tab_name,
     }
 }
 
@@ -277,6 +282,7 @@ sidebar_min_width = 18
 sidebar_max_width = 36
 mobile_width_threshold = 64
 sidebar_start_collapsed = false
+prompt_new_tab_name = true
 "#
 }
 
@@ -356,7 +362,7 @@ fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> S
 
 #[cfg(test)]
 mod tests {
-    use super::{load_from, upsert_section_key, NotificationDelivery};
+    use super::{load_from, upsert_section_key, Config, NotificationDelivery};
 
     #[test]
     fn loads_herdr_style_key_bindings() {
@@ -441,6 +447,18 @@ mod tests {
         ));
         std::fs::write(&path, "[ui]\nsidebar_start_collapsed = true\n").unwrap();
         assert!(load_from(&path).sidebar_start_collapsed);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn new_tab_name_prompt_matches_herdr_default() {
+        assert!(Config::default().prompt_new_tab_name);
+        let path = std::env::temp_dir().join(format!(
+            "spindle-prompt-new-tab-name-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[ui]\nprompt_new_tab_name = false\n").unwrap();
+        assert!(!load_from(&path).prompt_new_tab_name);
         std::fs::remove_file(path).unwrap();
     }
 

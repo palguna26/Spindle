@@ -6,6 +6,7 @@ pub enum RenameTarget {
     Tab,
     Workspace,
     CreateWorkspace,
+    CreateTab,
     Space,
     CreateSpace,
     DeleteWorkspace,
