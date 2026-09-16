@@ -424,6 +424,9 @@ approved design changes it.
   `sidebar_min_width`, and `sidebar_max_width` values with safe bound fallback.
   `[ui] sidebar_start_collapsed` now matches Herdr and is applied only when a
   saved client preference has not already selected the sidebar state.
+  New-tab keyboard and command-palette actions prompt for a tab name by
+  default, matching Herdr; `[ui] prompt_new_tab_name = false` keeps the
+  non-interactive `Activity` tab behavior.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
