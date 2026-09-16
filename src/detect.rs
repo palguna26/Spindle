@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[path = "detect/agents/mod.rs"]
 mod agents;
+mod manifest;
 use agents::{
     amp_is_idle, amp_is_working, amp_permission_required, antigravity_is_working,
     antigravity_permission_required, claude_dynamic_workflow_prompt, claude_mcp_elicitation_prompt,
@@ -154,6 +155,15 @@ pub(crate) fn detect_state_with_osc(
     title: &str,
     osc_progress: &str,
 ) -> AgentState {
+    if agent == AgentKind::Codex {
+        if let Some(state) = manifest::detect_codex(manifest::DetectionInput {
+            screen,
+            osc_title: title,
+            _osc_progress: osc_progress,
+        }) {
+            return state;
+        }
+    }
     let title_lower = title.to_ascii_lowercase();
     let recent = recent_nonempty_lines(screen, 20).to_ascii_lowercase();
     let bottom_fourteen = recent_nonempty_lines(screen, 14).to_ascii_lowercase();
@@ -2163,7 +2173,7 @@ mod tests {
     #[test]
     fn follows_herdr_codex_state_signals() {
         assert_eq!(
-            detect_state(AgentKind::Codex, "Action Required", "Codex"),
+            detect_state(AgentKind::Codex, "", "Action Required"),
             AgentState::Blocked
         );
         assert_eq!(
