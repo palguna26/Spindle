@@ -660,6 +660,9 @@ approved design changes it.
   workspace-list entry point and showing active state across spaces.
 - [x] Add `spindle workspace focus <workspace_id>`, matching Herdr's CLI and
   allowing focus across Spindle spaces.
+- [x] Add project-scoped named sessions with `spindle --session <name>` and
+  `spindle session list|attach`, keeping the default session path unchanged and
+  rejecting names that could escape the session directory.
 - [ ] Port each behavior that fits Spindle's Windows-first/local-first purpose
   in a separately tested commit. Pane movement now supports Herdr's
   existing-tab destination as well as a new tab, with optional target-pane

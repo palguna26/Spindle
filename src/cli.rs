@@ -37,9 +37,24 @@ mod workspace;
 mod worktree;
 
 pub fn run() -> io::Result<()> {
-    let command = env::args().nth(1).unwrap_or_else(|| "attach".into());
+    let mut args = env::args().skip(1).collect::<Vec<_>>();
+    let session_name = if args.first().map(String::as_str) == Some("--session") {
+        if args.len() < 2 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "usage: spindle --session <name> [command]",
+            ));
+        }
+        let name = args.remove(1);
+        args.remove(0);
+        Some(name)
+    } else {
+        None
+    };
+    let command = args.first().cloned().unwrap_or_else(|| "attach".into());
+    let command_args = args.get(1..).unwrap_or(&[]);
     if command == "run-server" {
-        let state_dir = env::args().nth(2).ok_or_else(|| {
+        let state_dir = command_args.first().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "run-server needs a state directory",
@@ -57,35 +72,36 @@ pub fn run() -> io::Result<()> {
             return Ok(());
         }
         "config" => {
-            return run_config_command(&env::args().skip(2).collect::<Vec<_>>());
+            return run_config_command(command_args);
         }
         "completion" => {
-            return completion::run(&env::args().skip(2).collect::<Vec<_>>());
+            return completion::run(command_args);
         }
         "api" => {
             return api::run(
-                &Project::from_current_dir()?,
-                &env::args().skip(2).collect::<Vec<_>>(),
+                &Project::from_current_dir_named(session_name.as_deref())?,
+                command_args,
             );
         }
         "agent" => {
             return agent::run_agent_command(
-                &Project::from_current_dir()?,
-                &env::args().skip(2).collect::<Vec<_>>(),
+                &Project::from_current_dir_named(session_name.as_deref())?,
+                command_args,
             );
         }
         "plugin" => {
-            return plugin::run(&env::args().skip(2).collect::<Vec<_>>());
+            return plugin::run(command_args);
         }
         "notification" => {
-            return notification::run(&env::args().skip(2).collect::<Vec<_>>());
+            return notification::run(command_args);
         }
         "integration" => {
-            return integration::run(&env::args().skip(2).collect::<Vec<_>>());
+            return integration::run(command_args);
         }
+        "session" => return run_session_command(command_args),
         _ => {}
     }
-    let project = Project::from_current_dir()?;
+    let project = Project::from_current_dir_named(session_name.as_deref())?;
 
     match command.as_str() {
         "start" => start_server(&project)?,
@@ -121,7 +137,7 @@ pub fn run() -> io::Result<()> {
                 Err(_) => println!("last server identity: unavailable"),
             }
         }
-        "status" => status::run(&project, &env::args().skip(2).collect::<Vec<_>>())?,
+        "status" => status::run(&project, command_args)?,
         "stop" => {
             let response = send_command(&project, "stop_server")?;
             if !response.ok {
@@ -134,14 +150,10 @@ pub fn run() -> io::Result<()> {
             wait_for_server_stop(&project)?;
             println!("server stopped");
         }
-        "workspace" => {
-            workspace::run_workspace_command(&project, &env::args().skip(2).collect::<Vec<_>>())?
-        }
-        "worktree" => {
-            worktree::run_worktree_command(&project, &env::args().skip(2).collect::<Vec<_>>())?
-        }
-        "tab" => tab::run_tab_command(&project, &env::args().skip(2).collect::<Vec<_>>())?,
-        "pane" => pane::run_pane_command(&project, &env::args().skip(2).collect::<Vec<_>>())?,
+        "workspace" => workspace::run_workspace_command(&project, command_args)?,
+        "worktree" => worktree::run_worktree_command(&project, command_args)?,
+        "tab" => tab::run_tab_command(&project, command_args)?,
+        "pane" => pane::run_pane_command(&project, command_args)?,
         other => {
             print_help();
             return Err(io::Error::new(
@@ -251,12 +263,13 @@ fn print_help() {
     println!("Spindle - persistent parallel coding-agent sessions");
     println!();
     println!(
-        "Usage: spindle [start|attach|stop|list|status|doctor|workspace|worktree|tab|pane|agent|notification|integration|help]"
+        "Usage: spindle [--session <name>] [start|attach|stop|list|status|doctor|workspace|worktree|tab|pane|agent|notification|integration|session|help]"
     );
     println!();
     println!("Commands:");
     println!("  start    start a server for the current project");
     println!("  attach   attach to the current project's server (default)");
+    println!("  --session <name>  use a named persistent session");
     println!("  stop     stop the current project's server");
     println!("  list     show the current project identity and state path");
     println!("  status   show Herdr-style client and server status");
@@ -281,9 +294,62 @@ fn print_help() {
     println!("  tab get/focus/move/rename/close  manage tabs by ID");
     println!("  pane list/current/get/focus/neighbor/edges/layout/process-info/input/rename/stop/restart/zoom/close/send-text/send-keys/run/read/swap/move/report-agent/report-agent-session/report-metadata/release-agent/wait-output/split/resize  manage panes");
     println!("  agent list/get/focus/start/wait/read/send-keys/prompt/rename <target>  inspect and control agents");
+    println!("  session list/attach <name>  list or attach named sessions");
     println!("Options:");
     println!("  --help, -h       show this help");
     println!("  --version, -V    print the version");
+}
+
+fn run_session_command(args: &[String]) -> io::Result<()> {
+    match args {
+        [command] if command == "list" => {
+            let project = Project::from_current_dir()?;
+            println!("default\t{}", project.state_dir.display());
+            let sessions_dir = project.state_dir.join("sessions");
+            if let Ok(entries) = fs::read_dir(sessions_dir) {
+                for entry in entries.flatten().filter(|entry| entry.path().is_dir()) {
+                    println!(
+                        "{}\t{}",
+                        entry.file_name().to_string_lossy(),
+                        entry.path().display()
+                    );
+                }
+            }
+            Ok(())
+        }
+        [command, name] if command == "attach" => {
+            validate_session_name(name)?;
+            attach_server(&Project::from_current_dir_named(Some(name))?)
+        }
+        [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
+            println!("Usage: spindle session <list|attach> [name]");
+            Ok(())
+        }
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: spindle session <list|attach> [name]",
+        )),
+    }
+}
+
+fn validate_session_name(name: &str) -> io::Result<()> {
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.chars().any(|character| {
+            character.is_control()
+                || matches!(
+                    character,
+                    '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+                )
+        })
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid session name: {name}"),
+        ));
+    }
+    Ok(())
 }
 
 fn run_config_command(args: &[String]) -> io::Result<()> {
@@ -311,9 +377,17 @@ struct Project {
 
 impl Project {
     fn from_current_dir() -> io::Result<Self> {
+        Self::from_current_dir_named(None)
+    }
+
+    fn from_current_dir_named(session_name: Option<&str>) -> io::Result<Self> {
         let directory = env::current_dir()?.canonicalize()?;
         let id = project_id(&directory);
-        let state_dir = state_root()?.join("projects").join(&id);
+        let mut state_dir = state_root()?.join("projects").join(&id);
+        if let Some(name) = session_name {
+            validate_session_name(name)?;
+            state_dir = state_dir.join("sessions").join(name);
+        }
         Ok(Self {
             directory,
             state_dir,
@@ -357,7 +431,7 @@ impl Project {
 
 #[cfg(test)]
 mod tests {
-    use super::{endpoint_status_label, project_id};
+    use super::{endpoint_status_label, project_id, validate_session_name};
     use std::path::Path;
 
     #[test]
@@ -382,5 +456,12 @@ mod tests {
         assert_eq!(endpoint_status_label(true, false), "stale");
         assert_eq!(endpoint_status_label(false, false), "missing");
         assert_eq!(endpoint_status_label(false, true), "reachable");
+    }
+
+    #[test]
+    fn session_names_are_safe_path_components() {
+        assert!(validate_session_name("review-1").is_ok());
+        assert!(validate_session_name("feature\\work").is_err());
+        assert!(validate_session_name("..").is_err());
     }
 }

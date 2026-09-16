@@ -32,6 +32,9 @@ Mouse-aware terminal apps receive mouse input when they request it.
 
 ```text
 spindle          attach (and start when needed)
+spindle --session review  attach to a named project session
+spindle session list  list the project's named sessions
+spindle session attach review  attach to a named session
 spindle start    start the server
 spindle stop     stop the server
 spindle doctor   show server health and state paths
@@ -71,6 +74,7 @@ space or workspace.
 ## State and recovery
 
 Project state is stored under `%LOCALAPPDATA%\Spindle\projects\<project-id>`.
+Named sessions use the `sessions\<name>` directory below that project state.
 Session metadata is in `session.json`; terminal history is separate in
 `session-history.json`. A server restart restores metadata and terminal state,
 but marks previously live processes as `interrupted`; arbitrary child
