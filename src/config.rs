@@ -30,6 +30,7 @@ struct UiConfig {
     sidebar_min_width: u16,
     sidebar_max_width: u16,
     mobile_width_threshold: u16,
+    sidebar_start_collapsed: bool,
 }
 
 impl Default for UiConfig {
@@ -39,6 +40,7 @@ impl Default for UiConfig {
             sidebar_min_width: 18,
             sidebar_max_width: 36,
             mobile_width_threshold: 64,
+            sidebar_start_collapsed: false,
         }
     }
 }
@@ -146,6 +148,7 @@ pub struct Config {
     pub(crate) sidebar_min_width: u16,
     pub(crate) sidebar_max_width: u16,
     pub(crate) mobile_width_threshold: u16,
+    pub(crate) sidebar_start_collapsed: bool,
 }
 
 impl Default for Config {
@@ -163,6 +166,7 @@ impl Default for Config {
             sidebar_min_width: 18,
             sidebar_max_width: 36,
             mobile_width_threshold: 64,
+            sidebar_start_collapsed: false,
         }
     }
 }
@@ -222,6 +226,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         sidebar_min_width: file.ui.sidebar_min_width,
         sidebar_max_width: file.ui.sidebar_max_width,
         mobile_width_threshold: file.ui.mobile_width_threshold,
+        sidebar_start_collapsed: file.ui.sidebar_start_collapsed,
     }
 }
 
@@ -271,6 +276,7 @@ sidebar_width = 26
 sidebar_min_width = 18
 sidebar_max_width = 36
 mobile_width_threshold = 64
+sidebar_start_collapsed = false
 "#
 }
 
@@ -424,6 +430,17 @@ mod tests {
         let config = load_from(&path);
         assert_eq!(config.theme_name.as_deref(), Some("nord"));
         assert!(config.bindings.is_empty());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_herdr_sidebar_start_collapsed_setting() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-sidebar-start-collapsed-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[ui]\nsidebar_start_collapsed = true\n").unwrap();
+        assert!(load_from(&path).sidebar_start_collapsed);
         std::fs::remove_file(path).unwrap();
     }
 

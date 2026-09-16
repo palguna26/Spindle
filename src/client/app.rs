@@ -50,6 +50,7 @@ pub fn run(
     let client = ControlClient::connect(address)?;
     let preferences_path = state_dir.as_ref().join("client.json");
     let preferences = super::preferences::load(&preferences_path);
+    let config = crate::config::load();
     let terminal_size = size().map_err(ClientError::Io)?;
     client.attach_with_terminal(
         terminal_size.0,
@@ -64,7 +65,7 @@ pub fn run(
         &mut terminal,
         &client,
         startup_error,
-        preferences.sidebar_collapsed,
+        preferences.sidebar_collapsed || config.sidebar_start_collapsed,
         preferences.agent_priority_sort,
         preferences.collapsed_worktree_groups,
         &preferences_path,
