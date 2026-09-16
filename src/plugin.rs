@@ -88,6 +88,8 @@ pub(crate) struct Pane {
     pub(crate) id: String,
     #[serde(default)]
     pub(crate) title: String,
+    #[serde(default)]
+    pub(crate) description: Option<String>,
     pub(crate) command: Vec<String>,
     #[serde(default = "default_pane_placement")]
     pub(crate) placement: String,
@@ -367,6 +369,26 @@ mod tests {
             manifest.actions[0].contexts.as_slice(),
             [super::ActionContext::Pane, super::ActionContext::Selection]
         ));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn manifest_preserves_plugin_pane_description() {
+        let root = std::env::temp_dir().join(format!(
+            "spindle-plugin-pane-metadata-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("herdr-plugin.toml"),
+            "id = \"example.pane\"\n[[panes]]\nid = \"logs\"\ntitle = \"Logs\"\ndescription = \"Live build output\"\ncommand = [\"tool\", \"logs\"]\n",
+        )
+        .unwrap();
+        let manifest = super::load(&root).unwrap();
+        assert_eq!(
+            manifest.panes[0].description.as_deref(),
+            Some("Live build output")
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 }

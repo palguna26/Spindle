@@ -637,6 +637,8 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         "source": "pane",
         "plugin_id": manifest.id,
         "entrypoint_id": pane.id,
+        "title": pane.title,
+        "description": pane.description,
         "placement": placement,
     });
     if let Some(snapshot) = snapshot.as_ref() {
