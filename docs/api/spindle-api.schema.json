@@ -63,6 +63,23 @@
         ]
       }
     },
+    "report_metadata": {
+      "payload": {
+        "type": "object",
+        "required": ["pane_id", "source"],
+        "properties": {
+          "pane_id": { "type": "string" },
+          "source": { "type": "string" },
+          "display_agent": { "type": ["string", "null"] },
+          "clear_display_agent": { "type": "boolean", "default": false },
+          "seq": { "type": ["integer", "null"], "minimum": 0 }
+        },
+        "anyOf": [
+          { "required": ["display_agent"] },
+          { "required": ["clear_display_agent"] }
+        ]
+      }
+    },
     "release_agent": {
       "payload": {
         "type": "object",

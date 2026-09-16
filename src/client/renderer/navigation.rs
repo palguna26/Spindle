@@ -915,10 +915,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                 if collapsed {
                     return Line::from("A ");
                 }
-                let kind = pane
-                    .agent
-                    .map(crate::detect::AgentKind::label)
-                    .unwrap_or("Agent");
+                let kind = pane.agent_display_name().unwrap_or("Agent");
                 let label = pane
                     .label
                     .as_deref()

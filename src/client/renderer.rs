@@ -994,9 +994,15 @@ fn pane_title_text(pane: &crate::server::session::PaneView) -> String {
         pane.pane_id,
         label,
         pane.agent
+            .as_ref()
             .map(|agent| {
                 let state = format!(" {}", pane.agent_display_state().label());
-                format!(" [{}{state}]", agent.label())
+                format!(
+                    " [{}{state}]",
+                    pane.display_agent
+                        .as_deref()
+                        .unwrap_or_else(|| agent.label())
+                )
             })
             .unwrap_or_default(),
         status_detail(&pane.status),
@@ -1258,6 +1264,7 @@ mod tests {
                 agent: None,
                 agent_state: None,
                 agent_done: false,
+                display_agent: None,
                 agent_session: None,
                 status: PaneStatus::Running,
                 scrollback_bytes: 0,
@@ -1354,6 +1361,7 @@ mod tests {
             agent: Some(crate::detect::AgentKind::Codex),
             agent_state: Some(crate::detect::AgentState::Working),
             agent_done: false,
+            display_agent: None,
             agent_session: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
@@ -1378,13 +1386,15 @@ mod tests {
         assert!(pane_title_text(&pane).contains("[Codex working]"));
         assert!(pane_title_text(&pane).contains("running"));
         assert!(pane_title_text(&pane).contains("[alt]"));
+        pane.display_agent = Some("Codex Review".into());
+        assert!(pane_title_text(&pane).contains("[Codex Review working]"));
         assert_eq!(
             pane_title(&pane).spans[0].style.fg,
             Some(Color::Rgb(255, 165, 0))
         );
         pane.agent_state = Some(crate::detect::AgentState::Idle);
         pane.agent_done = true;
-        assert!(pane_title_text(&pane).contains("[Codex done]"));
+        assert!(pane_title_text(&pane).contains("[Codex Review done]"));
         let wire = serde_json::to_value(&pane).unwrap();
         assert_eq!(wire["agent_state"], "idle");
         assert_eq!(wire["agent_done"], true);
@@ -1403,6 +1413,7 @@ mod tests {
             agent: None,
             agent_state: None,
             agent_done: false,
+            display_agent: None,
             agent_session: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,

@@ -150,7 +150,7 @@ impl Navigator {
                             .label
                             .clone()
                             .filter(|name| !name.is_empty())
-                            .or_else(|| pane.agent.map(|agent| agent.label().to_owned()))
+                            .or_else(|| pane.agent_display_name().map(str::to_owned))
                             .unwrap_or_else(|| {
                                 let title = compact_name(&pane.title);
                                 if title.is_empty() {
@@ -174,8 +174,7 @@ impl Navigator {
                                 tab_id: tab.tab_id.clone(),
                                 id: pane.pane_id.clone(),
                             };
-                            let agent_label =
-                                pane.agent.map(|agent| agent.label()).unwrap_or("agent");
+                            let agent_label = pane.agent_display_name().unwrap_or("agent");
                             let agent_detail = pane.agent_display_state().label().to_owned();
                             if query.is_empty()
                                 || contains(&[agent_label, &agent_detail, &pane.cwd], &query)

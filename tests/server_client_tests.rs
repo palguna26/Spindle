@@ -173,6 +173,36 @@ fn pane_agent_reports_are_authoritative_and_sequence_checked() {
     assert!(report.ok);
     assert_eq!(report.payload.unwrap()["updated"], true);
 
+    let metadata = client
+        .request(
+            "agent-metadata",
+            "report_metadata",
+            serde_json::json!({
+                "pane_id": pane_id,
+                "source": "plugin:codex",
+                "display_agent": "Codex Review",
+                "seq": 2
+            }),
+        )
+        .unwrap();
+    assert!(metadata.ok);
+    assert_eq!(metadata.payload.unwrap()["updated"], true);
+
+    let stale_metadata = client
+        .request(
+            "agent-metadata-stale",
+            "report_metadata",
+            serde_json::json!({
+                "pane_id": pane_id,
+                "source": "plugin:codex",
+                "display_agent": "Old Label",
+                "seq": 1
+            }),
+        )
+        .unwrap();
+    assert!(stale_metadata.ok);
+    assert_eq!(stale_metadata.payload.unwrap()["updated"], false);
+
     let stale = client
         .request(
             "agent-stale",
@@ -206,9 +236,25 @@ fn pane_agent_reports_are_authoritative_and_sequence_checked() {
         .unwrap();
     assert_eq!(current["agent"], "codex");
     assert_eq!(current["agent_state"], "working");
+    assert_eq!(current["display_agent"], "Codex Review");
     assert_eq!(current["agent_session"]["source"], "herdr:codex");
     assert_eq!(current["agent_session"]["kind"], "id");
     assert_eq!(current["agent_session"]["value"], "session-1");
+
+    let clear_metadata = client
+        .request(
+            "agent-metadata-clear",
+            "report_metadata",
+            serde_json::json!({
+                "pane_id": pane_id,
+                "source": "plugin:codex",
+                "clear_display_agent": true,
+                "seq": 3
+            }),
+        )
+        .unwrap();
+    assert!(clear_metadata.ok);
+    assert_eq!(clear_metadata.payload.unwrap()["updated"], true);
 
     let release = client
         .request(
@@ -242,6 +288,7 @@ fn pane_agent_reports_are_authoritative_and_sequence_checked() {
         .unwrap();
     assert!(released["agent"].is_null());
     assert!(released["agent_state"].is_null());
+    assert!(released["display_agent"].is_null());
     assert!(released["agent_session"].is_null());
 
     client

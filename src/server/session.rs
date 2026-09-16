@@ -51,6 +51,14 @@ pub struct AgentSessionReportRequest {
     pub session_path: Option<String>,
 }
 
+#[derive(Debug)]
+pub struct DisplayAgentReportRequest {
+    pub source: String,
+    pub display_agent: Option<String>,
+    pub clear: bool,
+    pub seq: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaneView {
     pub pane_id: String,
@@ -70,6 +78,8 @@ pub struct PaneView {
     pub agent_state: Option<crate::detect::AgentState>,
     #[serde(default)]
     pub agent_done: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_agent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_session: Option<crate::pane::AgentSessionInfo>,
     pub scrollback_bytes: usize,
@@ -127,6 +137,12 @@ impl PaneView {
             AgentState::Working => Display::Working,
             AgentState::Blocked => Display::Blocked,
         }
+    }
+
+    pub fn agent_display_name(&self) -> Option<&str> {
+        self.display_agent
+            .as_deref()
+            .or_else(|| self.agent.map(crate::detect::AgentKind::label))
     }
 }
 
@@ -356,6 +372,7 @@ impl Session {
                     pane.agent = None;
                     pane.agent_state = None;
                     pane.agent_done = false;
+                    pane.display_agent = None;
                     pane.agent_session = None;
                     pane.mouse_reporting = false;
                     pane.mouse_release = false;
@@ -756,6 +773,7 @@ impl Session {
             agent: None,
             agent_state: None,
             agent_done: false,
+            display_agent: None,
             agent_session: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
@@ -2787,6 +2805,7 @@ impl Session {
         pane.agent = None;
         pane.agent_state = None;
         pane.agent_done = false;
+        pane.display_agent = None;
         pane.agent_session = None;
         pane.scrollback.clear();
         pane.scrollback_bytes = 0;
@@ -2876,6 +2895,25 @@ impl Session {
             "pane_id": pane_id,
             "updated": changed
         }))
+    }
+
+    pub fn report_display_agent(
+        &mut self,
+        pane_id: &str,
+        report: DisplayAgentReportRequest,
+    ) -> Result<Value, String> {
+        let changed = self
+            .pane_manager
+            .report_display_agent(
+                pane_id,
+                report.source,
+                report.display_agent,
+                report.clear,
+                report.seq,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        self.refresh_snapshot();
+        Ok(serde_json::json!({ "pane_id": pane_id, "updated": changed }))
     }
 
     pub fn release_agent(
@@ -3256,6 +3294,7 @@ impl Session {
                 pane.agent = current.agent;
                 pane.agent_state = current.agent_state;
                 pane.agent_done = current.agent_done;
+                pane.display_agent = current.display_agent.clone();
                 pane.agent_session = current.agent_session.clone();
                 pane.cols = current.terminal.snapshot().cols;
                 pane.rows = current.terminal.snapshot().rows;
@@ -3927,6 +3966,7 @@ mod tests {
             agent: None,
             agent_state: None,
             agent_done: false,
+            display_agent: None,
             status: PaneStatus::Completed { exit_code: 0 },
             agent_session: None,
             scrollback_bytes: 0,
@@ -4490,6 +4530,7 @@ mod tests {
             agent: None,
             agent_state: None,
             agent_done: false,
+            display_agent: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             agent_session: None,
@@ -4586,6 +4627,7 @@ mod tests {
             agent: Some(crate::detect::AgentKind::Codex),
             agent_state: Some(crate::detect::AgentState::Idle),
             agent_done: true,
+            display_agent: None,
             status: PaneStatus::Completed { exit_code: 0 },
             agent_session: None,
             scrollback_bytes: 3,
@@ -4733,6 +4775,7 @@ mod tests {
             agent: None,
             agent_state: None,
             agent_done: false,
+            display_agent: None,
             status: PaneStatus::Running,
             agent_session: None,
             scrollback_bytes: 0,
@@ -4772,6 +4815,7 @@ mod tests {
             agent: None,
             agent_state: None,
             agent_done: false,
+            display_agent: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             agent_session: None,
@@ -4809,6 +4853,7 @@ mod tests {
             agent: Some(crate::detect::AgentKind::Claude),
             agent_state: Some(crate::detect::AgentState::Blocked),
             agent_done: true,
+            display_agent: None,
             agent_session: None,
             status: PaneStatus::Halted {
                 reason: "process exited".into(),

@@ -98,6 +98,10 @@ mod tests {
         assert!(schema["operations"]
             .as_object()
             .unwrap()
+            .contains_key("report_metadata"));
+        assert!(schema["operations"]
+            .as_object()
+            .unwrap()
             .contains_key("move_tab"));
         assert!(schema["operations"]
             .as_object()

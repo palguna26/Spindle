@@ -39,6 +39,18 @@ struct ReportAgentSessionRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct ReportMetadataRequest {
+    pane_id: String,
+    source: String,
+    #[serde(default)]
+    display_agent: Option<String>,
+    #[serde(default)]
+    clear_display_agent: bool,
+    #[serde(default)]
+    seq: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
 struct ReleaseAgentRequest {
     pane_id: String,
     source: String,
@@ -502,6 +514,33 @@ pub(crate) fn response_for_with_interactive(
                         seq: payload.seq,
                         session_id: payload.agent_session_id,
                         session_path: payload.agent_session_path,
+                    },
+                )
+            })
+        }
+        "report_metadata" => {
+            let payload: ReportMetadataRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            if payload.display_agent.is_none() && !payload.clear_display_agent {
+                return request_error(
+                    request.request_id,
+                    "invalid_metadata_request",
+                    "provide display_agent or clear_display_agent".into(),
+                );
+            }
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.report_display_agent(
+                    &payload.pane_id,
+                    crate::server::session::DisplayAgentReportRequest {
+                        source: payload.source,
+                        display_agent: payload.display_agent,
+                        clear: payload.clear_display_agent,
+                        seq: payload.seq,
                     },
                 )
             })

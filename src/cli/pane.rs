@@ -67,6 +67,9 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         [command, id, options @ ..] if command == "report-agent-session" => {
             pane_report_agent_session(project, id, options)
         }
+        [command, id, options @ ..] if command == "report-metadata" => {
+            pane_report_metadata(project, id, options)
+        }
         [command, id, options @ ..] if command == "release-agent" => {
             pane_release_agent(project, id, options)
         }
@@ -81,7 +84,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|report-agent-session|release-agent|wait-output|split|resize>",
+                "usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|report-agent-session|report-metadata|release-agent|wait-output|split|resize>",
             ))
         }
     }
@@ -1451,6 +1454,57 @@ fn pane_report_agent_session(project: &Project, id: &str, args: &[String]) -> io
     )
 }
 
+fn pane_report_metadata(project: &Project, id: &str, args: &[String]) -> io::Result<()> {
+    let mut source = None;
+    let mut display_agent = None;
+    let mut clear_display_agent = false;
+    let mut seq = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--source" | "--display-agent" | "--seq" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| io::Error::other(format!("{} requires a value", args[index])))?;
+                match args[index].as_str() {
+                    "--source" => source = Some(value.clone()),
+                    "--display-agent" => display_agent = Some(value.clone()),
+                    "--seq" => {
+                        seq =
+                            Some(value.parse::<u64>().map_err(|_| {
+                                io::Error::other("--seq must be an unsigned integer")
+                            })?)
+                    }
+                    _ => unreachable!(),
+                }
+                index += 2;
+            }
+            "--clear-display-agent" => {
+                clear_display_agent = true;
+                index += 1;
+            }
+            option => return Err(io::Error::other(format!("unknown option: {option}"))),
+        }
+    }
+    let source = source.ok_or_else(|| io::Error::other("missing required --source"))?;
+    if display_agent.is_none() && !clear_display_agent {
+        return Err(io::Error::other(
+            "provide --display-agent or --clear-display-agent",
+        ));
+    }
+    pane_mutation_with_payload(
+        project,
+        "report_metadata",
+        serde_json::json!({
+            "pane_id": id,
+            "source": source,
+            "display_agent": display_agent,
+            "clear_display_agent": clear_display_agent,
+            "seq": seq
+        }),
+    )
+}
+
 fn pane_release_agent(project: &Project, id: &str, args: &[String]) -> io::Result<()> {
     let mut source = None;
     let mut agent = None;
@@ -1761,7 +1815,7 @@ fn pane_resize_options(project: &Project, args: &[String]) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|report-agent-session|release-agent|wait-output|split|resize>");
+    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|report-agent-session|report-metadata|release-agent|wait-output|split|resize>");
     println!("  list [--workspace <id>]  list panes in a workspace");
     println!("  current [<id>]   show the focused or requested pane");
     println!("  get <id>         show a pane as JSON");
@@ -1793,6 +1847,7 @@ fn print_help() {
     );
     println!("  report-agent <id> --source ID --agent LABEL --state unknown|idle|working|blocked [--seq N] [--agent-session-id ID|--agent-session-path PATH]  report hook state");
     println!("  report-agent-session <id> --source ID --agent LABEL (--agent-session-id ID|--agent-session-path PATH) [--seq N]  report session identity");
+    println!("  report-metadata <id> --source ID (--display-agent LABEL|--clear-display-agent) [--seq N]  report display metadata");
     println!("  release-agent <id> --source ID --agent LABEL [--seq N]  release hook authority");
     println!("  wait-output <id> (--match TEXT | --regex PATTERN) [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--raw]  wait for output");
     println!("  split <direction> [command args...] | [--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus|--no-focus]  split with a new pane");
