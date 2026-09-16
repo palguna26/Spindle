@@ -82,6 +82,11 @@ isolated in `src/integration/paths.rs`, following Herdr's dedicated
 `src/integration/env.rs` module. Installers remain behaviorally unchanged and
 the full test suite still passes.
 
+Shared integration JSON and file operations now live in
+`src/integration/file_ops.rs`, following Herdr's `src/integration/file_ops.rs`
+boundary. The installer registry is now limited to dispatch and agent-specific
+behavior.
+
 ## 0. Establish the parity matrix
 
 - [ ] Compare Herdr's README, quick-start, keyboard guide, CLI guide, and
