@@ -253,6 +253,7 @@ fn print_help() {
     println!("  workspace list/create/close  manage workspaces in the current project session");
     println!("  workspace get <id>  show a workspace by ID");
     println!("  workspace focus <id>  focus a workspace by ID");
+    println!("  workspace move <id> <insert-index>  reorder a workspace");
     println!("  workspace rename <id> <label>  rename a workspace");
     println!("  worktree list/create/open/remove  manage Git worktree workspaces");
     println!("  tab list        list tabs in the active workspace");

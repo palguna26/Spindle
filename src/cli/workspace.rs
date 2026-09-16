@@ -13,6 +13,15 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
         [command, workspace_id, label @ ..] if command == "rename" && !label.is_empty() => {
             workspace_rename(project, workspace_id, &label.join(" "))
         }
+        [command, workspace_id, index] if command == "move" => {
+            let insert_index = index.parse::<usize>().map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "workspace move index must be a non-negative integer",
+                )
+            })?;
+            workspace_move(project, workspace_id, insert_index)
+        }
         [command, workspace_id] if command == "close" => {
             workspace_close(project, workspace_id, false)
         }
@@ -27,7 +36,7 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>|close <workspace_id> [--group]>",
+                "usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|move <workspace_id> <insert-index>|rename <workspace_id> <label>|close <workspace_id> [--group]>",
             ))
         }
     }
@@ -278,6 +287,23 @@ fn workspace_rename(project: &Project, workspace_id: &str, name: &str) -> io::Re
     Ok(())
 }
 
+fn workspace_move(project: &Project, workspace_id: &str, insert_index: usize) -> io::Result<()> {
+    let response = super::send_command_with_payload(
+        project,
+        "move_workspace",
+        serde_json::json!({ "id": workspace_id, "insert_index": insert_index }),
+    )?;
+    if !response.ok {
+        let message = response
+            .error
+            .map(|error| error.message)
+            .unwrap_or_else(|| "server rejected the workspace move request".into());
+        return Err(io::Error::other(message));
+    }
+    println!("moved workspace {workspace_id} to insert index {insert_index}");
+    Ok(())
+}
+
 fn workspace_list(project: &Project) -> io::Result<()> {
     let response = super::send_command(project, "get_snapshot")?;
     if !response.ok {
@@ -318,13 +344,14 @@ fn format_workspace_list(snapshot: &SessionSnapshot) -> String {
 }
 
 fn print_help() {
-    println!("Usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>|close <workspace_id> [--group]>");
+    println!("Usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|move <workspace_id> <insert-index>|rename <workspace_id> <label>|close <workspace_id> [--group]>");
     println!("  list    list workspaces in the current project session");
     println!(
         "  create  create a workspace and start its PowerShell pane (--cwd, --label, --env, --focus|--no-focus)"
     );
     println!("  get     show a workspace by ID");
     println!("  focus   focus a workspace by ID");
+    println!("  move    reorder a workspace within its space");
     println!("  rename  rename a workspace by ID");
     println!("  close   close a workspace by ID");
 }

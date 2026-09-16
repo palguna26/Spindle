@@ -189,7 +189,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   Herdr-style manifest event hooks now support `worktree.created`,
   `worktree.opened`, `worktree.removed`, `pane.created`, `pane.focused`,
   `pane.closed`, `pane.updated`, `pane.exited`, `pane.moved`, `pane.agent_detected`, `pane.agent_status_changed`, `layout.updated`, `tab.created`, `tab.focused`, `tab.closed`, `workspace.focused`, `workspace.created`, `workspace.renamed`, and `workspace.closed`, delivered from the server event history with the
-  triggering event and active session context; other Herdr event kinds remain
+  triggering event and active session context; `spindle workspace move ID
+  INSERT_INDEX` now reorders a workspace within its space without changing
+  focus and emits `workspace.moved`; other Herdr event kinds remain
   to be ported;
   `spindle pane current` now accepts Herdr's `--pane` and `--current` selector
   forms and honors the Spindle/Herdr pane environment IDs;
