@@ -45,6 +45,8 @@ const BASH: &str = r#"_spindle() {
     COMPREPLY=( $(compgen -W "start attach stop list status doctor config workspace worktree tab pane agent notification integration completion api session help --session" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "completion" ]]; then
     COMPREPLY=( $(compgen -W "bash elvish fish powershell zsh" -- "$cur") )
+  elif [[ "$COMP_WORDS[1]" == "--session" && COMP_CWORD -ge 3 ]]; then
+    COMPREPLY=( $(compgen -W "start attach stop list status doctor config workspace worktree tab pane agent notification integration completion api session help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "status" ]]; then
     COMPREPLY=( $(compgen -W "server client --json" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "workspace" ]]; then
@@ -98,6 +100,7 @@ complete -F _spindle spindle
 
 const FISH: &str = r#"complete -c spindle -f -n '__fish_use_subcommand' -a 'start attach stop list status doctor config workspace worktree tab pane agent notification integration completion api session help'
 complete -c spindle -f -n '__fish_use_subcommand' -l session -r
+complete -c spindle -f -n '__fish_seen_argument --session' -a 'start attach stop list status doctor config workspace worktree tab pane agent notification integration completion api session help'
 complete -c spindle -f -n '__fish_seen_subcommand_from session' -a 'list attach stop delete help'
 complete -c spindle -f -n '__fish_seen_subcommand_from completion' -a 'bash elvish fish powershell zsh'
 complete -c spindle -f -n '__fish_seen_subcommand_from status' -a 'server client --json'
@@ -155,6 +158,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
   $words = $commandAst.ToString().Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
   $choices = if ($words.Count -le 1) { 'start attach stop list status doctor config workspace worktree tab pane agent notification integration completion api session help --session' }
     elseif ($words[1] -eq 'completion') { 'bash elvish fish powershell zsh' }
+    elseif ($words[1] -eq '--session' -and $words.Count -ge 3) { 'start attach stop list status doctor config workspace worktree tab pane agent notification integration completion api session help' }
     elseif ($words[1] -eq 'session') { 'list attach stop delete help' }
     elseif ($words[1] -eq 'status') { 'server client --json' }
     elseif ($words[1] -eq 'workspace' -and $words[2] -eq 'create') { '--cwd --label --env --focus --no-focus' }
@@ -178,6 +182,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
 const ELVISH: &str = r#"# Add to ~/.elvish/rc.elv:
 edit:completion:argadd spindle (start attach stop list status doctor config workspace worktree tab pane agent notification integration completion api session help)
 edit:completion:argadd 'spindle --session' (review)
+edit:completion:argadd 'spindle --session review' (start attach stop list status doctor config workspace worktree tab pane agent notification integration completion api session help)
 edit:completion:argadd 'spindle session' (list attach stop delete help)
 edit:completion:argadd 'spindle status' (server client --json)
 edit:completion:argadd 'spindle api' (snapshot schema help)
