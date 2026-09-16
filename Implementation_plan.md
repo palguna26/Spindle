@@ -682,6 +682,11 @@ metadata application rules remain pending. Workspace metadata tokens now follow
 Herdr's separate workspace report path, with API/CLI reporting, sequence
 ordering, TTL expiry, snapshot exposure, and sidebar rendering.
 
+Integration status now reports `current`, `outdated`, or `not-installed`, with
+the installed and expected managed-hook marker versions. This follows Herdr's
+`src/integration/registry.rs` status model and lets users identify stale
+integrations before reinstalling them.
+
 ## Verification gates
 
 For every code commit:
