@@ -683,6 +683,7 @@ fn sidebar_token_spans(
     spans
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_space_token_row(
     tokens: &[String],
     name: &str,
@@ -691,6 +692,8 @@ fn render_space_token_row(
     metadata: &std::collections::HashMap<String, String>,
     active: bool,
     indent: &str,
+    text: Color,
+    subtext0: Color,
 ) -> Line<'static> {
     let state_icon = state
         .map(|state| state.sidebar_marker().to_owned())
@@ -698,7 +701,7 @@ fn render_space_token_row(
     let state_text = state
         .map(|state| state.label().to_owned())
         .unwrap_or_else(|| if active { "active" } else { "idle" }.to_owned());
-    let workspace_style = Style::default().fg(if active { Color::White } else { Color::Gray });
+    let workspace_style = Style::default().fg(if active { text } else { subtext0 });
     Line::from(sidebar_token_spans(
         tokens,
         |token| match token.strip_prefix('$').unwrap_or(token) {
@@ -706,21 +709,22 @@ fn render_space_token_row(
                 state_icon.clone(),
                 Style::default().fg(state.map_or(Color::DarkGray, agent_state_color)),
             )),
-            "state_text" => Some((state_text.clone(), Style::default().fg(Color::DarkGray))),
+            "state_text" => Some((state_text.clone(), Style::default().fg(subtext0))),
             "workspace" => Some((name.to_owned(), workspace_style)),
             "branch" => branch
                 .filter(|branch| !branch.is_empty())
-                .map(|branch| (branch.to_owned(), Style::default().fg(Color::DarkGray))),
+                .map(|branch| (branch.to_owned(), Style::default().fg(subtext0))),
             "git_status" => None,
             custom => metadata
                 .get(custom)
                 .cloned()
-                .map(|value| (value, Style::default().fg(Color::DarkGray))),
+                .map(|value| (value, Style::default().fg(subtext0))),
         },
         indent,
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_agent_token_row(
     tokens: &[String],
     pane: &crate::server::session::PaneView,
@@ -728,6 +732,8 @@ fn render_agent_token_row(
     workspace_name: &str,
     focused: bool,
     active_row_bg: Color,
+    text: Color,
+    subtext0: Color,
 ) -> Line<'static> {
     let state = pane.agent_display_state();
     let state_icon = state.sidebar_marker().to_owned();
@@ -761,39 +767,35 @@ fn render_agent_token_row(
                     crate::detect::AgentDisplayState::Done => Color::Cyan,
                 })),
             )),
-            "state_text" => Some((
-                state_text.clone(),
-                focused_style(Style::default().fg(Color::Gray)),
-            )),
+            "state_text" => Some((state_text.clone(), focused_style(Style::default().fg(text)))),
             "machine" => Some((
                 machine.clone(),
-                focused_style(Style::default().fg(Color::DarkGray)),
+                focused_style(Style::default().fg(subtext0)),
             )),
             "workspace" => Some((
                 workspace_name.to_owned(),
-                focused_style(Style::default().fg(Color::Gray)),
+                focused_style(Style::default().fg(text)),
             )),
             "tab" => Some((
                 tab_name.to_owned(),
-                focused_style(Style::default().fg(Color::DarkGray)),
+                focused_style(Style::default().fg(subtext0)),
             )),
             "pane" => Some((
                 pane.pane_id.clone(),
-                focused_style(Style::default().fg(Color::DarkGray)),
+                focused_style(Style::default().fg(subtext0)),
             )),
             "agent" => Some((
                 label.clone().unwrap_or_else(|| agent.clone()),
-                focused_style(Style::default().fg(Color::Gray)),
+                focused_style(Style::default().fg(text)),
             )),
-            "terminal_title" | "terminal_title_stripped" => Some((
-                title.clone(),
-                focused_style(Style::default().fg(Color::DarkGray)),
-            )),
+            "terminal_title" | "terminal_title_stripped" => {
+                Some((title.clone(), focused_style(Style::default().fg(subtext0))))
+            }
             custom => pane
                 .tokens
                 .get(custom)
                 .cloned()
-                .map(|value| (value, focused_style(Style::default().fg(Color::DarkGray)))),
+                .map(|value| (value, focused_style(Style::default().fg(subtext0)))),
         },
         "    ",
     ))
@@ -1067,6 +1069,8 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
 ) {
     let config = crate::config::load();
     let accent = super::ThemePalette::from_config(&config).accent;
+    let text = super::ThemePalette::text(&config);
+    let subtext0 = super::ThemePalette::subtext0(&config);
     let sidebar_bg = super::ThemePalette::sidebar_bg(&config);
     let active_row_bg = super::ThemePalette::active_row_bg(&config);
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
@@ -1166,6 +1170,8 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                         tokens,
                         active,
                         indent,
+                        text,
+                        subtext0,
                     );
                     let line = append_summary(line, tokens);
                     if previewed {
@@ -1198,6 +1204,8 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                             workspace_name,
                             focused,
                             active_row_bg,
+                            text,
+                            subtext0,
                         ),
                         &pane.tokens,
                     )
@@ -1691,6 +1699,7 @@ mod tests {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
+    use ratatui::style::Color;
     use ratatui::Terminal;
     use std::collections::HashSet;
 
@@ -2489,6 +2498,8 @@ mod tests {
             &metadata,
             true,
             "  ",
+            Color::White,
+            Color::Gray,
         );
         let content = line
             .spans

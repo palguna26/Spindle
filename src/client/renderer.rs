@@ -389,6 +389,77 @@ impl ThemePalette {
             _ => Color::White,
         }
     }
+
+    pub(super) fn text(config: &crate::config::Config) -> Color {
+        if let Some(color) = config
+            .theme_custom_text
+            .as_deref()
+            .and_then(parse_theme_color)
+        {
+            return color;
+        }
+        let name = config
+            .theme_name
+            .as_deref()
+            .unwrap_or("catppuccin")
+            .to_ascii_lowercase();
+        match name.as_str() {
+            "catppuccin" => Color::Rgb(205, 214, 244),
+            "catppuccin-latte" => Color::Rgb(76, 79, 105),
+            "terminal" => Color::Reset,
+            "tokyo-night" | "tokyonight" => Color::Rgb(192, 202, 245),
+            "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => Color::Rgb(55, 96, 191),
+            "dracula" => Color::Rgb(248, 248, 242),
+            "nord" => Color::Rgb(236, 239, 244),
+            "gruvbox" => Color::Rgb(235, 219, 178),
+            "gruvbox-light" => Color::Rgb(60, 56, 54),
+            "one-dark" => Color::Rgb(171, 178, 191),
+            "one-light" => Color::Rgb(56, 58, 66),
+            "solarized" => Color::Rgb(147, 161, 161),
+            "solarized-light" => Color::Rgb(101, 123, 131),
+            "kanagawa" => Color::Rgb(220, 215, 186),
+            "kanagawa-lotus" => Color::Rgb(84, 84, 100),
+            "rose-pine" => Color::Rgb(224, 222, 244),
+            "rose-pine-dawn" => Color::Rgb(70, 66, 97),
+            "vesper" => Color::White,
+            _ => Color::White,
+        }
+    }
+
+    pub(super) fn subtext0(config: &crate::config::Config) -> Color {
+        if let Some(color) = config
+            .theme_custom_subtext0
+            .as_deref()
+            .and_then(parse_theme_color)
+        {
+            return color;
+        }
+        let name = config
+            .theme_name
+            .as_deref()
+            .unwrap_or("catppuccin")
+            .to_ascii_lowercase();
+        match name.as_str() {
+            "catppuccin" => Color::Rgb(166, 173, 200),
+            "catppuccin-latte" => Color::Rgb(108, 111, 133),
+            "terminal" => Color::Gray,
+            "tokyo-night" | "tokyonight" => Color::Rgb(169, 177, 214),
+            "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => Color::Rgb(97, 114, 176),
+            "dracula" => Color::Rgb(210, 210, 220),
+            "nord" => Color::Rgb(216, 222, 233),
+            "gruvbox" => Color::Rgb(213, 196, 161),
+            "gruvbox-light" => Color::Rgb(80, 73, 69),
+            "one-dark" => Color::Rgb(150, 156, 168),
+            "one-light" => Color::Rgb(104, 107, 119),
+            "solarized" | "solarized-light" => Color::Rgb(131, 148, 150),
+            "kanagawa" => Color::Rgb(200, 195, 170),
+            "kanagawa-lotus" => Color::Rgb(67, 67, 108),
+            "rose-pine" => Color::Rgb(200, 197, 220),
+            "rose-pine-dawn" => Color::Rgb(121, 117, 147),
+            "vesper" => Color::Rgb(160, 160, 160),
+            _ => Color::Gray,
+        }
+    }
 }
 
 fn parse_theme_color(value: &str) -> Option<Color> {
@@ -1725,6 +1796,30 @@ mod tests {
         };
         assert_eq!(super::ThemePalette::overlay0(&config), Color::Rgb(1, 2, 3));
         assert_eq!(super::ThemePalette::overlay1(&config), Color::Rgb(4, 5, 6));
+    }
+
+    #[test]
+    fn custom_sidebar_text_colors_override_herdr_defaults() {
+        let config = crate::config::Config {
+            theme_custom_text: Some("#010203".into()),
+            theme_custom_subtext0: Some("rgb(4, 5, 6)".into()),
+            ..crate::config::Config::default()
+        };
+        assert_eq!(super::ThemePalette::text(&config), Color::Rgb(1, 2, 3));
+        assert_eq!(super::ThemePalette::subtext0(&config), Color::Rgb(4, 5, 6));
+    }
+
+    #[test]
+    fn sidebar_text_colors_match_herdr_tokyo_night_day_defaults() {
+        let config = crate::config::Config {
+            theme_name: Some("tokyo-night-day".into()),
+            ..crate::config::Config::default()
+        };
+        assert_eq!(super::ThemePalette::text(&config), Color::Rgb(55, 96, 191));
+        assert_eq!(
+            super::ThemePalette::subtext0(&config),
+            Color::Rgb(97, 114, 176)
+        );
     }
 
     #[test]

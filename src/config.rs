@@ -190,6 +190,8 @@ struct ThemeCustomConfig {
     surface0: Option<String>,
     overlay0: Option<String>,
     overlay1: Option<String>,
+    text: Option<String>,
+    subtext0: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -291,6 +293,8 @@ pub struct Config {
     pub(crate) theme_custom_surface0: Option<String>,
     pub(crate) theme_custom_overlay0: Option<String>,
     pub(crate) theme_custom_overlay1: Option<String>,
+    pub(crate) theme_custom_text: Option<String>,
+    pub(crate) theme_custom_subtext0: Option<String>,
     pub notifications_enabled: bool,
     pub(crate) notification_delivery: NotificationDelivery,
     pub(crate) notification_delay_seconds: u64,
@@ -335,6 +339,8 @@ impl Default for Config {
             theme_custom_surface0: None,
             theme_custom_overlay0: None,
             theme_custom_overlay1: None,
+            theme_custom_text: None,
+            theme_custom_subtext0: None,
             notifications_enabled: true,
             notification_delivery: NotificationDelivery::Herdr,
             notification_delay_seconds: 1,
@@ -423,6 +429,8 @@ pub fn load_from(path: &std::path::Path) -> Config {
         theme_custom_surface0: file.theme.custom.surface0,
         theme_custom_overlay0: file.theme.custom.overlay0,
         theme_custom_overlay1: file.theme.custom.overlay1,
+        theme_custom_text: file.theme.custom.text,
+        theme_custom_subtext0: file.theme.custom.subtext0,
         theme_name: file.theme.name,
         notifications_enabled: file.notifications.enabled,
         notification_delivery: file.notifications.delivery,
@@ -787,7 +795,7 @@ mod tests {
         ));
         std::fs::write(
             &path,
-            "[theme.custom]\nsidebar_bg = \"#101112\"\nactive_row_bg = \"rgb(4, 5, 6)\"\nselection_bg = \"#070809\"\nsurface0 = \"#0a0b0c\"\noverlay0 = \"#0d0e0f\"\noverlay1 = \"#101112\"\n",
+            "[theme.custom]\nsidebar_bg = \"#101112\"\nactive_row_bg = \"rgb(4, 5, 6)\"\nselection_bg = \"#070809\"\nsurface0 = \"#0a0b0c\"\noverlay0 = \"#0d0e0f\"\noverlay1 = \"#101112\"\ntext = \"#131415\"\nsubtext0 = \"#161718\"\n",
         )
         .unwrap();
         let config = load_from(&path);
@@ -800,6 +808,8 @@ mod tests {
         assert_eq!(config.theme_custom_surface0.as_deref(), Some("#0a0b0c"));
         assert_eq!(config.theme_custom_overlay0.as_deref(), Some("#0d0e0f"));
         assert_eq!(config.theme_custom_overlay1.as_deref(), Some("#101112"));
+        assert_eq!(config.theme_custom_text.as_deref(), Some("#131415"));
+        assert_eq!(config.theme_custom_subtext0.as_deref(), Some("#161718"));
         std::fs::remove_file(path).unwrap();
     }
 
