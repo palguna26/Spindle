@@ -2226,7 +2226,7 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect();
         assert!(content.contains("Extra 7"));
-        assert!(content.contains("#"));
+        assert!(content.contains("▕"));
     }
 
     #[test]
