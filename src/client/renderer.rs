@@ -185,11 +185,40 @@ impl ThemePalette {
     }
 
     pub(super) fn surface0(config: &crate::config::Config) -> Color {
-        config
+        if let Some(color) = config
             .theme_custom_surface0
             .as_deref()
             .and_then(parse_theme_color)
-            .unwrap_or_else(|| Self::panel_bg(config))
+        {
+            return color;
+        }
+        match config
+            .theme_name
+            .as_deref()
+            .unwrap_or("catppuccin")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "catppuccin" => Color::Rgb(49, 50, 68),
+            "catppuccin-latte" => Color::Rgb(204, 208, 218),
+            "terminal" => Color::Reset,
+            "tokyo-night" | "tokyonight" => Color::Rgb(36, 40, 59),
+            "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => Color::Rgb(196, 200, 218),
+            "dracula" => Color::Rgb(68, 71, 90),
+            "nord" => Color::Rgb(59, 66, 82),
+            "gruvbox" => Color::Rgb(60, 56, 54),
+            "gruvbox-light" => Color::Rgb(235, 219, 178),
+            "one-dark" => Color::Rgb(44, 49, 58),
+            "one-light" => Color::Rgb(240, 240, 241),
+            "solarized" => Color::Rgb(7, 54, 66),
+            "solarized-light" => Color::Rgb(238, 232, 213),
+            "kanagawa" => Color::Rgb(42, 42, 55),
+            "kanagawa-lotus" => Color::Rgb(220, 213, 172),
+            "rose-pine" => Color::Rgb(31, 29, 46),
+            "rose-pine-dawn" => Color::Rgb(242, 233, 225),
+            "vesper" => Color::Rgb(35, 35, 35),
+            _ => Self::panel_bg(config),
+        }
     }
 }
 
@@ -1451,13 +1480,25 @@ mod tests {
         );
         assert_eq!(
             super::ThemePalette::surface0(&config),
-            Color::Rgb(24, 24, 37)
+            Color::Rgb(49, 50, 68)
         );
         let config = crate::config::Config {
             theme_custom_surface0: Some("#070809".into()),
             ..config
         };
         assert_eq!(super::ThemePalette::surface0(&config), Color::Rgb(7, 8, 9));
+    }
+
+    #[test]
+    fn surface_zero_matches_herdr_theme_defaults() {
+        let config = crate::config::Config {
+            theme_name: Some("dracula".into()),
+            ..crate::config::Config::default()
+        };
+        assert_eq!(
+            super::ThemePalette::surface0(&config),
+            Color::Rgb(68, 71, 90)
+        );
     }
 
     #[test]
