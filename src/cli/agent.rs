@@ -81,6 +81,7 @@ fn agent_start(project: &Project, args: &[String]) -> io::Result<()> {
             "usage: spindle agent start NAME --kind KIND --pane PANE_ID [--timeout MS] [-- AGENT_ARGS...]",
         ));
     };
+    validate_agent_name(name)?;
     let separator = args
         .iter()
         .position(|arg| arg == "--")
@@ -128,6 +129,15 @@ fn agent_start(project: &Project, args: &[String]) -> io::Result<()> {
     let command = agent_command(&kind)
         .ok_or_else(|| io::Error::other(format!("unsupported interactive agent kind: {kind}")))?;
     let snapshot = get_snapshot(project)?;
+    if agent_rows(&snapshot)
+        .iter()
+        .any(|row| row["name"].as_str() == Some(name.as_str()))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("agent name '{name}' is already in use"),
+        ));
+    }
     if !snapshot.panes.iter().any(|pane| pane.pane_id == pane_id) {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -173,6 +183,23 @@ fn agent_start(project: &Project, args: &[String]) -> io::Result<()> {
             ));
         }
         std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn validate_agent_name(name: &str) -> io::Result<()> {
+    let valid = !name.is_empty()
+        && name.len() <= 32
+        && name.as_bytes()[0].is_ascii_lowercase()
+        && name.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-'
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "agent name must match [a-z][a-z0-9_-]{0,31}",
+        ))
     }
 }
 
@@ -539,9 +566,12 @@ fn resolve_agent(
     let matches: Vec<_> = rows
         .iter()
         .filter(|row| {
-            row["agent"]
+            row["name"]
                 .as_str()
                 .is_some_and(|name| name.eq_ignore_ascii_case(target))
+                || row["agent"]
+                    .as_str()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(target))
         })
         .collect();
     match matches.as_slice() {
@@ -575,6 +605,7 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
                             let agent = pane.agent?;
                             Some(serde_json::json!({
                                 "pane_id": pane.pane_id,
+                                "name": pane.label,
                                 "agent": agent.label(),
                                 "agent_kind": agent,
                                 "state": pane.agent_display_state().label(),
@@ -607,7 +638,7 @@ fn print_help() {
 mod tests {
     use super::{
         agent_command, agent_rows, parse_prompt_options, prompt_wait_timeout, resolve_agent,
-        shell_quote,
+        shell_quote, validate_agent_name,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -680,9 +711,10 @@ mod tests {
     #[test]
     fn agent_target_accepts_unique_name_and_rejects_ambiguous_name() {
         let rows = vec![
-            serde_json::json!({"pane_id": "pane-1", "agent": "Codex"}),
-            serde_json::json!({"pane_id": "pane-2", "agent": "Claude"}),
+            serde_json::json!({"pane_id": "pane-1", "name": "build", "agent": "Codex"}),
+            serde_json::json!({"pane_id": "pane-2", "name": null, "agent": "Claude"}),
         ];
+        assert_eq!(resolve_agent(&rows, "build").unwrap().0, "pane-1");
         assert_eq!(resolve_agent(&rows, "codex").unwrap().0, "pane-1");
         assert_eq!(resolve_agent(&rows, "pane-2").unwrap().0, "pane-2");
 
@@ -692,6 +724,15 @@ mod tests {
         ];
         let error = resolve_agent(&duplicate, "codex").unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn agent_start_names_follow_herdr_validation_rules() {
+        assert!(validate_agent_name("build-agent_1").is_ok());
+        assert!(validate_agent_name("Build-agent").is_err());
+        assert!(validate_agent_name("1agent").is_err());
+        assert!(validate_agent_name("agent.name").is_err());
+        assert!(validate_agent_name(&"a".repeat(33)).is_err());
     }
 
     #[test]
