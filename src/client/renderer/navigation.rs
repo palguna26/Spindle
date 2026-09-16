@@ -772,6 +772,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
 ) {
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
     let body = sidebar_body(area);
+    let metadata_width = usize::from(body.width);
     let max_scroll = rows.len().saturating_sub(usize::from(body.height));
     let start = scroll.min(max_scroll);
     let lines = rows
@@ -891,9 +892,16 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                         ));
                     }
                 }
-                if let Some(summary) = tokens.get("summary") {
+                for (key, value) in visible_metadata_tokens(tokens)
+                    .into_iter()
+                    .filter(|(key, _)| *key == "summary" || metadata_width >= 36)
+                {
                     spans.push(Span::styled(
-                        format!(" · {summary}"),
+                        if key == "summary" {
+                            format!(" · {value}")
+                        } else {
+                            format!(" · {key}={value}")
+                        },
                         Style::default().fg(Color::DarkGray),
                     ));
                 }
@@ -948,8 +956,18 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                     Span::styled(label, label_style),
                     Span::styled(format!(" · {state_label}"), state_style),
                 ];
-                if summary.is_none() {
-                    spans.push(Span::styled(format!(" · {context}"), tab_style));
+                spans.push(Span::styled(format!(" · {context}"), tab_style));
+                for (key, value) in visible_metadata_tokens(&pane.tokens)
+                    .into_iter()
+                    .filter(|(key, _)| *key == "summary" || metadata_width >= 36)
+                {
+                    if key == "summary" {
+                        continue;
+                    }
+                    spans.push(Span::styled(
+                        format!(" · {key}={value}"),
+                        Style::default().fg(Color::DarkGray),
+                    ));
                 }
                 Line::from(spans)
             }
@@ -1004,6 +1022,18 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
     if max_scroll > 0 && body.width > 1 && body.height > 0 {
         render_sidebar_scrollbar(frame, body, start, max_scroll, rows.len());
     }
+}
+
+fn visible_metadata_tokens(
+    tokens: &std::collections::HashMap<String, String>,
+) -> Vec<(&str, &str)> {
+    let mut entries = tokens
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| left.0.cmp(right.0).then_with(|| left.1.cmp(right.1)));
+    entries.sort_by_key(|(key, _)| *key != "summary");
+    entries
 }
 
 fn sidebar_title(area: Rect, agent_priority_sort: bool, navigating: bool) -> String {
@@ -1930,6 +1960,11 @@ mod tests {
         pane.state_labels
             .insert("working".into(), "Indexing".into());
         pane.tokens.insert("summary".into(), "12 files".into());
+        pane.tokens.insert("model".into(), "gpt-5".into());
+        assert_eq!(
+            super::visible_metadata_tokens(&pane.tokens),
+            vec![("summary", "12 files"), ("model", "gpt-5")]
+        );
         snapshot.panes = vec![pane];
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
