@@ -8,9 +8,11 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
 pub fn render_navigator(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, navigator: &Navigator) {
-    let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
+    let config = crate::config::load();
+    let palette = super::ThemePalette::from_config(&config);
+    let selection_bg = super::ThemePalette::selection_bg(&config);
     if navigator.is_mobile() {
-        render_mobile_navigator(frame, snapshot, navigator);
+        render_mobile_navigator(frame, snapshot, navigator, selection_bg);
         return;
     }
     let area = navigator_area(frame.area());
@@ -23,7 +25,7 @@ pub fn render_navigator(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, navig
         .unwrap_or(0);
     let start = selected_index.saturating_add(1).saturating_sub(body_height);
     let mut lines = vec![Line::from(vec![
-        Span::styled(" / ", Style::default().fg(accent)),
+        Span::styled(" / ", Style::default().fg(palette.accent)),
         Span::raw(if navigator.search_focused() {
             format!("{}▏", navigator.query())
         } else if let Some(filter) = navigator.filter_label() {
@@ -39,7 +41,9 @@ pub fn render_navigator(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, navig
             .enumerate()
             .skip(start)
             .take(body_height)
-            .map(|(index, row)| row_line(row, index == selected_index, accent)),
+            .map(|(index, row)| {
+                row_line(row, index == selected_index, palette.accent, selection_bg)
+            }),
     );
     lines.push(Line::from(Span::styled(
         " j/k move · Space expand · / search · a/b/w/i/d filter · Enter open · Esc close ",
@@ -108,6 +112,7 @@ fn render_mobile_navigator(
     frame: &mut Frame<'_>,
     snapshot: &SessionSnapshot,
     navigator: &Navigator,
+    selection_bg: Color,
 ) {
     let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
     let area = frame.area();
@@ -145,7 +150,7 @@ fn render_mobile_navigator(
             .enumerate()
             .skip(start)
             .take(body_height)
-            .map(|(index, row)| row_line(row, index == selected_index, accent)),
+            .map(|(index, row)| row_line(row, index == selected_index, accent, selection_bg)),
     );
     while lines.len() < usize::from(area.height.saturating_sub(1)) {
         lines.push(Line::default());
@@ -197,7 +202,7 @@ fn hit_test_mobile_navigator(
         .unwrap_or(Hit::Inside)
 }
 
-fn row_line(row: &Row, selected: bool, accent: Color) -> Line<'static> {
+fn row_line(row: &Row, selected: bool, _accent: Color, selection_bg: Color) -> Line<'static> {
     let marker = if selected {
         ">"
     } else if row.current {
@@ -225,7 +230,7 @@ fn row_line(row: &Row, selected: bool, accent: Color) -> Line<'static> {
     let style = if selected {
         Style::default()
             .fg(Color::Black)
-            .bg(accent)
+            .bg(selection_bg)
             .add_modifier(Modifier::BOLD)
     } else if row.current {
         Style::default().fg(Color::Yellow)

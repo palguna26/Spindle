@@ -175,6 +175,14 @@ impl ThemePalette {
             .and_then(parse_theme_color)
             .unwrap_or(Color::DarkGray)
     }
+
+    pub(super) fn selection_bg(config: &crate::config::Config) -> Color {
+        config
+            .theme_custom_selection_bg
+            .as_deref()
+            .and_then(parse_theme_color)
+            .unwrap_or(Color::DarkGray)
+    }
 }
 
 fn parse_theme_color(value: &str) -> Option<Color> {
@@ -1418,6 +1426,7 @@ mod tests {
         let config = crate::config::Config {
             theme_custom_sidebar_bg: Some("#010203".into()),
             theme_custom_active_row_bg: Some("rgb(4, 5, 6)".into()),
+            theme_custom_selection_bg: Some("#070809".into()),
             ..crate::config::Config::default()
         };
         assert_eq!(
@@ -1427,6 +1436,10 @@ mod tests {
         assert_eq!(
             super::ThemePalette::active_row_bg(&config),
             Color::Rgb(4, 5, 6)
+        );
+        assert_eq!(
+            super::ThemePalette::selection_bg(&config),
+            Color::Rgb(7, 8, 9)
         );
     }
 
