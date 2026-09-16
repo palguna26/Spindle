@@ -83,6 +83,10 @@ mod tests {
         assert!(schema["operations"]
             .as_object()
             .unwrap()
+            .contains_key("report_agent_session"));
+        assert!(schema["operations"]
+            .as_object()
+            .unwrap()
             .contains_key("move_tab"));
         assert!(schema["operations"]
             .as_object()
