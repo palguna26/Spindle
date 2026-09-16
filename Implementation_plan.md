@@ -437,6 +437,8 @@ approved design changes it.
   terminal mouse handling when disabled.
   `[ui] host_cursor = "auto"|"native"|"drawn"` now follows Herdr's host
   cursor policy; `auto` keeps the Windows-first drawn default.
+  `[ui] mouse_scroll_lines` now controls wheel movement in pane scrollback
+  and the navigator, defaulting to Herdr's three lines.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
