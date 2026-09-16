@@ -374,6 +374,12 @@ Terminal verification is still pending.
   Codex directory-trust and transcript-viewer rules, and Claude
   transcript/model-picker status preservation plus MCP input-request blockers
   and dynamic-workflow blockers
+
+- [x] Add a Herdr-style read-only integration status command. The initial
+  registry covers Codex and OpenCode, reports whether each agent is available,
+  and shows the expected hook/plugin path in text or JSON form. Install and
+  uninstall actions remain pending until their config-preserving file edits
+  are ported and tested.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
