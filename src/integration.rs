@@ -8,6 +8,8 @@ use serde_json::{json, Value};
 
 const CODEX_HOOK_ASSET: &str = include_str!("integration/assets/codex-agent-state.ps1");
 const CODEX_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
+const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const OPENCODE_PLUGIN_ASSET: &str = include_str!("integration/assets/opencode-agent-state.js");
 const OPENCODE_PLUGIN_NAME: &str = "spindle-agent-state.js";
 const OPENCODE_TUI_ASSET: &str = include_str!("integration/assets/opencode-tui-session.js");
@@ -16,15 +18,17 @@ const OPENCODE_TUI_SPEC: &str = "./spindle-tui-session.js";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Target {
+    Claude,
     Codex,
     Opencode,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 2] = [Self::Codex, Self::Opencode];
+    pub(crate) const ALL: [Self; 3] = [Self::Claude, Self::Codex, Self::Opencode];
 
     fn label(self) -> &'static str {
         match self {
+            Self::Claude => "claude",
             Self::Codex => "codex",
             Self::Opencode => "opencode",
         }
@@ -36,6 +40,7 @@ impl Target {
 
     fn path(self) -> PathBuf {
         match self {
+            Self::Claude => claude_dir().join("hooks").join(CLAUDE_HOOK_NAME),
             Self::Codex => codex_dir().join(CODEX_HOOK_NAME),
             Self::Opencode => home_dir()
                 .join(".config")
@@ -249,6 +254,176 @@ pub(crate) fn uninstall_opencode() -> std::io::Result<Vec<String>> {
             }
         ),
     ])
+}
+
+pub(crate) fn install_claude() -> std::io::Result<Vec<String>> {
+    let dir = claude_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "claude config directory not found at {}. install claude code first",
+            dir.display()
+        )));
+    }
+    let hooks_dir = dir.join("hooks");
+    std::fs::create_dir_all(&hooks_dir)?;
+    let hook_path = hooks_dir.join(CLAUDE_HOOK_NAME);
+    std::fs::write(&hook_path, CLAUDE_HOOK_ASSET)?;
+    let settings_path = dir.join("settings.json");
+    let content = if settings_path.is_file() {
+        std::fs::read_to_string(&settings_path)?
+    } else {
+        "{}\n".into()
+    };
+    let updated = add_claude_hook(&content, &settings_path, &hook_path)?;
+    if updated != content {
+        std::fs::write(&settings_path, updated)?;
+    }
+    Ok(vec![
+        format!(
+            "installed claude integration hook to {}",
+            hook_path.display()
+        ),
+        format!("ensured claude settings at {}", settings_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_claude() -> std::io::Result<Vec<String>> {
+    let dir = claude_dir();
+    let hook_path = dir.join("hooks").join(CLAUDE_HOOK_NAME);
+    let settings_path = dir.join("settings.json");
+    let removed_hook = remove_file_if_exists(&hook_path)?;
+    let mut changed = false;
+    if settings_path.is_file() {
+        let content = std::fs::read_to_string(&settings_path)?;
+        let updated = remove_claude_hook(&content, &settings_path, &hook_path, &mut changed)?;
+        if changed {
+            std::fs::write(&settings_path, updated)?;
+        }
+    }
+    Ok(vec![format!(
+        "{} claude integration hook {}",
+        if removed_hook || changed {
+            "removed"
+        } else {
+            "did not find"
+        },
+        hook_path.display()
+    )])
+}
+
+fn claude_dir() -> PathBuf {
+    env::var_os("CLAUDE_CONFIG_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".claude"))
+}
+
+fn add_claude_hook(
+    content: &str,
+    path: &std::path::Path,
+    hook_path: &std::path::Path,
+) -> std::io::Result<String> {
+    let root = parse_jsonc_root(content, path)?;
+    let object = root_object(&root, path)?;
+    let hooks = object
+        .object_value_or_create("hooks")
+        .ok_or_else(|| std::io::Error::other("Claude hooks must be a JSON object"))?;
+    let session = match hooks.get("SessionStart") {
+        Some(property) => property
+            .array_value()
+            .ok_or_else(|| std::io::Error::other("Claude SessionStart hooks must be an array"))?,
+        None => {
+            hooks.append("SessionStart", CstInputValue::Array(Vec::new()));
+            hooks
+                .get("SessionStart")
+                .and_then(|property| property.array_value())
+                .ok_or_else(|| {
+                    std::io::Error::other("failed to create Claude SessionStart hooks")
+                })?
+        }
+    };
+    let command = claude_hook_command(hook_path);
+    if session.elements().iter().any(|entry| {
+        entry
+            .as_object()
+            .and_then(|object| object.get("hooks"))
+            .and_then(|property| property.array_value())
+            .is_some_and(|hooks| {
+                hooks.elements().iter().any(|hook| {
+                    hook.to_serde_value()
+                        .is_some_and(|value| value["command"].as_str() == Some(command.as_str()))
+                })
+            })
+    }) {
+        return Ok(content.to_owned());
+    }
+    session.append(CstInputValue::Object(vec![
+        ("matcher".into(), CstInputValue::String("*".into())),
+        (
+            "hooks".into(),
+            CstInputValue::Array(vec![CstInputValue::Object(vec![
+                ("type".into(), CstInputValue::String("command".into())),
+                ("command".into(), CstInputValue::String(command)),
+                ("timeout".into(), CstInputValue::Number("10".into())),
+            ])]),
+        ),
+    ]));
+    Ok(root.to_string())
+}
+
+fn remove_claude_hook(
+    content: &str,
+    path: &std::path::Path,
+    hook_path: &std::path::Path,
+    changed: &mut bool,
+) -> std::io::Result<String> {
+    let root = parse_jsonc_root(content, path)?;
+    let object = root_object(&root, path)?;
+    let Some(hooks) = object.object_value("hooks") else {
+        return Ok(content.to_owned());
+    };
+    let Some(session) = hooks
+        .get("SessionStart")
+        .and_then(|property| property.array_value())
+    else {
+        return Ok(content.to_owned());
+    };
+    let command = claude_hook_command(hook_path);
+    for entry in session.elements() {
+        let Some(entry_object) = entry.as_object() else {
+            continue;
+        };
+        let Some(command_hooks) = entry_object
+            .get("hooks")
+            .and_then(|property| property.array_value())
+        else {
+            continue;
+        };
+        for hook in command_hooks.elements() {
+            if hook
+                .to_serde_value()
+                .is_some_and(|value| value["command"].as_str() == Some(command.as_str()))
+            {
+                hook.remove();
+                *changed = true;
+            }
+        }
+        if command_hooks.elements().is_empty() {
+            entry.remove();
+        }
+    }
+    Ok(if *changed {
+        root.to_string()
+    } else {
+        content.to_owned()
+    })
+}
+
+fn claude_hook_command(path: &std::path::Path) -> String {
+    format!(
+        "powershell -NoProfile -ExecutionPolicy Bypass -File \"{}\" session",
+        path.display().to_string().replace('"', "\\\"")
+    )
 }
 
 fn add_tui_plugin(dir: &std::path::Path, plugin_spec: &str) -> std::io::Result<PathBuf> {
