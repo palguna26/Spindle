@@ -578,6 +578,11 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
                                 "agent": agent.label(),
                                 "agent_kind": agent,
                                 "state": pane.agent_display_state().label(),
+                                "agent_done": pane.agent_done,
+                                "agent_session": pane.agent_session,
+                                "display_agent": pane.display_agent,
+                                "state_labels": pane.state_labels,
+                                "tokens": pane.tokens,
                                 "workspace_id": workspace.workspace_id,
                                 "tab_id": tab.tab_id,
                                 "focused": focused == Some(pane.pane_id.as_str()),
@@ -661,6 +666,9 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["agent"], "Codex");
         assert_eq!(rows[0]["state"], "working");
+        assert_eq!(rows[0]["agent_done"], false);
+        assert!(rows[0]["agent_session"].is_null());
+        assert!(rows[0]["display_agent"].is_null());
         assert_eq!(
             rows[0]["workspace_id"],
             snapshot.spaces[1].workspaces[0].workspace_id
