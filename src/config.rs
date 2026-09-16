@@ -47,6 +47,16 @@ struct FileConfig {
 #[serde(default)]
 struct TerminalConfig {
     default_shell: Option<String>,
+    shell_mode: ShellMode,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ShellMode {
+    #[default]
+    Auto,
+    Login,
+    NonLogin,
 }
 
 #[derive(Debug, Deserialize)]
@@ -351,6 +361,7 @@ pub struct Config {
     pub(crate) right_click_passthrough_modifier: Option<KeyModifiers>,
     pub(crate) redraw_on_focus_gained: bool,
     pub(crate) default_shell: Option<String>,
+    pub(crate) shell_mode: ShellMode,
 }
 
 impl Default for Config {
@@ -404,6 +415,7 @@ impl Default for Config {
             right_click_passthrough_modifier: None,
             redraw_on_focus_gained: true,
             default_shell: None,
+            shell_mode: ShellMode::Auto,
         }
     }
 }
@@ -507,6 +519,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
             .terminal
             .default_shell
             .filter(|shell| !shell.trim().is_empty()),
+        shell_mode: file.terminal.shell_mode,
     }
 }
 
@@ -632,6 +645,7 @@ sound = true
 
 [terminal]
 # default_shell = "powershell.exe"
+# shell_mode = "auto" # auto, login, or non_login
 
 [ui]
 sidebar_width = 26
@@ -746,7 +760,7 @@ fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> S
 mod tests {
     use super::{
         load_from, upsert_section_key, upsert_top_level_bool, Config, HostCursorMode,
-        NotificationDelivery, PaneBorders, SidebarCollapsedMode, TabBarPosition,
+        NotificationDelivery, PaneBorders, ShellMode, SidebarCollapsedMode, TabBarPosition,
     };
     use crossterm::event::KeyModifiers;
 
@@ -773,6 +787,17 @@ mod tests {
         ));
         std::fs::write(&path, "[terminal]\ndefault_shell = \"pwsh.exe\"\n").unwrap();
         assert_eq!(load_from(&path).default_shell.as_deref(), Some("pwsh.exe"));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_herdr_style_terminal_shell_mode() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-terminal-mode-config-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[terminal]\nshell_mode = \"login\"\n").unwrap();
+        assert_eq!(load_from(&path).shell_mode, ShellMode::Login);
         std::fs::remove_file(path).unwrap();
     }
 

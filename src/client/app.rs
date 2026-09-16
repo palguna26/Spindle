@@ -3899,14 +3899,17 @@ fn default_shell() -> (String, Vec<String>) {
                 "sh".into()
             }
         });
-    let args = if command
-        .rsplit(['/', '\\'])
-        .next()
-        .is_some_and(|name| name.eq_ignore_ascii_case("powershell.exe"))
-    {
-        vec!["-NoLogo".into(), "-NoProfile".into()]
-    } else {
-        Vec::new()
+    let is_powershell = command.rsplit(['/', '\\']).next().is_some_and(|name| {
+        matches!(
+            name.to_ascii_lowercase().as_str(),
+            "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe"
+        )
+    });
+    let args = match (is_powershell, crate::config::load().shell_mode) {
+        (true, crate::config::ShellMode::Login) => vec!["-NoLogo".into()],
+        (true, _) => vec!["-NoLogo".into(), "-NoProfile".into()],
+        (false, crate::config::ShellMode::Login) if !cfg!(windows) => vec!["-l".into()],
+        _ => Vec::new(),
     };
     (command, args)
 }
