@@ -432,6 +432,9 @@ approved design changes it.
   `[ui] copy_on_select` now matches Herdr's mouse-selection behavior and
   defaults to true; disabling it leaves the selection visible until copied
   explicitly.
+  `[ui] mouse_capture` now controls Spindle's mouse UI capture and terminal
+  tracking, matching Herdr's default-enabled behavior and allowing host
+  terminal mouse handling when disabled.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
