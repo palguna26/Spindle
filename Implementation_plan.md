@@ -39,8 +39,10 @@ detector control.
 Latest sidebar milestone: nested Herdr-style sidebar row tokens now render in
 the live Spindle sidebar. Workspace and agent rows resolve state, names,
 branches, terminal titles, pane IDs, machine identity, and custom metadata;
-scrolling and hit testing use the same configured row heights. The behavior is
-covered by renderer tests and the Windows release/installer gates.
+agent-specific `rows_by_agent` overrides select the matching layout by
+canonical agent name, and scrolling/hit testing use the same configured row
+heights. The behavior is covered by renderer tests and the Windows
+release/installer gates.
 
 ## 0. Establish the parity matrix
 
