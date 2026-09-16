@@ -232,8 +232,8 @@ struct CustomCommandFile {
     #[serde(rename = "type")]
     action_type: String,
     description: Option<String>,
-    width: Option<u16>,
-    height: Option<u16>,
+    width: Option<crate::popup_size::PopupSize>,
+    height: Option<crate::popup_size::PopupSize>,
 }
 
 #[derive(Debug, Clone)]
@@ -242,8 +242,8 @@ pub(crate) struct CustomCommand {
     pub(crate) command: String,
     pub(crate) action_type: String,
     pub(crate) description: Option<String>,
-    pub(crate) width: Option<u16>,
-    pub(crate) height: Option<u16>,
+    pub(crate) width: Option<crate::popup_size::PopupSize>,
+    pub(crate) height: Option<crate::popup_size::PopupSize>,
 }
 
 #[derive(Debug, Clone)]
@@ -934,5 +934,29 @@ mod tests {
         assert!(document.contains("settings = \"prefix+s\""));
         assert!(document.contains("reload_config = \"prefix+shift+r\""));
         assert!(document.contains("sidebar_width = 26"));
+    }
+
+    #[test]
+    fn custom_popup_commands_accept_percentage_dimensions() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-custom-popup-config-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "[[keys.command]]\nkey = \"prefix+p\"\ncommand = \"lazygit\"\ntype = \"popup\"\nwidth = 90\nheight = \"80%\"\n",
+        )
+        .unwrap();
+        let config = load_from(&path);
+        assert_eq!(config.custom_commands.len(), 1);
+        assert_eq!(
+            config.custom_commands[0].width,
+            Some(crate::popup_size::PopupSize::Cells(90))
+        );
+        assert_eq!(
+            config.custom_commands[0].height,
+            Some(crate::popup_size::PopupSize::Percent(80))
+        );
+        std::fs::remove_file(path).unwrap();
     }
 }

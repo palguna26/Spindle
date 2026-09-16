@@ -4,6 +4,7 @@ use std::process::Command;
 
 use super::ControlClient;
 use crate::config::CustomCommand;
+use crate::popup_size::PopupSize;
 use crate::server::session::SessionSnapshot;
 use serde_json::json;
 
@@ -52,8 +53,15 @@ fn open_pane(
     let (env, cwd) = context(snapshot, client.endpoint());
     let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let (program, args) = pane_argv(&command.command);
-    let cols = command.width.unwrap_or(80).max(10);
-    let rows = command.height.unwrap_or(24).max(4);
+    let terminal_size = crossterm::terminal::size().map_err(|error| {
+        io::Error::other(format!(
+            "could not read terminal size for custom command: {error}"
+        ))
+    })?;
+    let width = command.width.unwrap_or(PopupSize::Cells(80));
+    let height = command.height.unwrap_or(PopupSize::Cells(24));
+    let cols = width.resolve(terminal_size.0).max(10);
+    let rows = height.resolve(terminal_size.1).max(4);
     let payload = json!({
         "command": program,
         "args": args,
@@ -63,6 +71,8 @@ fn open_pane(
         "rows": if popup { rows.saturating_sub(2).max(4) } else { rows },
         "popup": popup,
         "overlay": !popup,
+        "popup_width_spec": if popup { Some(width) } else { None },
+        "popup_height_spec": if popup { Some(height) } else { None },
     });
     client
         .interactive_request("custom-command-pane", "create_pane", payload)
