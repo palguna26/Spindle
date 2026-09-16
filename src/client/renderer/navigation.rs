@@ -511,6 +511,43 @@ pub fn sidebar_scroll_region(area: Rect, collapsed: bool, x: u16, y: u16) -> boo
     contains(sidebar_body(sidebar), x, y)
 }
 
+pub fn agent_sidebar_scroll_max(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+) -> usize {
+    if collapsed || !snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
+        return 0;
+    }
+    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
+    let agents = rows
+        .iter()
+        .copied()
+        .filter(|row| matches!(row, SidebarRow::Agent { .. }))
+        .collect::<Vec<_>>();
+    let sections = crate::client::sidebar::sections(sidebar_body(area), 0.5);
+    let height = sections.agents.height.saturating_sub(2);
+    sidebar_visual_rows(&agents, false, &crate::config::load().sidebar)
+        .len()
+        .saturating_sub(usize::from(height))
+}
+
+pub fn agent_sidebar_scroll_region(area: Rect, collapsed: bool, x: u16, y: u16) -> bool {
+    if collapsed {
+        return false;
+    }
+    let sections = crate::client::sidebar::sections(sidebar_body(area), 0.5);
+    let panel = Rect::new(
+        sections.agents.x,
+        sections.agents.y.saturating_add(2),
+        sections.agents.width,
+        sections.agents.height.saturating_sub(2),
+    );
+    contains(panel, x, y)
+}
+
 pub fn sidebar_scroll_thumb_grab_offset(
     snapshot: &SessionSnapshot,
     area: Rect,
@@ -1161,6 +1198,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
         navigation_workspace,
         &HashSet::new(),
         0.5,
+        0,
     );
 }
 
@@ -1175,6 +1213,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
     navigation_workspace: Option<(&str, &str)>,
     collapsed_groups: &HashSet<String>,
     sidebar_section_split: f32,
+    agent_sidebar_scroll: usize,
 ) {
     if !collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
         render_split_sidebar(
@@ -1186,6 +1225,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
             navigation_workspace,
             collapsed_groups,
             sidebar_section_split,
+            agent_sidebar_scroll,
         );
         return;
     }
@@ -1424,6 +1464,7 @@ fn render_split_sidebar(
     navigation_workspace: Option<(&str, &str)>,
     collapsed_groups: &HashSet<String>,
     split_ratio: f32,
+    agent_scroll: usize,
 ) {
     let config = crate::config::load();
     let accent = super::ThemePalette::from_config(&config).accent;
@@ -1482,7 +1523,7 @@ fn render_split_sidebar(
     let agent_lines = split_sidebar_lines(
         &agent_rows,
         &agent_visual,
-        0,
+        agent_scroll,
         agent_body.height,
         snapshot,
         None,

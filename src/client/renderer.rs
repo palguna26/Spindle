@@ -20,8 +20,9 @@ pub(crate) use layout::{
 };
 use navigation::render_tabs_with_scroll;
 pub use navigation::{
-    hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
-    hit_test_with_sidebar_scroll_and_sort, hit_test_with_sidebar_scroll_and_sort_and_groups,
+    agent_sidebar_scroll_max, agent_sidebar_scroll_region, hit_test, hit_test_with_sidebar,
+    hit_test_with_sidebar_scroll, hit_test_with_sidebar_scroll_and_sort,
+    hit_test_with_sidebar_scroll_and_sort_and_groups,
     hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll, render_tab_drop_indicator,
     render_tab_drop_indicator_with_scroll, render_workspace_drop_indicator, sidebar_scroll_max,
     sidebar_scroll_max_with_sort, sidebar_scroll_max_with_sort_and_groups,
@@ -771,6 +772,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
         scroll_offsets,
         0,
         0.5,
+        0,
     );
 }
 
@@ -788,6 +790,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
     scroll_offsets: &HashMap<String, usize>,
     tab_scroll: usize,
     sidebar_section_split: f32,
+    agent_sidebar_scroll: usize,
 ) {
     let theme = ThemePalette::from_config(&crate::config::load());
     let main = layout::main_areas_for_snapshot(snapshot, frame.area(), sidebar_collapsed);
@@ -802,6 +805,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
         navigation_workspace,
         collapsed_groups,
         sidebar_section_split,
+        agent_sidebar_scroll,
     );
     render_tabs_with_scroll(frame, snapshot, main.tabs, tab_scroll);
     let panes = pane_rectangles(snapshot, main.panes);

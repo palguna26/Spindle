@@ -417,6 +417,7 @@ fn event_loop(
                     &mouse_state.scroll_offsets,
                     mouse_state.tab_scroll,
                     mouse_state.sidebar_section_split,
+                    mouse_state.agent_sidebar_scroll,
                 );
                 if let Some(insert_index) = mouse_state
                     .tab_drag
@@ -1724,6 +1725,29 @@ fn handle_mouse(
         mouse.kind,
         MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
     ) {
+        if renderer::agent_sidebar_scroll_region(
+            area,
+            mouse_state.sidebar_collapsed,
+            mouse.column,
+            mouse.row,
+        ) {
+            let max_scroll = renderer::agent_sidebar_scroll_max(
+                snapshot,
+                area,
+                mouse_state.sidebar_collapsed,
+                mouse_state.agent_priority_sort,
+                &mouse_state.collapsed_worktree_groups,
+            );
+            mouse_state.agent_sidebar_scroll = if mouse.kind == MouseEventKind::ScrollUp {
+                mouse_state.agent_sidebar_scroll.saturating_sub(1)
+            } else {
+                mouse_state
+                    .agent_sidebar_scroll
+                    .saturating_add(1)
+                    .min(max_scroll)
+            };
+            return Ok(());
+        }
         if renderer::sidebar_scroll_region(
             area,
             mouse_state.sidebar_collapsed,
@@ -2271,6 +2295,7 @@ fn handle_mouse(
         renderer::ClickTarget::ToggleAgentSort => {
             mouse_state.agent_priority_sort = !mouse_state.agent_priority_sort;
             mouse_state.sidebar_scroll = 0;
+            mouse_state.agent_sidebar_scroll = 0;
             store_client_preferences(mouse_state);
         }
         renderer::ClickTarget::SidebarScroll(offset) => {
