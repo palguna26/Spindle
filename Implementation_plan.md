@@ -427,6 +427,8 @@ approved design changes it.
   New-tab keyboard and command-palette actions prompt for a tab name by
   default, matching Herdr; `[ui] prompt_new_tab_name = false` keeps the
   non-interactive `Activity` tab behavior.
+  `[ui] prompt_new_workspace_name = true` now enables Herdr-style naming
+  prompts across workspace creation entry points; it defaults to false.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
