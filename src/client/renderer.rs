@@ -259,6 +259,13 @@ impl ThemePalette {
     }
 
     pub(super) fn overlay0(config: &crate::config::Config) -> Color {
+        if let Some(color) = config
+            .theme_custom_overlay0
+            .as_deref()
+            .and_then(parse_theme_color)
+        {
+            return color;
+        }
         match config
             .theme_name
             .as_deref()
@@ -288,6 +295,13 @@ impl ThemePalette {
     }
 
     pub(super) fn overlay1(config: &crate::config::Config) -> Color {
+        if let Some(color) = config
+            .theme_custom_overlay1
+            .as_deref()
+            .and_then(parse_theme_color)
+        {
+            return color;
+        }
         match config
             .theme_name
             .as_deref()
@@ -1612,6 +1626,17 @@ mod tests {
             super::ThemePalette::panel_contrast_fg(&config),
             Color::Rgb(30, 30, 46)
         );
+    }
+
+    #[test]
+    fn custom_overlay_colors_override_herdr_theme_defaults() {
+        let config = crate::config::Config {
+            theme_custom_overlay0: Some("#010203".into()),
+            theme_custom_overlay1: Some("rgb(4, 5, 6)".into()),
+            ..crate::config::Config::default()
+        };
+        assert_eq!(super::ThemePalette::overlay0(&config), Color::Rgb(1, 2, 3));
+        assert_eq!(super::ThemePalette::overlay1(&config), Color::Rgb(4, 5, 6));
     }
 
     #[test]
