@@ -315,7 +315,8 @@ Terminal verification is still pending.
   opens that space/workspace/tab and focuses the pane; within each grouped tab,
   the sidebar supports Herdr-style grouped and priority views, ordered
   blocked/done/working/idle/unknown in priority mode. The selected view is
-  saved per client. Richer
+  saved per client. Configured `previous_agent` and `next_agent` actions now
+  cycle detected agents with Herdr's wraparound behavior. Richer
   lifecycle transitions remain.
 - [x] Provide a scriptable agent report. `spindle agent list` reports every
   detected agent across spaces with pane, workspace, tab, focus, state, cwd,

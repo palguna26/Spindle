@@ -55,6 +55,9 @@ Statuses describe the current Spindle checkout, not the target. “Partial” me
 some server/model support exists but the user-facing behavior is missing or
 does not yet match Herdr.
 
+Agent navigation parity note: Spindle now accepts Herdr-compatible
+`previous_agent` and `next_agent` bindings and wraps across detected panes.
+
 | User behavior | Spindle status | Herdr reference | Evidence / next verification |
 | --- | --- | --- | --- |
 | Filtered navigator branches show expanded state | Present | Herdr `src/client/shell/aggregate_navigation.rs` (`filtering` expands workspace children) | Spindle marks matching space/workspace rows expanded while filtering; regression coverage verifies collapsed branches expose descendants with open markers. |
