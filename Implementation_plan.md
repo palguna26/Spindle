@@ -450,10 +450,9 @@ approved design changes it.
   start/attach recovery hint for stale metadata, matching Herdr's explicit
   running/not-running server status. It also prints the client version, binary
   path, and protocol so users can identify which build they launched.
-  Server daemon startup now uses Herdr's Windows detached-process and job
-  breakaway flags, with a bounded five-second readiness retry window. The
-  release smoke script still needs a runner that can observe detached child
-  completion without waiting on the daemon itself.
+  Server daemon startup now uses Herdr's WMI detached-process launch path and
+  a bounded five-second readiness retry window, so the caller is not held by
+  the server child.
   Sidebar width settings now accept Herdr-style `[ui] sidebar_width`,
   `sidebar_min_width`, and `sidebar_max_width` values with safe bound fallback.
   `[ui] sidebar_start_collapsed` now matches Herdr and is applied only when a
