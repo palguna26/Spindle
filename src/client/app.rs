@@ -360,16 +360,16 @@ fn event_loop(
         }
         was_connected = connected;
         let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
-        mouse_state.sidebar_scroll =
-            mouse_state
-                .sidebar_scroll
-                .min(renderer::sidebar_scroll_max_with_sort_and_groups(
-                    &snapshot,
-                    area,
-                    mouse_state.sidebar_collapsed,
-                    mouse_state.agent_priority_sort,
-                    &mouse_state.collapsed_worktree_groups,
-                ));
+        mouse_state.sidebar_scroll = mouse_state.sidebar_scroll.min(
+            renderer::sidebar_scroll_max_with_sort_and_groups_and_split(
+                &snapshot,
+                area,
+                mouse_state.sidebar_collapsed,
+                mouse_state.agent_priority_sort,
+                &mouse_state.collapsed_worktree_groups,
+                mouse_state.sidebar_section_split,
+            ),
+        );
         let pane_sizes = renderer::pane_sizes(
             &snapshot,
             renderer::pane_content_area_for_snapshot(
@@ -1756,12 +1756,13 @@ fn handle_mouse(
             mouse.column,
             mouse.row,
         ) {
-            let max_scroll = renderer::sidebar_scroll_max_with_sort_and_groups(
+            let max_scroll = renderer::sidebar_scroll_max_with_sort_and_groups_and_split(
                 snapshot,
                 area,
                 mouse_state.sidebar_collapsed,
                 mouse_state.agent_priority_sort,
                 &mouse_state.collapsed_worktree_groups,
+                mouse_state.sidebar_section_split,
             );
             mouse_state.sidebar_scroll = if mouse.kind == MouseEventKind::ScrollUp {
                 mouse_state.sidebar_scroll.saturating_sub(1)
@@ -1972,7 +1973,7 @@ fn handle_mouse(
             return Ok(());
         }
         if let Some(grab_row_offset) =
-            renderer::sidebar_scroll_thumb_grab_offset_with_sort_and_groups(
+            renderer::sidebar_scroll_thumb_grab_offset_with_sort_and_groups_and_split(
                 snapshot,
                 area,
                 mouse_state.sidebar_collapsed,
@@ -1981,6 +1982,7 @@ fn handle_mouse(
                 mouse.row,
                 mouse_state.agent_priority_sort,
                 &mouse_state.collapsed_worktree_groups,
+                mouse_state.sidebar_section_split,
             )
         {
             mouse_state.sidebar_scroll_drag = Some(grab_row_offset);
@@ -2108,7 +2110,7 @@ fn handle_mouse(
     ) && mouse_state.sidebar_scroll_drag.is_some()
     {
         mouse_state.sidebar_scroll =
-            renderer::sidebar_scroll_offset_from_drag_row_with_sort_and_groups(
+            renderer::sidebar_scroll_offset_from_drag_row_with_sort_and_groups_and_split(
                 snapshot,
                 area,
                 mouse_state.sidebar_collapsed,
@@ -2116,6 +2118,7 @@ fn handle_mouse(
                 mouse_state.sidebar_scroll_drag.unwrap_or_default(),
                 mouse_state.agent_priority_sort,
                 &mouse_state.collapsed_worktree_groups,
+                mouse_state.sidebar_section_split,
             );
         if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
             mouse_state.sidebar_scroll_drag = None;

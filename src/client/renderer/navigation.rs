@@ -526,10 +526,28 @@ pub fn sidebar_scroll_max_with_sort_and_groups(
     agent_priority_sort: bool,
     collapsed_groups: &HashSet<String>,
 ) -> usize {
+    sidebar_scroll_max_with_sort_and_groups_and_split(
+        snapshot,
+        area,
+        collapsed,
+        agent_priority_sort,
+        collapsed_groups,
+        0.5,
+    )
+}
+
+pub fn sidebar_scroll_max_with_sort_and_groups_and_split(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+    split_ratio: f32,
+) -> usize {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
     let body = if !collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
-        let sections = crate::client::sidebar::sections(body, 0.5);
+        let sections = crate::client::sidebar::sections(body, split_ratio);
         crate::client::sidebar::workspace_body(sections)
     } else {
         body
@@ -720,14 +738,46 @@ pub fn sidebar_scroll_thumb_grab_offset_with_sort_and_groups(
     agent_priority_sort: bool,
     collapsed_groups: &HashSet<String>,
 ) -> Option<u16> {
+    sidebar_scroll_thumb_grab_offset_with_sort_and_groups_and_split(
+        snapshot,
+        area,
+        collapsed,
+        scroll,
+        x,
+        y,
+        agent_priority_sort,
+        collapsed_groups,
+        0.5,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn sidebar_scroll_thumb_grab_offset_with_sort_and_groups_and_split(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    scroll: usize,
+    x: u16,
+    y: u16,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+    split_ratio: f32,
+) -> Option<u16> {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    let max_scroll = sidebar_scroll_max_with_sort_and_groups(
+    let body = if !collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
+        let sections = crate::client::sidebar::sections(body, split_ratio);
+        crate::client::sidebar::workspace_body(sections)
+    } else {
+        body
+    };
+    let max_scroll = sidebar_scroll_max_with_sort_and_groups_and_split(
         snapshot,
         area,
         collapsed,
         agent_priority_sort,
         collapsed_groups,
+        split_ratio,
     );
     if max_scroll == 0
         || body.width <= 1
@@ -789,14 +839,44 @@ pub fn sidebar_scroll_offset_from_drag_row_with_sort_and_groups(
     agent_priority_sort: bool,
     collapsed_groups: &HashSet<String>,
 ) -> usize {
+    sidebar_scroll_offset_from_drag_row_with_sort_and_groups_and_split(
+        snapshot,
+        area,
+        collapsed,
+        row,
+        grab_row_offset,
+        agent_priority_sort,
+        collapsed_groups,
+        0.5,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn sidebar_scroll_offset_from_drag_row_with_sort_and_groups_and_split(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    row: u16,
+    grab_row_offset: u16,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+    split_ratio: f32,
+) -> usize {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    let max_scroll = sidebar_scroll_max_with_sort_and_groups(
+    let body = if !collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
+        let sections = crate::client::sidebar::sections(body, split_ratio);
+        crate::client::sidebar::workspace_body(sections)
+    } else {
+        body
+    };
+    let max_scroll = sidebar_scroll_max_with_sort_and_groups_and_split(
         snapshot,
         area,
         collapsed,
         agent_priority_sort,
         collapsed_groups,
+        split_ratio,
     );
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
     let rows = sidebar_visual_rows(&rows, collapsed, &crate::config::load().sidebar).len();
