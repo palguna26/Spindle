@@ -1,4 +1,5 @@
 """Spindle plugin for Hermes session identity."""
+# SPINDLE_INTEGRATION_VERSION=1
 import os
 import subprocess
 import time

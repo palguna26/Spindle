@@ -1,4 +1,5 @@
 # installed by spindle; managed by spindle integration install antigravity-cli
+# SPINDLE_INTEGRATION_VERSION=1
 
 param([string]$Action = "")
 

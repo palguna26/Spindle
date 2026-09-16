@@ -54,6 +54,8 @@ const OPENCODE_PLUGIN_NAME: &str = "spindle-agent-state.js";
 const OPENCODE_TUI_ASSET: &str = include_str!("integration/assets/opencode-tui-session.js");
 const OPENCODE_TUI_NAME: &str = "spindle-tui-session.js";
 const OPENCODE_TUI_SPEC: &str = "./spindle-tui-session.js";
+const INTEGRATION_VERSION_MARKER: &str = "SPINDLE_INTEGRATION_VERSION=";
+const EXPECTED_INTEGRATION_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Target {
@@ -165,6 +167,9 @@ pub(crate) struct Status {
     pub command: &'static str,
     pub available: bool,
     pub installed: bool,
+    pub state: &'static str,
+    pub installed_version: Option<u32>,
+    pub expected_version: u32,
     pub path: String,
 }
 
@@ -176,6 +181,9 @@ pub(crate) fn statuses() -> Vec<Status> {
             command: target.command(),
             available: target.available(),
             installed: target.installed(),
+            state: target.state(),
+            installed_version: target.installed_version(),
+            expected_version: EXPECTED_INTEGRATION_VERSION,
             path: target.path().display().to_string(),
         })
         .collect()
@@ -200,6 +208,35 @@ fn command_available(command: &str) -> bool {
     })
 }
 
+impl Target {
+    fn installed_version(self) -> Option<u32> {
+        std::fs::read_to_string(self.path())
+            .ok()
+            .and_then(|content| parse_integration_version(&content))
+    }
+
+    fn state(self) -> &'static str {
+        if !self.installed() {
+            "not-installed"
+        } else if self.installed_version() == Some(EXPECTED_INTEGRATION_VERSION) {
+            "current"
+        } else {
+            "outdated"
+        }
+    }
+}
+
+fn parse_integration_version(content: &str) -> Option<u32> {
+    content.lines().find_map(|line| {
+        line.trim()
+            .trim_start_matches('/')
+            .trim_start_matches('#')
+            .trim()
+            .strip_prefix(INTEGRATION_VERSION_MARKER)
+            .and_then(|version| version.trim().parse().ok())
+    })
+}
+
 pub(crate) fn run_status(json: bool) -> std::io::Result<()> {
     let statuses = statuses();
     if json {
@@ -211,14 +248,14 @@ pub(crate) fn run_status(json: bool) -> std::io::Result<()> {
     }
 
     for status in statuses {
-        let state = if status.installed {
-            "installed"
-        } else {
-            "not installed"
-        };
         println!(
-            "{}: {state} (available: {}, {})",
-            status.target, status.available, status.path
+            "{}: {} (available: {}, version: {:?}/{}, {})",
+            status.target,
+            status.state,
+            status.available,
+            status.installed_version,
+            status.expected_version,
+            status.path
         );
     }
     Ok(())
@@ -1883,6 +1920,19 @@ mod tests {
         assert_eq!(Target::Kilo.label(), "kilo");
         assert_eq!(Target::Hermes.label(), "hermes");
         assert_eq!(Target::AntigravityCli.label(), "antigravity-cli");
+    }
+
+    #[test]
+    fn integration_versions_detect_current_and_stale_markers() {
+        assert_eq!(
+            super::parse_integration_version("# SPINDLE_INTEGRATION_VERSION=1"),
+            Some(1)
+        );
+        assert_eq!(
+            super::parse_integration_version("// SPINDLE_INTEGRATION_VERSION=7"),
+            Some(7)
+        );
+        assert_eq!(super::parse_integration_version("# no marker"), None);
     }
 
     #[test]
