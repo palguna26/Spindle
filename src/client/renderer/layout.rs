@@ -45,10 +45,16 @@ pub(super) fn main_areas_with_sidebar(area: Rect, sidebar_collapsed: bool) -> Ma
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(area)[0];
+    let config = crate::config::load();
+    let (sidebar_min_width, sidebar_max_width) = crate::config::sidebar_bounds(&config);
     let sidebar_width = if sidebar_collapsed {
         4.min(area.width.saturating_sub(1))
     } else {
-        area.width.min((area.width / 4).clamp(12, 26))
+        area.width.min(
+            config
+                .sidebar_width
+                .clamp(sidebar_min_width, sidebar_max_width),
+        )
     };
     let columns = Layout::default()
         .direction(Direction::Horizontal)

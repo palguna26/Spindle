@@ -19,6 +19,26 @@ struct FileConfig {
     theme: ThemeConfig,
     #[serde(default)]
     notifications: NotificationsConfig,
+    #[serde(default)]
+    ui: UiConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+struct UiConfig {
+    sidebar_width: u16,
+    sidebar_min_width: u16,
+    sidebar_max_width: u16,
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            sidebar_width: 26,
+            sidebar_min_width: 18,
+            sidebar_max_width: 36,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -120,6 +140,9 @@ pub struct Config {
     pub(crate) notification_delivery: NotificationDelivery,
     pub(crate) notification_delay_seconds: u64,
     pub(crate) notification_sound: bool,
+    pub(crate) sidebar_width: u16,
+    pub(crate) sidebar_min_width: u16,
+    pub(crate) sidebar_max_width: u16,
 }
 
 impl Default for Config {
@@ -133,6 +156,9 @@ impl Default for Config {
             notification_delivery: NotificationDelivery::Herdr,
             notification_delay_seconds: 1,
             notification_sound: true,
+            sidebar_width: 26,
+            sidebar_min_width: 18,
+            sidebar_max_width: 36,
         }
     }
 }
@@ -188,6 +214,17 @@ pub fn load_from(path: &std::path::Path) -> Config {
         notification_delivery: file.notifications.delivery,
         notification_delay_seconds: file.notifications.delay_seconds.min(3600),
         notification_sound: file.notifications.sound,
+        sidebar_width: file.ui.sidebar_width,
+        sidebar_min_width: file.ui.sidebar_min_width,
+        sidebar_max_width: file.ui.sidebar_max_width,
+    }
+}
+
+pub(crate) fn sidebar_bounds(config: &Config) -> (u16, u16) {
+    if config.sidebar_min_width <= config.sidebar_max_width {
+        (config.sidebar_min_width, config.sidebar_max_width)
+    } else {
+        (18, 36)
     }
 }
 
@@ -223,6 +260,11 @@ enabled = true
 delivery = "herdr"
 delay_seconds = 1
 sound = true
+
+[ui]
+sidebar_width = 26
+sidebar_min_width = 18
+sidebar_max_width = 36
 "#
 }
 
@@ -389,6 +431,39 @@ mod tests {
     }
 
     #[test]
+    fn loads_herdr_sidebar_width_settings() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-sidebar-config-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "[ui]\nsidebar_width = 30\nsidebar_min_width = 20\nsidebar_max_width = 40\n",
+        )
+        .unwrap();
+        let config = load_from(&path);
+        assert_eq!(config.sidebar_width, 30);
+        assert_eq!(super::sidebar_bounds(&config), (20, 40));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn inverted_sidebar_bounds_use_safe_defaults() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-sidebar-invalid-config-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "[ui]\nsidebar_min_width = 40\nsidebar_max_width = 20\n",
+        )
+        .unwrap();
+        let config = load_from(&path);
+        assert_eq!(super::sidebar_bounds(&config), (18, 36));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn loads_herdr_notification_delivery_modes() {
         let path = std::env::temp_dir().join(format!(
             "spindle-notification-delivery-{}.toml",
@@ -429,5 +504,6 @@ mod tests {
         let document = super::default_document();
         assert!(document.contains("settings = \"prefix+s\""));
         assert!(document.contains("reload_config = \"prefix+shift+r\""));
+        assert!(document.contains("sidebar_width = 26"));
     }
 }
