@@ -558,6 +558,11 @@ fn event_loop(
                                 global_menu = Some(GlobalMenu { selected: index });
                                 Ok(())
                             }
+                            NavigatorTarget::NewTab if config.prompt_new_tab_name => {
+                                rename_prompt =
+                                    Some(RenamePrompt::new_tab(next_tab_name(&snapshot)));
+                                Ok(())
+                            }
                             target => {
                                 switch_navigator_target(client, &snapshot, target, terminal_size)
                             }
@@ -734,7 +739,10 @@ fn event_loop(
                             terminal_size,
                             &mut mouse_state,
                         ) {
-                            Ok(prompt) => rename_prompt = prompt.map(RenamePrompt::new),
+                            Ok(prompt) => {
+                                rename_prompt =
+                                    prompt.map(|target| prompt_for_target(target, &snapshot))
+                            }
                             Err(error) => record_action_error(
                                 &mut action_error,
                                 "run pane menu action",
@@ -761,7 +769,7 @@ fn event_loop(
                 palette_open = false;
                 if command.action() != Action::NewTab || config.prompt_new_tab_name {
                     if let Some(target) = rename_target(command.action()) {
-                        rename_prompt = Some(RenamePrompt::new(target));
+                        rename_prompt = Some(prompt_for_target(target, &snapshot));
                         continue;
                     }
                 }
@@ -1042,7 +1050,7 @@ fn event_loop(
             }
             Action::NewTab => {
                 if config.prompt_new_tab_name && active_workspace(&snapshot).is_some() {
-                    rename_prompt = Some(RenamePrompt::new(RenameTarget::CreateTab));
+                    rename_prompt = Some(RenamePrompt::new_tab(next_tab_name(&snapshot)));
                     continue;
                 }
                 let result = if active_workspace(&snapshot).is_some() {
@@ -1609,7 +1617,7 @@ fn handle_mouse(
                     terminal_size,
                     mouse_state,
                 )?
-                .map(RenamePrompt::new);
+                .map(|target| prompt_for_target(target, snapshot));
             } else {
                 *context_menu = None;
             }
@@ -2326,8 +2334,12 @@ fn activate_context_menu(
             match action {
                 ContextMenuAction::Activate => Ok(None),
                 ContextMenuAction::NewTab => {
-                    create_context_tab(client, terminal_size)?;
-                    Ok(None)
+                    if crate::config::load().prompt_new_tab_name {
+                        Ok(Some(RenameTarget::CreateTab))
+                    } else {
+                        create_context_tab(client, terminal_size)?;
+                        Ok(None)
+                    }
                 }
                 ContextMenuAction::Rename => Ok(Some(RenameTarget::Workspace)),
                 ContextMenuAction::Close => Ok(Some(if close_group {
@@ -2378,8 +2390,12 @@ fn activate_context_menu(
             match action {
                 ContextMenuAction::Activate => Ok(None),
                 ContextMenuAction::NewTab => {
-                    create_context_tab(client, terminal_size)?;
-                    Ok(None)
+                    if crate::config::load().prompt_new_tab_name {
+                        Ok(Some(RenameTarget::CreateTab))
+                    } else {
+                        create_context_tab(client, terminal_size)?;
+                        Ok(None)
+                    }
                 }
                 ContextMenuAction::Rename => Ok(Some(RenameTarget::Tab)),
                 ContextMenuAction::Close => {
@@ -2579,6 +2595,21 @@ fn rename_target(action: Action) -> Option<RenameTarget> {
         Action::PluginAction => Some(RenameTarget::PluginAction),
         _ => None,
     }
+}
+
+fn prompt_for_target(target: RenameTarget, snapshot: &SessionSnapshot) -> RenamePrompt {
+    if target == RenameTarget::CreateTab {
+        RenamePrompt::new_tab(next_tab_name(snapshot))
+    } else {
+        RenamePrompt::new(target)
+    }
+}
+
+fn next_tab_name(snapshot: &SessionSnapshot) -> String {
+    active_workspace(snapshot)
+        .map(|workspace| workspace.tabs.len() + 1)
+        .unwrap_or(1)
+        .to_string()
 }
 
 fn submit_rename(

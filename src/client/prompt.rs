@@ -23,6 +23,7 @@ pub enum RenameTarget {
 pub struct RenamePrompt {
     pub target: RenameTarget,
     pub input: String,
+    replace_on_type: bool,
 }
 
 impl RenamePrompt {
@@ -30,12 +31,27 @@ impl RenamePrompt {
         Self {
             target,
             input: String::new(),
+            replace_on_type: false,
+        }
+    }
+
+    pub fn new_tab(default_name: String) -> Self {
+        Self {
+            target: RenameTarget::CreateTab,
+            input: default_name,
+            replace_on_type: true,
         }
     }
 
     pub fn apply_key(&mut self, key: KeyCode) -> PromptResult {
         match key {
-            KeyCode::Char(character) => self.input.push(character),
+            KeyCode::Char(character) => {
+                if self.replace_on_type {
+                    self.input.clear();
+                    self.replace_on_type = false;
+                }
+                self.input.push(character);
+            }
             KeyCode::Backspace => {
                 self.input.pop();
             }
@@ -79,5 +95,18 @@ mod tests {
     fn prompt_can_cancel() {
         let mut prompt = RenamePrompt::new(RenameTarget::Pane);
         assert_eq!(prompt.apply_key(KeyCode::Esc), PromptResult::Cancel);
+    }
+
+    #[test]
+    fn new_tab_prompt_replaces_herdr_default_name_on_first_key() {
+        let mut prompt = RenamePrompt::new_tab("2".into());
+        prompt.apply_key(KeyCode::Char('L'));
+        prompt.apply_key(KeyCode::Char('o'));
+        prompt.apply_key(KeyCode::Char('g'));
+        assert_eq!(prompt.input, "Log");
+        assert_eq!(
+            prompt.apply_key(KeyCode::Enter),
+            PromptResult::Submit("Log".into())
+        );
     }
 }
