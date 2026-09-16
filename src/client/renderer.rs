@@ -39,7 +39,7 @@ use ratatui::Frame;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy)]
-struct ThemePalette {
+pub(super) struct ThemePalette {
     accent: Color,
     focused_border: Color,
 }
@@ -118,7 +118,7 @@ impl ThemePalette {
         }
     }
 
-    fn from_config(config: &crate::config::Config) -> Self {
+    pub(super) fn from_config(config: &crate::config::Config) -> Self {
         let mut palette = Self::from_name(config.theme_name.as_deref());
         if let Some(value) = config.theme_custom_accent.as_deref() {
             palette.accent = parse_theme_color(value).unwrap_or(palette.accent);

@@ -1015,6 +1015,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
     navigation_workspace: Option<(&str, &str)>,
     collapsed_groups: &HashSet<String>,
 ) {
+    let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
     let body = sidebar_body(area);
     let sidebar_config = crate::config::load().sidebar;
@@ -1039,7 +1040,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                     Line::from(vec![
                         Span::styled(
                             marker,
-                            Style::default().fg(if active { Color::Cyan } else { Color::DarkGray }),
+                            Style::default().fg(if active { accent } else { Color::DarkGray }),
                         ),
                         Span::styled(
                             (*name).to_owned(),
@@ -1073,7 +1074,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                     if collapsed {
                         let line = if active { "W " } else { "w " };
                         return if previewed {
-                            Line::styled(line, Style::default().fg(Color::Black).bg(Color::Cyan))
+                            Line::styled(line, Style::default().fg(Color::Black).bg(accent))
                         } else {
                             Line::from(line)
                         };
@@ -1165,7 +1166,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
         let y = area.bottom().saturating_sub(1);
         if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
             cell.set_symbol(if collapsed { ">" } else { "<" });
-            cell.set_fg(Color::Cyan);
+            cell.set_fg(accent);
         }
         if !collapsed && area.width >= 9 {
             let label_x = area.x.saturating_add(1);
@@ -1278,6 +1279,7 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
     let Some(workspace) = active_workspace(snapshot) else {
         return;
     };
+    let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
     if workspace.tabs.is_empty() {
         frame.render_widget(Paragraph::new("No tabs"), area);
         return;
@@ -1298,7 +1300,7 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
                 .alignment(Alignment::Center)
                 .style(if selected {
                     Style::default()
-                        .fg(Color::Cyan)
+                        .fg(accent)
                         .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
                 } else {
                     Style::default().fg(Color::Gray)
@@ -1339,6 +1341,7 @@ pub fn render_tab_drop_indicator(
     collapsed: bool,
     insert_index: usize,
 ) {
+    let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
     let area = super::layout::main_areas_for_snapshot(snapshot, frame.area(), collapsed).tabs;
     let Some(workspace) = active_workspace(snapshot) else {
         return;
@@ -1354,7 +1357,7 @@ pub fn render_tab_drop_indicator(
         .min(area.right().saturating_sub(1));
     if let Some(cell) = frame.buffer_mut().cell_mut((x, area.y)) {
         cell.set_symbol("│");
-        cell.set_fg(Color::Cyan);
+        cell.set_fg(accent);
     }
 }
 
@@ -1362,6 +1365,7 @@ pub fn render_workspace_drop_indicator(frame: &mut Frame<'_>, collapsed: bool, r
     if collapsed {
         return;
     }
+    let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
     let area = super::layout::main_areas_with_sidebar(frame.area(), false).sidebar;
     let body = sidebar_body(area);
     if row < body.y || row >= body.bottom() {
@@ -1370,7 +1374,7 @@ pub fn render_workspace_drop_indicator(frame: &mut Frame<'_>, collapsed: bool, r
     for x in body.x..body.right().saturating_sub(1) {
         if let Some(cell) = frame.buffer_mut().cell_mut((x, row)) {
             cell.set_symbol("─");
-            cell.set_fg(Color::Cyan);
+            cell.set_fg(accent);
         }
     }
 }

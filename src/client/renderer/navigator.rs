@@ -8,6 +8,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
 pub fn render_navigator(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, navigator: &Navigator) {
+    let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
     if navigator.is_mobile() {
         render_mobile_navigator(frame, snapshot, navigator);
         return;
@@ -22,7 +23,7 @@ pub fn render_navigator(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, navig
         .unwrap_or(0);
     let start = selected_index.saturating_add(1).saturating_sub(body_height);
     let mut lines = vec![Line::from(vec![
-        Span::styled(" / ", Style::default().fg(Color::Cyan)),
+        Span::styled(" / ", Style::default().fg(accent)),
         Span::raw(if navigator.search_focused() {
             format!("{}▏", navigator.query())
         } else if let Some(filter) = navigator.filter_label() {
@@ -38,7 +39,7 @@ pub fn render_navigator(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, navig
             .enumerate()
             .skip(start)
             .take(body_height)
-            .map(|(index, row)| row_line(row, index == selected_index)),
+            .map(|(index, row)| row_line(row, index == selected_index, accent)),
     );
     lines.push(Line::from(Span::styled(
         " j/k move · Space expand · / search · a/b/w/i/d filter · Enter open · Esc close ",
@@ -108,6 +109,7 @@ fn render_mobile_navigator(
     snapshot: &SessionSnapshot,
     navigator: &Navigator,
 ) {
+    let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
     let area = frame.area();
     let rows = navigator.rows(snapshot);
     let body_height = usize::from(area.height.saturating_sub(3));
@@ -123,15 +125,13 @@ fn render_mobile_navigator(
     lines.push(Line::from(vec![
         Span::styled(
             " switch",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
         ),
         Span::raw(" ".repeat(usize::from(area.width.saturating_sub(15)))),
         Span::styled("close", Style::default().fg(Color::DarkGray)),
     ]));
     lines.push(Line::from(vec![
-        Span::styled(" / ", Style::default().fg(Color::Cyan)),
+        Span::styled(" / ", Style::default().fg(accent)),
         Span::raw(if navigator.search_focused() {
             format!("{}▏", navigator.query())
         } else if navigator.query().is_empty() {
@@ -145,7 +145,7 @@ fn render_mobile_navigator(
             .enumerate()
             .skip(start)
             .take(body_height)
-            .map(|(index, row)| row_line(row, index == selected_index)),
+            .map(|(index, row)| row_line(row, index == selected_index, accent)),
     );
     while lines.len() < usize::from(area.height.saturating_sub(1)) {
         lines.push(Line::default());
@@ -197,7 +197,7 @@ fn hit_test_mobile_navigator(
         .unwrap_or(Hit::Inside)
 }
 
-fn row_line(row: &Row, selected: bool) -> Line<'static> {
+fn row_line(row: &Row, selected: bool, accent: Color) -> Line<'static> {
     let marker = if selected {
         ">"
     } else if row.current {
@@ -225,7 +225,7 @@ fn row_line(row: &Row, selected: bool) -> Line<'static> {
     let style = if selected {
         Style::default()
             .fg(Color::Black)
-            .bg(Color::Cyan)
+            .bg(accent)
             .add_modifier(Modifier::BOLD)
     } else if row.current {
         Style::default().fg(Color::Yellow)
