@@ -1,7 +1,7 @@
 //! Small manifest evaluator shared by screen-based agent detectors.
 //!
 //! The regions and rule priority follow Herdr's `src/detect/manifest.rs`.
-//! Codex and OpenCode are migrated first; other agents still use their
+//! Codex, OpenCode, and Gemini are migrated first; other agents still use their
 //! compatibility detectors until their rules are moved here.
 
 use super::{agents, AgentState};
@@ -153,12 +153,43 @@ const OPENCODE_RULES: &[Rule] = &[
     },
 ];
 
+const GEMINI_RULES: &[Rule] = &[
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::Any(&[
+            &["│ apply this change"],
+            &["│ allow execution"],
+            &["yes", "waiting for user confirmation"],
+            &["yes", "│ do you want to proceed"],
+            &["yes", "do you want to proceed?"],
+        ]),
+    },
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::LineRegex(r"(?i)^\s*❯.*(yes|allow)"),
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::Contains(&["esc to cancel"]),
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
 
 pub(crate) fn detect_opencode(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, OPENCODE_RULES)
+}
+
+pub(crate) fn detect_gemini(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, GEMINI_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -250,7 +281,7 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_codex, detect_opencode, DetectionInput};
+    use super::{detect_codex, detect_gemini, detect_opencode, DetectionInput};
     use crate::detect::AgentState;
 
     fn detect(screen: &str, title: &str) -> Option<AgentState> {
@@ -263,6 +294,14 @@ mod tests {
 
     fn detect_opencode_state(screen: &str) -> Option<AgentState> {
         detect_opencode(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_gemini_state(screen: &str) -> Option<AgentState> {
+        detect_gemini(DetectionInput {
             screen,
             osc_title: "",
             _osc_progress: "",
@@ -314,5 +353,22 @@ mod tests {
             Some(AgentState::Working)
         );
         assert_eq!(detect_opencode_state("build ■■■"), None);
+    }
+
+    #[test]
+    fn gemini_manifest_matches_confirmation_and_cancel_rules() {
+        assert_eq!(
+            detect_gemini_state("│ Apply this change"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_gemini_state("❯ Allow this command"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_gemini_state("Thinking · Esc to cancel"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_gemini_state("ordinary output"), None);
     }
 }
