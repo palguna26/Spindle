@@ -12,6 +12,8 @@ const COPILOT_HOOK_ASSET: &str = include_str!("integration/assets/copilot-agent-
 const COPILOT_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const CURSOR_HOOK_ASSET: &str = include_str!("integration/assets/cursor-agent-state.ps1");
 const CURSOR_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const DEVIN_HOOK_ASSET: &str = include_str!("integration/assets/devin-agent-state.ps1");
+const DEVIN_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -33,10 +35,11 @@ pub(crate) enum Target {
     Opencode,
     Copilot,
     Cursor,
+    Devin,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 7] = [
+    pub(crate) const ALL: [Self; 8] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
@@ -44,6 +47,7 @@ impl Target {
         Self::Opencode,
         Self::Copilot,
         Self::Cursor,
+        Self::Devin,
     ];
 
     fn label(self) -> &'static str {
@@ -55,6 +59,7 @@ impl Target {
             Self::Opencode => "opencode",
             Self::Copilot => "copilot",
             Self::Cursor => "cursor",
+            Self::Devin => "devin",
         }
     }
 
@@ -75,6 +80,7 @@ impl Target {
                 .join(OPENCODE_PLUGIN_NAME),
             Self::Copilot => copilot_dir().join("hooks").join(COPILOT_HOOK_NAME),
             Self::Cursor => cursor_dir().join(CURSOR_HOOK_NAME),
+            Self::Devin => devin_dir().join(DEVIN_HOOK_NAME),
         }
     }
 
@@ -312,6 +318,53 @@ pub(crate) fn uninstall_cursor() -> std::io::Result<Vec<String>> {
     }
     Ok(vec![format!(
         "{} cursor integration hook {}",
+        if removed_hook || changed {
+            "removed"
+        } else {
+            "did not find"
+        },
+        hook_path.display()
+    )])
+}
+
+pub(crate) fn install_devin() -> std::io::Result<Vec<String>> {
+    let dir = devin_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "devin config directory not found at {}. install devin cli first",
+            dir.display()
+        )));
+    }
+    let hook_path = dir.join(DEVIN_HOOK_NAME);
+    std::fs::write(&hook_path, DEVIN_HOOK_ASSET)?;
+    let settings_path = dir.join("config.json");
+    let mut config = read_json_object(&settings_path, "devin settings")?;
+    ensure_devin_hooks(&mut config, &settings_path, &hook_path)?;
+    std::fs::write(&settings_path, serde_json::to_string_pretty(&config)?)?;
+    Ok(vec![
+        format!(
+            "installed devin integration hook to {}",
+            hook_path.display()
+        ),
+        format!("ensured devin settings at {}", settings_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_devin() -> std::io::Result<Vec<String>> {
+    let dir = devin_dir();
+    let hook_path = dir.join(DEVIN_HOOK_NAME);
+    let settings_path = dir.join("config.json");
+    let removed_hook = remove_file_if_exists(&hook_path)?;
+    let mut changed = false;
+    if settings_path.is_file() {
+        let mut config = read_json_object(&settings_path, "devin settings")?;
+        changed = remove_devin_hooks(&mut config, &hook_path)?;
+        if changed {
+            std::fs::write(&settings_path, serde_json::to_string_pretty(&config)?)?;
+        }
+    }
+    Ok(vec![format!(
+        "{} devin integration hook {}",
         if removed_hook || changed {
             "removed"
         } else {
@@ -759,6 +812,106 @@ fn cursor_dir() -> PathBuf {
         .unwrap_or_else(|| home_dir().join(".cursor"))
 }
 
+fn devin_dir() -> PathBuf {
+    if let Some(value) = env::var_os("DEVIN_CONFIG_DIR").filter(|value| !value.is_empty()) {
+        return PathBuf::from(value);
+    }
+    if let Some(value) = env::var_os("APPDATA").filter(|value| !value.is_empty()) {
+        return PathBuf::from(value).join("devin");
+    }
+    home_dir().join(".config").join("devin")
+}
+
+fn devin_events() -> [(&'static str, &'static str); 6] {
+    [
+        ("SessionStart", "session"),
+        ("UserPromptSubmit", "session"),
+        ("PreToolUse", "session"),
+        ("PostToolUse", "session"),
+        ("PermissionRequest", "session"),
+        ("Stop", "session"),
+    ]
+}
+fn devin_removed_events() -> [(&'static str, &'static str); 6] {
+    [
+        ("UserPromptSubmit", "working"),
+        ("PreToolUse", "working"),
+        ("PostToolUse", "working"),
+        ("PermissionRequest", "blocked"),
+        ("Stop", "idle"),
+        ("SessionEnd", "release"),
+    ]
+}
+
+fn devin_hook_command(path: &std::path::Path, action: &str) -> String {
+    format!("{} {}", direct_hook_command(path), action)
+}
+
+fn ensure_devin_hooks(
+    config: &mut Value,
+    path: &std::path::Path,
+    hook_path: &std::path::Path,
+) -> std::io::Result<()> {
+    let root = config.as_object_mut().ok_or_else(|| {
+        std::io::Error::other(format!(
+            "devin settings at {} must be a JSON object",
+            path.display()
+        ))
+    })?;
+    let hooks = root
+        .entry("hooks")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or_else(|| std::io::Error::other("devin settings hooks must be a JSON object"))?;
+    for (event, action) in devin_removed_events().into_iter().chain(devin_events()) {
+        remove_devin_hook(hooks, event, &devin_hook_command(hook_path, action))?;
+    }
+    for (event, action) in devin_events() {
+        let entries = hooks
+            .entry(event)
+            .or_insert_with(|| json!([]))
+            .as_array_mut()
+            .ok_or_else(|| {
+                std::io::Error::other(format!("devin {event} hooks must be an array"))
+            })?;
+        entries.push(json!({"hooks":[{"type":"command","command":devin_hook_command(hook_path, action),"timeout":10}]}));
+    }
+    Ok(())
+}
+
+fn remove_devin_hooks(config: &mut Value, hook_path: &std::path::Path) -> std::io::Result<bool> {
+    let Some(hooks) = config.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return Ok(false);
+    };
+    let mut changed = false;
+    for (event, action) in devin_events().into_iter().chain(devin_removed_events()) {
+        changed |= remove_devin_hook(hooks, event, &devin_hook_command(hook_path, action))?;
+    }
+    Ok(changed)
+}
+
+fn remove_devin_hook(
+    hooks: &mut serde_json::Map<String, Value>,
+    event: &str,
+    command: &str,
+) -> std::io::Result<bool> {
+    let Some(entries) = hooks.get_mut(event).and_then(Value::as_array_mut) else {
+        return Ok(false);
+    };
+    let before = entries.len();
+    entries.retain(|entry| {
+        !entry
+            .get("hooks")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items
+                    .iter()
+                    .any(|item| item.get("command").and_then(Value::as_str) == Some(command))
+            })
+    });
+    Ok(before != entries.len())
+}
+
 fn cursor_events() -> [&'static str; 6] {
     [
         "sessionStart",
@@ -1050,6 +1203,7 @@ mod tests {
         assert_eq!(Target::Opencode.label(), "opencode");
         assert_eq!(Target::Copilot.label(), "copilot");
         assert_eq!(Target::Cursor.label(), "cursor");
+        assert_eq!(Target::Devin.label(), "devin");
     }
 
     #[test]
@@ -1060,6 +1214,7 @@ mod tests {
         assert!(Target::Opencode.path().ends_with(OPENCODE_PLUGIN_NAME));
         assert!(Target::Copilot.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Cursor.path().ends_with("spindle-agent-state.ps1"));
+        assert!(Target::Devin.path().ends_with("spindle-agent-state.ps1"));
     }
 
     #[test]
@@ -1107,6 +1262,30 @@ mod tests {
         assert!(config["other"].as_bool().unwrap());
         assert!(super::remove_copilot_hook(&mut config, hook_path).unwrap());
         assert_eq!(config["hooks"]["SessionStart"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn devin_hook_edit_preserves_nested_user_hooks_and_is_idempotent() {
+        let hook_path = std::path::Path::new(
+            "C:\\Users\\test\\AppData\\Roaming\\devin\\spindle-agent-state.ps1",
+        );
+        let mut config = serde_json::json!({
+            "hooks": { "SessionEnd": [{"hooks": [{"type": "command", "command": "keep-me"}]}] },
+            "other": true
+        });
+        super::ensure_devin_hooks(&mut config, hook_path, hook_path).unwrap();
+        super::ensure_devin_hooks(&mut config, hook_path, hook_path).unwrap();
+        assert_eq!(config["hooks"]["SessionStart"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            config["hooks"]["SessionEnd"][0]["hooks"][0]["command"],
+            "keep-me"
+        );
+        assert!(super::remove_devin_hooks(&mut config, hook_path).unwrap());
+        assert_eq!(
+            config["hooks"]["SessionEnd"][0]["hooks"][0]["command"],
+            "keep-me"
+        );
+        assert!(config["other"].as_bool().unwrap());
     }
 
     #[test]
