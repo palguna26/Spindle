@@ -157,6 +157,7 @@ pub(super) fn pane_mouse_target(
     .map(|pane| (pane.pane_id, pane.rect))
 }
 
+#[cfg(test)]
 pub(super) fn should_forward_pane_mouse(
     pane: &crate::server::session::PaneView,
     kind: MouseEventKind,
@@ -172,6 +173,29 @@ pub(super) fn should_forward_pane_mouse(
         | MouseEventKind::ScrollRight => pane.mouse_reporting,
     };
     reports && (kind != MouseEventKind::Down(MouseButton::Right) || pane.right_click_passthrough)
+}
+
+pub(super) fn should_forward_pane_mouse_with_modifier(
+    pane: &crate::server::session::PaneView,
+    mouse: MouseEvent,
+    configured_modifier: Option<crossterm::event::KeyModifiers>,
+) -> bool {
+    let reports = match mouse.kind {
+        MouseEventKind::Down(_) => pane.mouse_reporting,
+        MouseEventKind::Up(_) => pane.mouse_release,
+        MouseEventKind::Drag(_) => pane.mouse_motion,
+        MouseEventKind::Moved => pane.mouse_any_motion,
+        MouseEventKind::ScrollUp
+        | MouseEventKind::ScrollDown
+        | MouseEventKind::ScrollLeft
+        | MouseEventKind::ScrollRight => pane.mouse_reporting,
+    };
+    if mouse.kind == MouseEventKind::Down(MouseButton::Right) {
+        return reports
+            && ((pane.right_click_passthrough && mouse.modifiers.is_empty())
+                || configured_modifier.is_some_and(|modifier| modifier == mouse.modifiers));
+    }
+    reports
 }
 
 pub(super) fn visible_web_url_at_point(

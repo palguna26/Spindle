@@ -1,3 +1,4 @@
+use crossterm::event::KeyModifiers;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -39,6 +40,7 @@ struct UiConfig {
     mouse_scroll_lines: u16,
     confirm_close: bool,
     hide_tab_bar_when_single_tab: bool,
+    right_click_passthrough_modifier: String,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
@@ -66,6 +68,7 @@ impl Default for UiConfig {
             mouse_scroll_lines: 3,
             confirm_close: true,
             hide_tab_bar_when_single_tab: false,
+            right_click_passthrough_modifier: String::new(),
         }
     }
 }
@@ -182,6 +185,7 @@ pub struct Config {
     pub(crate) mouse_scroll_lines: usize,
     pub(crate) confirm_close: bool,
     pub(crate) hide_tab_bar_when_single_tab: bool,
+    pub(crate) right_click_passthrough_modifier: Option<KeyModifiers>,
 }
 
 impl Default for Config {
@@ -208,6 +212,7 @@ impl Default for Config {
             mouse_scroll_lines: 3,
             confirm_close: true,
             hide_tab_bar_when_single_tab: false,
+            right_click_passthrough_modifier: None,
         }
     }
 }
@@ -276,7 +281,33 @@ pub fn load_from(path: &std::path::Path) -> Config {
         mouse_scroll_lines: usize::from(file.ui.mouse_scroll_lines.max(1)),
         confirm_close: file.ui.confirm_close,
         hide_tab_bar_when_single_tab: file.ui.hide_tab_bar_when_single_tab,
+        right_click_passthrough_modifier: parse_right_click_passthrough_modifier(
+            &file.ui.right_click_passthrough_modifier,
+        ),
     }
+}
+
+fn parse_right_click_passthrough_modifier(value: &str) -> Option<KeyModifiers> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.eq_ignore_ascii_case("off")
+        || value.eq_ignore_ascii_case("none")
+        || value.eq_ignore_ascii_case("disabled")
+    {
+        return None;
+    }
+    let mut modifiers = KeyModifiers::empty();
+    for part in value.split('+') {
+        modifiers |= match part.trim().to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => KeyModifiers::CONTROL,
+            "alt" | "option" => KeyModifiers::ALT,
+            "cmd" | "command" | "super" => KeyModifiers::SUPER,
+            "meta" => KeyModifiers::META,
+            "hyper" => KeyModifiers::HYPER,
+            _ => return None,
+        };
+    }
+    (!modifiers.is_empty()).then_some(modifiers)
 }
 
 pub(crate) fn sidebar_bounds(config: &Config) -> (u16, u16) {
@@ -334,6 +365,7 @@ host_cursor = "auto"
 mouse_scroll_lines = 3
 confirm_close = true
 hide_tab_bar_when_single_tab = false
+right_click_passthrough_modifier = ""
 "#
 }
 
@@ -414,6 +446,7 @@ fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> S
 #[cfg(test)]
 mod tests {
     use super::{load_from, upsert_section_key, Config, HostCursorMode, NotificationDelivery};
+    use crossterm::event::KeyModifiers;
 
     #[test]
     fn loads_herdr_style_key_bindings() {
@@ -586,6 +619,25 @@ mod tests {
             std::env::temp_dir().join(format!("spindle-hide-tab-bar-{}.toml", std::process::id()));
         std::fs::write(&path, "[ui]\nhide_tab_bar_when_single_tab = true\n").unwrap();
         assert!(load_from(&path).hide_tab_bar_when_single_tab);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn right_click_passthrough_modifier_matches_herdr_forms() {
+        assert_eq!(Config::default().right_click_passthrough_modifier, None);
+        let path = std::env::temp_dir().join(format!(
+            "spindle-right-click-modifier-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "[ui]\nright_click_passthrough_modifier = \"cmd+alt\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            load_from(&path).right_click_passthrough_modifier,
+            Some(KeyModifiers::SUPER | KeyModifiers::ALT)
+        );
         std::fs::remove_file(path).unwrap();
     }
 

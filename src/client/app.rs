@@ -3,10 +3,12 @@ use super::copy_mode::{CopyMode, KeyResult};
 use super::global_menu::{Action as GlobalMenuAction, GlobalMenu, Outcome as GlobalMenuOutcome};
 use super::input::{Action, Keymap};
 use super::mouse::{
-    clear_mouse_capture, pane_mouse_target, should_forward_pane_mouse, visible_web_url_at_point,
-    CachedScrollbackView, MouseState, PaneClick, PaneMouseCapture, SplitDrag, TabDrag,
-    WorkspaceDrag,
+    clear_mouse_capture, pane_mouse_target, should_forward_pane_mouse_with_modifier,
+    visible_web_url_at_point, CachedScrollbackView, MouseState, PaneClick, PaneMouseCapture,
+    SplitDrag, TabDrag, WorkspaceDrag,
 };
+#[cfg(test)]
+use super::mouse::should_forward_pane_mouse;
 use super::navigator::{Navigator, Outcome as NavigatorOutcome, Target as NavigatorTarget};
 use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
@@ -2286,7 +2288,8 @@ fn forward_mouse_to_pane(
         clear_mouse_capture(capture, mouse.kind);
         return Ok(false);
     };
-    if !should_forward_pane_mouse(pane, mouse.kind) {
+    let configured_modifier = crate::config::load().right_click_passthrough_modifier;
+    if !should_forward_pane_mouse_with_modifier(pane, mouse, configured_modifier) {
         clear_mouse_capture(capture, mouse.kind);
         return Ok(false);
     }
@@ -2301,8 +2304,14 @@ fn forward_mouse_to_pane(
         .saturating_sub(rect.y.saturating_add(1))
         .saturating_add(1)
         .clamp(1, pane.rows.max(1));
+    let mut forwarded_mouse = mouse;
+    if mouse.kind == MouseEventKind::Down(MouseButton::Right)
+        && configured_modifier.is_some_and(|modifier| modifier == mouse.modifiers)
+    {
+        forwarded_mouse.modifiers = crossterm::event::KeyModifiers::empty();
+    }
     let Some(bytes) =
-        crate::terminal::encode_mouse_event(mouse, x, y, pane.sgr_mouse, pane.utf8_mouse)
+        crate::terminal::encode_mouse_event(forwarded_mouse, x, y, pane.sgr_mouse, pane.utf8_mouse)
     else {
         clear_mouse_capture(capture, mouse.kind);
         return Ok(false);
@@ -4005,11 +4014,11 @@ mod tests {
         current_snapshot, ensure_active_default_pane, indexed_workspace_selection, input_pane_id,
         key_code_bytes, move_workspace_selection, page_key_bytes, pane_mouse_target, pane_size,
         reconnect_requires_reattach, record_action_error, rename_target, renderer,
-        require_server_success, should_forward_pane_mouse, snapshot_has_focused_pane,
-        startup_error_action, uses_mobile_navigation, visible_web_url_at_point,
-        workspace_has_linked_children, workspace_id_by_name, workspace_picker_key,
-        CachedScrollbackView, ControlClient, PaneClick, PaneMouseCapture, SplitDirection,
-        SplitDrag, StartupErrorAction, WorkspacePickerKey,
+        require_server_success, should_forward_pane_mouse, should_forward_pane_mouse_with_modifier,
+        snapshot_has_focused_pane, startup_error_action, uses_mobile_navigation,
+        visible_web_url_at_point, workspace_has_linked_children, workspace_id_by_name,
+        workspace_picker_key, CachedScrollbackView, ControlClient, PaneClick, PaneMouseCapture,
+        SplitDirection, SplitDrag, StartupErrorAction, WorkspacePickerKey,
     };
     use crate::client::input::{Action, Keymap};
     use crate::config::Config;
@@ -4265,6 +4274,28 @@ mod tests {
         assert!(!should_forward_pane_mouse(pane, right_click));
         pane.right_click_passthrough = true;
         assert!(should_forward_pane_mouse(pane, right_click));
+    }
+
+    #[test]
+    fn configured_right_click_modifier_allows_passthrough_and_strips_modifier() {
+        let snapshot = snapshot_with_mouse_pane();
+        let pane = &snapshot.panes[0];
+        let mouse = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Right),
+            column: 0,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::CONTROL,
+        };
+        assert!(should_forward_pane_mouse_with_modifier(
+            pane,
+            mouse,
+            Some(crossterm::event::KeyModifiers::CONTROL)
+        ));
+        assert!(!should_forward_pane_mouse_with_modifier(
+            pane,
+            mouse,
+            Some(crossterm::event::KeyModifiers::ALT)
+        ));
     }
 
     #[test]
