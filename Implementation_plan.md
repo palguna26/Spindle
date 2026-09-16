@@ -446,6 +446,8 @@ approved design changes it.
   Configured `move_tab_previous`, `move_tab_next`, and directional
   `resize_pane_*` actions now execute through the existing tab-move and layout
   resize control operations; like Herdr, all are unset by default.
+  Configured `last_pane` now remembers the previous focused pane across tabs and
+  workspaces and focuses it when still available, matching Herdr's global target.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
