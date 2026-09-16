@@ -364,3 +364,58 @@ pub(super) fn split_areas(area: Rect, direction: SplitDirection, ratio: f32) -> 
         .split(area);
     [areas[0], areas[1]]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{pane_borders_for_rect, PaneRect};
+    use crate::config::PaneBorders;
+    use ratatui::layout::Rect;
+    use ratatui::widgets::Borders;
+
+    #[test]
+    fn auto_borders_only_frame_split_panes_like_herdr() {
+        let single = [PaneRect {
+            pane_id: "one".into(),
+            rect: Rect::new(0, 0, 10, 5),
+        }];
+        assert_eq!(
+            pane_borders_for_rect(single[0].rect, &single, PaneBorders::Auto, true, true),
+            Borders::NONE
+        );
+
+        let split = [
+            PaneRect {
+                pane_id: "one".into(),
+                rect: Rect::new(0, 0, 5, 5),
+            },
+            PaneRect {
+                pane_id: "two".into(),
+                rect: Rect::new(5, 0, 5, 5),
+            },
+        ];
+        assert_eq!(
+            pane_borders_for_rect(split[0].rect, &split, PaneBorders::Auto, true, true),
+            Borders::ALL
+        );
+    }
+
+    #[test]
+    fn pane_outer_and_gap_options_remove_the_matching_edges() {
+        let split = [
+            PaneRect {
+                pane_id: "one".into(),
+                rect: Rect::new(0, 0, 5, 5),
+            },
+            PaneRect {
+                pane_id: "two".into(),
+                rect: Rect::new(5, 0, 5, 5),
+            },
+        ];
+        let borders =
+            pane_borders_for_rect(split[0].rect, &split, PaneBorders::Always, false, false);
+        assert!(!borders.contains(Borders::LEFT));
+        assert!(!borders.contains(Borders::TOP));
+        assert!(!borders.contains(Borders::BOTTOM));
+        assert!(!borders.contains(Borders::RIGHT));
+    }
+}
