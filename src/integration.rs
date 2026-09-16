@@ -8,6 +8,8 @@ use serde_json::{json, Value};
 
 const CODEX_HOOK_ASSET: &str = include_str!("integration/assets/codex-agent-state.ps1");
 const CODEX_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const COPILOT_HOOK_ASSET: &str = include_str!("integration/assets/copilot-agent-state.ps1");
+const COPILOT_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -27,15 +29,17 @@ pub(crate) enum Target {
     Claude,
     Codex,
     Opencode,
+    Copilot,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 5] = [
+    pub(crate) const ALL: [Self; 6] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
         Self::Codex,
         Self::Opencode,
+        Self::Copilot,
     ];
 
     fn label(self) -> &'static str {
@@ -45,6 +49,7 @@ impl Target {
             Self::Claude => "claude",
             Self::Codex => "codex",
             Self::Opencode => "opencode",
+            Self::Copilot => "copilot",
         }
     }
 
@@ -63,6 +68,7 @@ impl Target {
                 .join("opencode")
                 .join("plugins")
                 .join(OPENCODE_PLUGIN_NAME),
+            Self::Copilot => copilot_dir().join("hooks").join(COPILOT_HOOK_NAME),
         }
     }
 
@@ -201,6 +207,55 @@ pub(crate) fn uninstall_codex() -> std::io::Result<Vec<String>> {
     }
     Ok(vec![format!(
         "{} codex integration hook {}",
+        if removed_hook || changed {
+            "removed"
+        } else {
+            "did not find"
+        },
+        hook_path.display()
+    )])
+}
+
+pub(crate) fn install_copilot() -> std::io::Result<Vec<String>> {
+    let dir = copilot_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "copilot config directory not found at {}. install github copilot cli first",
+            dir.display()
+        )));
+    }
+    let hooks_dir = dir.join("hooks");
+    std::fs::create_dir_all(&hooks_dir)?;
+    let hook_path = hooks_dir.join(COPILOT_HOOK_NAME);
+    std::fs::write(&hook_path, COPILOT_HOOK_ASSET)?;
+    let settings_path = dir.join("settings.json");
+    let mut settings = read_json_object(&settings_path, "copilot settings")?;
+    ensure_copilot_hook(&mut settings, &settings_path, &hook_path)?;
+    std::fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
+    Ok(vec![
+        format!(
+            "installed copilot integration hook to {}",
+            hook_path.display()
+        ),
+        format!("ensured copilot settings at {}", settings_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_copilot() -> std::io::Result<Vec<String>> {
+    let dir = copilot_dir();
+    let hook_path = dir.join("hooks").join(COPILOT_HOOK_NAME);
+    let settings_path = dir.join("settings.json");
+    let removed_hook = remove_file_if_exists(&hook_path)?;
+    let mut changed = false;
+    if settings_path.is_file() {
+        let mut settings = read_json_object(&settings_path, "copilot settings")?;
+        changed = remove_copilot_hook(&mut settings, &hook_path)?;
+        if changed {
+            std::fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
+        }
+    }
+    Ok(vec![format!(
+        "{} copilot integration hook {}",
         if removed_hook || changed {
             "removed"
         } else {
@@ -634,6 +689,118 @@ fn codex_dir() -> PathBuf {
         .unwrap_or_else(|| home_dir().join(".codex"))
 }
 
+fn copilot_dir() -> PathBuf {
+    env::var_os("COPILOT_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".copilot"))
+}
+
+fn read_json_object(path: &std::path::Path, label: &str) -> std::io::Result<Value> {
+    if !path.is_file() {
+        return Ok(json!({}));
+    }
+    let value =
+        serde_json::from_str::<Value>(&std::fs::read_to_string(path)?).map_err(|error| {
+            std::io::Error::other(format!("failed to parse {}: {error}", path.display()))
+        })?;
+    if !value.is_object() {
+        return Err(std::io::Error::other(format!(
+            "{label} at {} must be a JSON object",
+            path.display()
+        )));
+    }
+    Ok(value)
+}
+
+fn copilot_events() -> [&'static str; 1] {
+    ["SessionStart"]
+}
+fn copilot_removed_events() -> [&'static str; 9] {
+    [
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "Stop",
+        "agentStop",
+        "SessionEnd",
+        "notification",
+        "error",
+    ]
+}
+
+fn direct_hook_command(path: &std::path::Path) -> String {
+    format!(
+        "powershell -NoProfile -ExecutionPolicy Bypass -File \"{}\"",
+        path.display().to_string().replace('"', "\\\"")
+    )
+}
+
+fn ensure_copilot_hook(
+    config: &mut Value,
+    path: &std::path::Path,
+    hook_path: &std::path::Path,
+) -> std::io::Result<()> {
+    let root = config.as_object_mut().ok_or_else(|| {
+        std::io::Error::other(format!(
+            "copilot settings at {} must be a JSON object",
+            path.display()
+        ))
+    })?;
+    let hooks = root
+        .entry("hooks")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or_else(|| std::io::Error::other("copilot settings hooks must be a JSON object"))?;
+    let command = direct_hook_command(hook_path);
+    for event in copilot_removed_events().into_iter().chain(copilot_events()) {
+        remove_direct_hook(hooks, event, &command)?;
+    }
+    let entries = hooks
+        .entry("SessionStart")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .ok_or_else(|| std::io::Error::other("copilot SessionStart hooks must be an array"))?;
+    if !entries.iter().any(|entry| {
+        entry.get("type").and_then(Value::as_str) == Some("command")
+            && entry.get("powershell").and_then(Value::as_str) == Some(command.as_str())
+    }) {
+        entries.push(json!({"type":"command","powershell":command,"timeoutSec":10}));
+    }
+    Ok(())
+}
+
+fn remove_copilot_hook(config: &mut Value, hook_path: &std::path::Path) -> std::io::Result<bool> {
+    let Some(hooks) = config.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return Ok(false);
+    };
+    let command = direct_hook_command(hook_path);
+    let mut changed = false;
+    for event in copilot_removed_events().into_iter().chain(copilot_events()) {
+        changed |= remove_direct_hook(hooks, event, &command)?;
+    }
+    Ok(changed)
+}
+
+fn remove_direct_hook(
+    hooks: &mut serde_json::Map<String, Value>,
+    event: &str,
+    command: &str,
+) -> std::io::Result<bool> {
+    let Some(entries) = hooks.get_mut(event).and_then(Value::as_array_mut) else {
+        return Ok(false);
+    };
+    let before = entries.len();
+    entries.retain(|entry| {
+        !(entry.get("type").and_then(Value::as_str) == Some("command")
+            && ["command", "bash", "powershell"]
+                .into_iter()
+                .any(|field| entry.get(field).and_then(Value::as_str) == Some(command)))
+    });
+    Ok(before != entries.len())
+}
+
 fn opencode_dir() -> PathBuf {
     home_dir().join(".config").join("opencode")
 }
@@ -749,6 +916,7 @@ mod tests {
         assert_eq!(Target::Omp.label(), "omp");
         assert_eq!(Target::Codex.label(), "codex");
         assert_eq!(Target::Opencode.label(), "opencode");
+        assert_eq!(Target::Copilot.label(), "copilot");
     }
 
     #[test]
@@ -757,6 +925,7 @@ mod tests {
         assert!(Target::Omp.path().ends_with(OMP_EXTENSION_NAME));
         assert!(Target::Codex.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Opencode.path().ends_with(OPENCODE_PLUGIN_NAME));
+        assert!(Target::Copilot.path().ends_with("spindle-agent-state.ps1"));
     }
 
     #[test]
@@ -780,6 +949,30 @@ mod tests {
         assert_eq!(entries[0]["hooks"][0]["command"], "custom-hook");
         assert_eq!(entries[0]["hooks"][1]["command"], command);
         assert!(config["other"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn copilot_hook_edit_preserves_unrelated_hooks_and_is_idempotent() {
+        let hook_path =
+            std::path::Path::new("C:\\Users\\test\\.copilot\\hooks\\spindle-agent-state.ps1");
+        let command = super::direct_hook_command(hook_path);
+        let mut config = serde_json::json!({
+            "hooks": { "SessionStart": [
+                {"type": "command", "powershell": "custom-hook"},
+                {"type": "command", "powershell": command}
+            ]},
+            "other": true
+        });
+
+        super::ensure_copilot_hook(&mut config, hook_path, hook_path).unwrap();
+        assert_eq!(config["hooks"]["SessionStart"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            config["hooks"]["SessionStart"][0]["powershell"],
+            "custom-hook"
+        );
+        assert!(config["other"].as_bool().unwrap());
+        assert!(super::remove_copilot_hook(&mut config, hook_path).unwrap());
+        assert_eq!(config["hooks"]["SessionStart"].as_array().unwrap().len(), 1);
     }
 
     #[test]
