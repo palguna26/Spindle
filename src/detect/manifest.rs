@@ -1,8 +1,9 @@
 //! Small manifest evaluator shared by screen-based agent detectors.
 //!
 //! The regions and rule priority follow Herdr's `src/detect/manifest.rs`.
-//! Codex, OpenCode, Gemini, Cline, Copilot, Pi, Qoder CLI, and Droid are migrated first; other agents still use their
-//! compatibility detectors until their rules are moved here.
+//! Screen-based agent detectors use this evaluator for Herdr's priority and
+//! region semantics; compatibility functions remain only as fallbacks where
+//! terminal encoding or legacy layouts need them.
 
 use super::{agents, AgentState};
 use regex::Regex;
