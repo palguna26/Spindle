@@ -411,6 +411,11 @@ Terminal verification is still pending.
   under the Herdr-compatible `.omp/agent/extensions` layout, reports OMP agent
   state through the pane protocol, and rejects a shared Pi/OMP extension
   directory to avoid overwriting another integration.
+
+- [x] Add the GitHub Copilot integration. Install/uninstall now manages the
+  Windows PowerShell session hook under `.copilot/hooks`, registers Herdr's
+  `SessionStart` hook shape in `settings.json`, preserves unrelated settings,
+  and exposes the target through every generated shell completion.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
