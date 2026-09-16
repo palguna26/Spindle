@@ -163,7 +163,15 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
         navigation_workspace,
     );
     render_tabs(frame, snapshot, main.tabs);
-    let panes = pane_rectangles(snapshot, main.panes);
+    let panes = pane_rectangles(snapshot, main.panes)
+        .into_iter()
+        .filter(|pane_rect| {
+            snapshot
+                .panes
+                .iter()
+                .any(|pane| pane.pane_id == pane_rect.pane_id)
+        })
+        .collect::<Vec<_>>();
     if panes.is_empty() {
         let message = if active_workspace(snapshot).is_some() {
             format!(
@@ -984,6 +992,25 @@ mod tests {
         assert!(content.contains("No shell in this tab"));
         assert!(content.contains("New PowerShell pane"));
         assert!(content.contains("Ctrl-b c starts a new tab"));
+    }
+
+    #[test]
+    fn stale_layout_renders_the_empty_tab_message() {
+        let backend = TestBackend::new(80, 14);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let session = Session::default();
+        let mut snapshot = session.snapshot().clone();
+        snapshot.spaces[0].workspaces[0].tabs[0].layout = Some(LayoutNode::pane("pane-missing"));
+        terminal.draw(|frame| render(frame, &snapshot)).unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("No shell in this tab"));
+        assert!(content.contains("New PowerShell pane"));
     }
 
     #[test]
