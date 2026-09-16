@@ -396,6 +396,11 @@ Terminal verification is still pending.
   the session-selection plugin and registers it in `tui.jsonc` while preserving
   JSONC comments and unrelated plugins. The plugin follows Herdr's selected
   root-session routing and retry behavior.
+
+- [x] Add the Claude Code integration. Install/uninstall now manages the
+  Windows PowerShell session hook under `.claude/hooks`, registers the nested
+  `SessionStart` hook in `settings.json`, preserves unrelated hook entries,
+  and reports Claude session identity through Spindle's pane protocol.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
