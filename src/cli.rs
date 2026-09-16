@@ -24,6 +24,33 @@ pub(super) fn parse_env_assignment(value: &str) -> io::Result<(String, String)> 
     Ok((key.to_owned(), value.to_owned()))
 }
 
+pub(crate) fn default_shell() -> (String, Vec<String>) {
+    let configured = crate::config::load().default_shell;
+    let command = configured
+        .or_else(|| env::var("SHELL").ok())
+        .filter(|shell| !shell.trim().is_empty())
+        .unwrap_or_else(|| {
+            if cfg!(windows) {
+                "powershell.exe".into()
+            } else {
+                "sh".into()
+            }
+        });
+    let is_powershell = command.rsplit(['/', '\\']).next().is_some_and(|name| {
+        matches!(
+            name.to_ascii_lowercase().as_str(),
+            "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe"
+        )
+    });
+    let args = match (is_powershell, crate::config::load().shell_mode) {
+        (true, crate::config::ShellMode::Login) => vec!["-NoLogo".into()],
+        (true, _) => vec!["-NoLogo".into(), "-NoProfile".into()],
+        (false, crate::config::ShellMode::Login) if !cfg!(windows) => vec!["-l".into()],
+        _ => Vec::new(),
+    };
+    (command, args)
+}
+
 mod agent;
 mod api;
 mod completion;

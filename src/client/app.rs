@@ -3877,7 +3877,7 @@ fn pane_request(terminal_size: (u16, u16)) -> serde_json::Value {
         .map(|path| path.to_string_lossy().into_owned())
         .unwrap_or_else(|_| ".".into());
     let (cols, rows) = pane_size(terminal_size);
-    let (command, args) = default_shell();
+    let (command, args) = crate::cli::default_shell();
     json!({
         "command": command,
         "args": args,
@@ -3885,33 +3885,6 @@ fn pane_request(terminal_size: (u16, u16)) -> serde_json::Value {
         "cols": cols,
         "rows": rows
     })
-}
-
-fn default_shell() -> (String, Vec<String>) {
-    let configured = crate::config::load().default_shell;
-    let command = configured
-        .or_else(|| std::env::var("SHELL").ok())
-        .filter(|shell| !shell.trim().is_empty())
-        .unwrap_or_else(|| {
-            if cfg!(windows) {
-                "powershell.exe".into()
-            } else {
-                "sh".into()
-            }
-        });
-    let is_powershell = command.rsplit(['/', '\\']).next().is_some_and(|name| {
-        matches!(
-            name.to_ascii_lowercase().as_str(),
-            "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe"
-        )
-    });
-    let args = match (is_powershell, crate::config::load().shell_mode) {
-        (true, crate::config::ShellMode::Login) => vec!["-NoLogo".into()],
-        (true, _) => vec!["-NoLogo".into(), "-NoProfile".into()],
-        (false, crate::config::ShellMode::Login) if !cfg!(windows) => vec!["-l".into()],
-        _ => Vec::new(),
-    };
-    (command, args)
 }
 
 fn pane_request_for_snapshot(

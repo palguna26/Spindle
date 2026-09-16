@@ -219,12 +219,13 @@ fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
         })
         .and_then(|workspace| workspace.repository_path.clone())
         .or(cwd);
+    let (command, args) = super::default_shell();
     let pane = super::send_command_with_payload(
         project,
         "ensure_active_pane",
         serde_json::json!({
-            "command": "powershell.exe",
-            "args": ["-NoLogo", "-NoProfile"],
+            "command": command,
+            "args": args,
             "cwd": repository_path,
             "env": env,
             "cols": 80,

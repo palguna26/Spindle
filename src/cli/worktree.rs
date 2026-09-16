@@ -507,12 +507,13 @@ fn open_workspace(
                 .unwrap_or_else(|| "workspace creation failed".into()),
         ));
     }
+    let (command, args) = super::default_shell();
     let pane = super::send_command_with_payload(
         project,
         "ensure_active_pane",
         serde_json::json!({
-            "command": "powershell.exe",
-            "args": ["-NoLogo", "-NoProfile"],
+            "command": command,
+            "args": args,
             "cwd": path,
             "cols": 80,
             "rows": 24,

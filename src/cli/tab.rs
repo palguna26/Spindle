@@ -192,12 +192,13 @@ fn tab_create(project: &Project, args: &[String]) -> io::Result<()> {
     let snapshot = get_snapshot(project)?;
     let repository_path =
         active_workspace(&snapshot).and_then(|workspace| workspace.repository_path.clone());
+    let (command, args) = super::default_shell();
     let pane = super::send_command_with_payload(
         project,
         "ensure_active_pane",
         serde_json::json!({
-            "command": "powershell.exe",
-            "args": ["-NoLogo", "-NoProfile"],
+            "command": command,
+            "args": args,
             "cwd": cwd.or(repository_path).or_else(|| std::env::current_dir().ok().map(|path| path.to_string_lossy().into_owned())),
             "env": env,
             "cols": 80,
