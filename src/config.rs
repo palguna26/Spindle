@@ -36,6 +36,7 @@ struct UiConfig {
     copy_on_select: bool,
     mouse_capture: bool,
     host_cursor: HostCursorMode,
+    mouse_scroll_lines: u16,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
@@ -60,6 +61,7 @@ impl Default for UiConfig {
             copy_on_select: true,
             mouse_capture: true,
             host_cursor: HostCursorMode::Auto,
+            mouse_scroll_lines: 3,
         }
     }
 }
@@ -173,6 +175,7 @@ pub struct Config {
     pub(crate) copy_on_select: bool,
     pub(crate) mouse_capture: bool,
     pub(crate) host_cursor: HostCursorMode,
+    pub(crate) mouse_scroll_lines: usize,
 }
 
 impl Default for Config {
@@ -196,6 +199,7 @@ impl Default for Config {
             copy_on_select: true,
             mouse_capture: true,
             host_cursor: HostCursorMode::Auto,
+            mouse_scroll_lines: 3,
         }
     }
 }
@@ -261,6 +265,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         copy_on_select: file.ui.copy_on_select,
         mouse_capture: file.ui.mouse_capture,
         host_cursor: file.ui.host_cursor,
+        mouse_scroll_lines: usize::from(file.ui.mouse_scroll_lines.max(1)),
     }
 }
 
@@ -316,6 +321,7 @@ prompt_new_workspace_name = false
 copy_on_select = true
 mouse_capture = true
 host_cursor = "auto"
+mouse_scroll_lines = 3
 "#
 }
 
@@ -536,6 +542,18 @@ mod tests {
             std::env::temp_dir().join(format!("spindle-host-cursor-{}.toml", std::process::id()));
         std::fs::write(&path, "[ui]\nhost_cursor = \"drawn\"\n").unwrap();
         assert_eq!(load_from(&path).host_cursor, HostCursorMode::Drawn);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn mouse_scroll_lines_matches_herdr_default_and_value() {
+        assert_eq!(Config::default().mouse_scroll_lines, 3);
+        let path = std::env::temp_dir().join(format!(
+            "spindle-mouse-scroll-lines-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[ui]\nmouse_scroll_lines = 7\n").unwrap();
+        assert_eq!(load_from(&path).mouse_scroll_lines, 7);
         std::fs::remove_file(path).unwrap();
     }
 

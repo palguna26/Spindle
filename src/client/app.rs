@@ -39,7 +39,6 @@ use std::io::{self, stdout};
 use std::time::{Duration, Instant};
 
 const SPLIT_DRAG_INTERVAL: Duration = Duration::from_millis(33);
-const WHEEL_SCROLL_LINES: usize = 3;
 const MAX_SCROLLBACK_ROWS: usize = 4096;
 const ACTION_ERROR_DURATION: Duration = Duration::from_secs(5);
 
@@ -189,6 +188,7 @@ fn event_loop(
             mouse_capture = config.mouse_capture;
         }
         mouse_state.copy_on_select = config.copy_on_select;
+        mouse_state.mouse_scroll_lines = config.mouse_scroll_lines;
         keymap = Keymap::from_config(&config);
         if !config.notifications_enabled {
             notifications.clear();
@@ -559,8 +559,10 @@ fn event_loop(
                                 open_navigator.select(target);
                             }
                         }
-                        MouseEventKind::ScrollUp => open_navigator.move_selection(&snapshot, -3),
-                        MouseEventKind::ScrollDown => open_navigator.move_selection(&snapshot, 3),
+                        MouseEventKind::ScrollUp => open_navigator
+                            .move_selection(&snapshot, -(mouse_state.mouse_scroll_lines as isize)),
+                        MouseEventKind::ScrollDown => open_navigator
+                            .move_selection(&snapshot, mouse_state.mouse_scroll_lines as isize),
                         MouseEventKind::Down(MouseButton::Left) => {
                             match renderer::hit_test_navigator(
                                 &snapshot,
@@ -1565,7 +1567,7 @@ fn handle_mouse(
                     *offset = adjust_scrollback_offset(
                         *offset,
                         mouse.kind == MouseEventKind::ScrollUp,
-                        WHEEL_SCROLL_LINES,
+                        mouse_state.mouse_scroll_lines,
                     );
                 }
             }
