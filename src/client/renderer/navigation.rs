@@ -1748,11 +1748,11 @@ mod tests {
         let buffer = terminal.backend().buffer();
         assert_eq!(
             buffer.cell((sidebar.x + 5, sidebar.y + 2)).unwrap().bg,
-            ratatui::style::Color::DarkGray
+            ratatui::style::Color::Rgb(30, 30, 46)
         );
         assert_ne!(
             buffer.cell((sidebar.x + 5, sidebar.y + 3)).unwrap().bg,
-            ratatui::style::Color::DarkGray
+            ratatui::style::Color::Rgb(30, 30, 46)
         );
         assert_eq!(
             snapshot.spaces[0].active_workspace_id.as_deref(),
@@ -2078,11 +2078,11 @@ mod tests {
         let buffer = terminal.backend().buffer();
         assert_eq!(
             buffer.cell((sidebar.x + 8, sidebar.y + 8)).unwrap().bg,
-            ratatui::style::Color::DarkGray
+            ratatui::style::Color::Rgb(30, 30, 46)
         );
         assert_ne!(
             buffer.cell((sidebar.x + 8, sidebar.y + 7)).unwrap().bg,
-            ratatui::style::Color::DarkGray
+            ratatui::style::Color::Rgb(30, 30, 46)
         );
     }
 

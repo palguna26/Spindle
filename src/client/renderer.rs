@@ -169,19 +169,77 @@ impl ThemePalette {
     }
 
     pub(super) fn active_row_bg(config: &crate::config::Config) -> Color {
-        config
+        if let Some(color) = config
             .theme_custom_active_row_bg
             .as_deref()
             .and_then(parse_theme_color)
-            .unwrap_or(Color::DarkGray)
+        {
+            return color;
+        }
+        match config
+            .theme_name
+            .as_deref()
+            .unwrap_or("catppuccin")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "catppuccin" => Color::Rgb(30, 30, 46),
+            "catppuccin-latte" => Color::Rgb(230, 233, 239),
+            "terminal" => Color::DarkGray,
+            "tokyo-night" | "tokyonight" => Color::Rgb(35, 38, 54),
+            "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => Color::Rgb(210, 211, 218),
+            "dracula" => Color::Rgb(55, 60, 82),
+            "nord" => Color::Rgb(67, 76, 94),
+            "gruvbox" => Color::Rgb(50, 49, 48),
+            "gruvbox-light" => Color::Rgb(242, 229, 188),
+            "one-dark" => Color::Rgb(49, 54, 64),
+            "one-light" => Color::Rgb(216, 219, 226),
+            "solarized" => Color::Rgb(22, 75, 87),
+            "solarized-light" => Color::Rgb(238, 232, 213),
+            "kanagawa" => Color::Rgb(54, 54, 70),
+            "kanagawa-lotus" => Color::Rgb(213, 206, 163),
+            "rose-pine" => Color::Rgb(38, 35, 58),
+            "rose-pine-dawn" => Color::Rgb(227, 217, 207),
+            "vesper" => Color::Rgb(16, 16, 16),
+            _ => Color::DarkGray,
+        }
     }
 
     pub(super) fn selection_bg(config: &crate::config::Config) -> Color {
-        config
+        if let Some(color) = config
             .theme_custom_selection_bg
             .as_deref()
             .and_then(parse_theme_color)
-            .unwrap_or(Color::DarkGray)
+        {
+            return color;
+        }
+        match config
+            .theme_name
+            .as_deref()
+            .unwrap_or("catppuccin")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "catppuccin" => Color::Rgb(49, 50, 68),
+            "catppuccin-latte" => Color::Rgb(189, 208, 245),
+            "terminal" => Color::Reset,
+            "tokyo-night" | "tokyonight" => Color::Rgb(45, 54, 80),
+            "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => Color::Rgb(182, 202, 231),
+            "dracula" => Color::Rgb(70, 63, 93),
+            "nord" => Color::Rgb(64, 80, 93),
+            "gruvbox" => Color::Rgb(75, 63, 39),
+            "gruvbox-light" => Color::Rgb(235, 219, 178),
+            "one-dark" => Color::Rgb(51, 70, 89),
+            "one-light" => Color::Rgb(205, 219, 248),
+            "solarized" => Color::Rgb(8, 62, 85),
+            "solarized-light" => Color::Rgb(201, 220, 223),
+            "kanagawa" => Color::Rgb(50, 56, 75),
+            "kanagawa-lotus" => Color::Rgb(220, 213, 172),
+            "rose-pine" => Color::Rgb(59, 52, 75),
+            "rose-pine-dawn" => Color::Rgb(242, 233, 225),
+            "vesper" => Color::Rgb(35, 35, 35),
+            _ => Color::Reset,
+        }
     }
 
     pub(super) fn surface0(config: &crate::config::Config) -> Color {
@@ -1637,6 +1695,22 @@ mod tests {
         };
         assert_eq!(super::ThemePalette::overlay0(&config), Color::Rgb(1, 2, 3));
         assert_eq!(super::ThemePalette::overlay1(&config), Color::Rgb(4, 5, 6));
+    }
+
+    #[test]
+    fn sidebar_surfaces_match_herdr_theme_defaults() {
+        let config = crate::config::Config {
+            theme_name: Some("dracula".into()),
+            ..crate::config::Config::default()
+        };
+        assert_eq!(
+            super::ThemePalette::active_row_bg(&config),
+            Color::Rgb(55, 60, 82)
+        );
+        assert_eq!(
+            super::ThemePalette::selection_bg(&config),
+            Color::Rgb(70, 63, 93)
+        );
     }
 
     #[test]
