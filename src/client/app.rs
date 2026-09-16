@@ -57,7 +57,7 @@ pub fn run(
         terminal_size.1,
         vec!["mouse".into(), "alternate_screen".into()],
     )?;
-    let mut terminal = setup_terminal().map_err(ClientError::Io)?;
+    let mut terminal = setup_terminal(config.mouse_capture).map_err(ClientError::Io)?;
     let startup_error = ensure_active_default_pane(&client, terminal_size)
         .err()
         .map(startup_error_message);
@@ -74,16 +74,29 @@ pub fn run(
     result
 }
 
-fn setup_terminal() -> io::Result<Terminal<CrosstermBackend<io::Stdout>>> {
+fn setup_terminal(mouse_capture: bool) -> io::Result<Terminal<CrosstermBackend<io::Stdout>>> {
     enable_raw_mode()?;
     let mut output = stdout();
-    execute!(
-        output,
-        EnterAlternateScreen,
-        EnableMouseCapture,
-        crossterm::style::Print("\x1b[?1002h\x1b[?1003h")
-    )?;
+    execute!(output, EnterAlternateScreen)?;
+    set_mouse_capture(&mut output, mouse_capture)?;
     Terminal::new(CrosstermBackend::new(output))
+}
+
+fn set_mouse_capture(output: &mut impl io::Write, enabled: bool) -> io::Result<()> {
+    if enabled {
+        execute!(
+            output,
+            EnableMouseCapture,
+            crossterm::style::Print("\x1b[?1002h\x1b[?1003h")
+        )?;
+    } else {
+        execute!(
+            output,
+            DisableMouseCapture,
+            crossterm::style::Print("\x1b[?1003l\x1b[?1002l")
+        )?;
+    }
+    Ok(())
 }
 
 fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
@@ -151,6 +164,7 @@ fn event_loop(
         collapsed_worktree_groups: collapsed_worktree_groups.into_iter().collect(),
         ..MouseState::default()
     };
+    let mut mouse_capture = crate::config::load().mouse_capture;
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
     let mut action_error: Option<(String, Instant)> = None;
@@ -159,6 +173,11 @@ fn event_loop(
     let mut pending_external_notifications = VecDeque::new();
     loop {
         let config = crate::config::load();
+        if config.mouse_capture != mouse_capture {
+            set_mouse_capture(terminal.backend_mut(), config.mouse_capture)
+                .map_err(ClientError::Io)?;
+            mouse_capture = config.mouse_capture;
+        }
         mouse_state.copy_on_select = config.copy_on_select;
         keymap = Keymap::from_config(&config);
         if !config.notifications_enabled {
@@ -457,6 +476,9 @@ fn event_loop(
         let input = event::read().map_err(ClientError::Io)?;
         let key = match input {
             Event::Mouse(mouse) => {
+                if !mouse_capture {
+                    continue;
+                }
                 if let Some(open_settings) = settings.as_mut() {
                     if matches!(
                         open_settings.handle_mouse(

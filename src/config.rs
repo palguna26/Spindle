@@ -34,6 +34,7 @@ struct UiConfig {
     prompt_new_tab_name: bool,
     prompt_new_workspace_name: bool,
     copy_on_select: bool,
+    mouse_capture: bool,
 }
 
 impl Default for UiConfig {
@@ -47,6 +48,7 @@ impl Default for UiConfig {
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
+            mouse_capture: true,
         }
     }
 }
@@ -158,6 +160,7 @@ pub struct Config {
     pub(crate) prompt_new_tab_name: bool,
     pub(crate) prompt_new_workspace_name: bool,
     pub(crate) copy_on_select: bool,
+    pub(crate) mouse_capture: bool,
 }
 
 impl Default for Config {
@@ -179,6 +182,7 @@ impl Default for Config {
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
+            mouse_capture: true,
         }
     }
 }
@@ -242,6 +246,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
         copy_on_select: file.ui.copy_on_select,
+        mouse_capture: file.ui.mouse_capture,
     }
 }
 
@@ -295,6 +300,7 @@ sidebar_start_collapsed = false
 prompt_new_tab_name = true
 prompt_new_workspace_name = false
 copy_on_select = true
+mouse_capture = true
 "#
 }
 
@@ -495,6 +501,16 @@ mod tests {
         ));
         std::fs::write(&path, "[ui]\ncopy_on_select = false\n").unwrap();
         assert!(!load_from(&path).copy_on_select);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn mouse_capture_matches_herdr_default() {
+        assert!(Config::default().mouse_capture);
+        let path =
+            std::env::temp_dir().join(format!("spindle-mouse-capture-{}.toml", std::process::id()));
+        std::fs::write(&path, "[ui]\nmouse_capture = false\n").unwrap();
+        assert!(!load_from(&path).mouse_capture);
         std::fs::remove_file(path).unwrap();
     }
 
