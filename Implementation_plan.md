@@ -60,6 +60,9 @@ descriptions and `global`/`workspace`/`tab`/`pane`/`selection` context tags.
 `spindle plugin action list --json` exposes that metadata while keeping the
 existing tab-separated text form stable.
 
+Plugin pane manifests now also retain their optional description and pass it
+with the entrypoint context when a pane is opened.
+
 ## 0. Establish the parity matrix
 
 - [ ] Compare Herdr's README, quick-start, keyboard guide, CLI guide, and
