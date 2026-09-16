@@ -1507,8 +1507,9 @@ pub fn tab_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -
         .iter()
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
+    let (content, _, _) = tab_layout(main.tabs, workspace.tabs.len());
     let (_, widths) = tab_window_with_scroll(
-        tab_strip_area(main.tabs).width,
+        content.width,
         workspace.tabs.len(),
         active_index,
         usize::MAX,
@@ -1527,6 +1528,16 @@ pub fn render_tab_drop_indicator(
     collapsed: bool,
     insert_index: usize,
 ) {
+    render_tab_drop_indicator_with_scroll(frame, snapshot, collapsed, insert_index, 0);
+}
+
+pub fn render_tab_drop_indicator_with_scroll(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    collapsed: bool,
+    insert_index: usize,
+    tab_scroll: usize,
+) {
     let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
     let area = super::layout::main_areas_for_snapshot(snapshot, frame.area(), collapsed).tabs;
     let Some(workspace) = active_workspace(snapshot) else {
@@ -1540,12 +1551,18 @@ pub fn render_tab_drop_indicator(
         .iter()
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
-    let (first_tab, widths) = tab_window(area.width, workspace.tabs.len(), active_index);
+    let (content, _, _) = tab_layout(area, workspace.tabs.len());
+    let (first_tab, widths) = tab_window_with_scroll(
+        content.width,
+        workspace.tabs.len(),
+        active_index,
+        tab_scroll,
+    );
     let x = widths
         .iter()
         .take(insert_index.saturating_sub(first_tab).min(widths.len()))
-        .fold(area.x, |x, width| x.saturating_add(*width))
-        .min(area.right().saturating_sub(1));
+        .fold(content.x, |x, width| x.saturating_add(*width))
+        .min(content.right().saturating_sub(1));
     if let Some(cell) = frame.buffer_mut().cell_mut((x, area.y)) {
         cell.set_symbol("│");
         cell.set_fg(accent);
@@ -1609,6 +1626,7 @@ fn tab_index_at_with_scroll(
         .map(|index| first_tab + index)
 }
 
+#[cfg(test)]
 fn tab_window(total: u16, count: usize, active_index: usize) -> (usize, Vec<u16>) {
     tab_window_with_scroll(total, count, active_index, 0)
 }

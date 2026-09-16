@@ -408,11 +408,12 @@ fn event_loop(
                     .as_ref()
                     .and_then(|drag| drag.insert_index)
                 {
-                    renderer::render_tab_drop_indicator(
+                    renderer::render_tab_drop_indicator_with_scroll(
                         frame,
                         &snapshot,
                         mouse_state.sidebar_collapsed,
                         insert_index,
+                        mouse_state.tab_scroll,
                     );
                 }
                 if let Some(row) = mouse_state
