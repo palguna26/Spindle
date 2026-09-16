@@ -772,6 +772,22 @@ impl Session {
         };
         let pane_id = format!("pane-{}", self.next_pane_id);
         self.next_pane_id += 1;
+        let mut pane_env = request.env.clone();
+        pane_env.insert("SPINDLE_ENV".into(), "1".into());
+        pane_env.insert("HERDR_ENV".into(), "1".into());
+        pane_env.insert("SPINDLE_PANE_ID".into(), pane_id.clone());
+        pane_env.insert("HERDR_PANE_ID".into(), pane_id.clone());
+        if let Some((workspace_id, tab_id)) = self.active_pane_context_ids() {
+            pane_env.insert("SPINDLE_WORKSPACE_ID".into(), workspace_id.clone());
+            pane_env.insert("HERDR_WORKSPACE_ID".into(), workspace_id);
+            pane_env.insert("SPINDLE_TAB_ID".into(), tab_id.clone());
+            pane_env.insert("HERDR_TAB_ID".into(), tab_id);
+        }
+        if let Ok(executable) = std::env::current_exe() {
+            let executable = executable.to_string_lossy().into_owned();
+            pane_env.insert("SPINDLE_BIN_PATH".into(), executable.clone());
+            pane_env.insert("HERDR_BIN_PATH".into(), executable);
+        }
         self.pane_manager
             .spawn(
                 &pane_id,
@@ -779,7 +795,7 @@ impl Session {
                     command: request.command.clone(),
                     args: request.args.clone(),
                     cwd: request.cwd.clone(),
-                    env: request.env.clone(),
+                    env: pane_env,
                     cols: request.cols,
                     rows: request.rows,
                 },
@@ -3332,6 +3348,23 @@ impl Session {
             .iter_mut()
             .find(|workspace| workspace.workspace_id == workspace_id)
             .ok_or_else(|| "active workspace does not exist".to_string())
+    }
+
+    fn active_pane_context_ids(&self) -> Option<(String, String)> {
+        let space = self
+            .snapshot
+            .spaces
+            .iter()
+            .find(|space| space.space_id == self.snapshot.active_space_id)?;
+        let workspace_id = space.active_workspace_id.as_ref()?;
+        let workspace = space
+            .workspaces
+            .iter()
+            .find(|workspace| &workspace.workspace_id == workspace_id)?;
+        Some((
+            workspace.workspace_id.clone(),
+            workspace.active_tab_id.clone(),
+        ))
     }
 
     fn active_tab_mut(&mut self) -> Result<&mut TabView, String> {
