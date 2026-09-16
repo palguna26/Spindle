@@ -1,7 +1,7 @@
 //! Small manifest evaluator shared by screen-based agent detectors.
 //!
 //! The regions and rule priority follow Herdr's `src/detect/manifest.rs`.
-//! Codex, OpenCode, Gemini, Cline, Copilot, Pi, and Qoder CLI are migrated first; other agents still use their
+//! Codex, OpenCode, Gemini, Cline, Copilot, Pi, Qoder CLI, and Droid are migrated first; other agents still use their
 //! compatibility detectors until their rules are moved here.
 
 use super::{agents, AgentState};
@@ -43,6 +43,8 @@ enum Matcher {
     OpenCodePermission,
     CopilotSelection,
     QoderPermission,
+    DroidPermission,
+    DroidSpinner,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -257,6 +259,33 @@ const QODER_RULES: &[Rule] = &[
     },
 ];
 
+const DROID_RULES: &[Rule] = &[
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::DroidPermission,
+    },
+    Rule {
+        priority: 290,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::DroidPermission,
+    },
+    Rule {
+        priority: 110,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::DroidSpinner,
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::Contains(&["esc to stop"]),
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -283,6 +312,10 @@ pub(crate) fn detect_pi(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_qoder(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, QODER_RULES)
+}
+
+pub(crate) fn detect_droid(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, DROID_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -370,6 +403,30 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                         .iter()
                         .any(|signal| text.contains(signal)))
         }
+        Matcher::DroidPermission => {
+            (text.contains("enter to select")
+                && text.contains("esc to cancel")
+                && ["â†‘â†“ to navigate", "use â†‘â†“ to navigate"]
+                    .iter()
+                    .any(|signal| text.contains(signal))
+                && ["> yes, allow", "> no, cancel"]
+                    .iter()
+                    .any(|signal| text.contains(signal)))
+                || (text.contains("enter select")
+                    && text.contains("esc cancel")
+                    && ["â†‘/â†“ navigate", "â†‘â†“ navigate"]
+                        .iter()
+                        .any(|signal| text.contains(signal)))
+        }
+        Matcher::DroidSpinner => {
+            text.contains("esc to stop")
+                && text.lines().any(|line| {
+                    line.trim_start()
+                        .chars()
+                        .next()
+                        .is_some_and(|ch| ('\u{2800}'..='\u{28ff}').contains(&ch))
+                })
+        }
     }
 }
 
@@ -398,8 +455,8 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_cline, detect_codex, detect_copilot, detect_gemini, detect_opencode, detect_pi,
-        detect_qoder, DetectionInput,
+        detect_cline, detect_codex, detect_copilot, detect_droid, detect_gemini, detect_opencode,
+        detect_pi, detect_qoder, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -453,6 +510,14 @@ mod tests {
 
     fn detect_qoder_state(screen: &str) -> Option<AgentState> {
         detect_qoder(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_droid_state(screen: &str) -> Option<AgentState> {
+        detect_droid(DetectionInput {
             screen,
             osc_title: "",
             _osc_progress: "",
@@ -575,5 +640,21 @@ mod tests {
         );
         assert_eq!(detect_qoder_state("⠋ Thinking"), Some(AgentState::Working));
         assert_eq!(detect_qoder_state("⠋ 123"), None);
+    }
+
+    #[test]
+    fn droid_manifest_matches_herdr_rules() {
+        assert_eq!(
+            detect_droid_state(
+                "Confirm execution\nEnter to select\nEsc to cancel\nâ†‘â†“ to navigate\n> Yes, allow"
+            ),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_droid_state("Choose an option\nEnter select · Esc cancel · â†‘/â†“ navigate"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(detect_droid_state("Esc to stop"), Some(AgentState::Working));
+        assert_eq!(detect_droid_state("Working"), None);
     }
 }
