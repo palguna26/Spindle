@@ -64,6 +64,8 @@ impl ContextMenu {
             | ClickTarget::ToggleAgentSort
             | ClickTarget::SidebarScroll(_)
             | ClickTarget::Space(_)
+            | ClickTarget::TabScrollLeft
+            | ClickTarget::TabScrollRight
             | ClickTarget::SplitBorder(_) => return None,
         };
         Some(Self {

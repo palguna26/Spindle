@@ -2238,6 +2238,14 @@ fn handle_mouse(
                 ensure_active_default_pane(client, terminal_size)?;
             }
         }
+        renderer::ClickTarget::TabScrollLeft => {
+            mouse_state.tab_scroll = mouse_state.tab_scroll.saturating_sub(1);
+        }
+        renderer::ClickTarget::TabScrollRight => {
+            let max_scroll =
+                renderer::tab_scroll_max(snapshot, area, mouse_state.sidebar_collapsed);
+            mouse_state.tab_scroll = mouse_state.tab_scroll.saturating_add(1).min(max_scroll);
+        }
         renderer::ClickTarget::SidebarToggle => {
             mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
             mouse_state.selection = None;

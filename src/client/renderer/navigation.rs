@@ -31,6 +31,8 @@ pub enum ClickTarget {
         pane_id: String,
     },
     Tab(String),
+    TabScrollLeft,
+    TabScrollRight,
     NewTab,
     Pane(String),
     SplitBorder(Vec<bool>),
@@ -195,7 +197,13 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
     }
     if contains(main.tabs, x, y) {
         let workspace = active_workspace(snapshot)?;
-        let tab_area = tab_strip_area(main.tabs);
+        let (tab_area, scroll_left, scroll_right) = tab_layout(main.tabs, workspace.tabs.len());
+        if scroll_left.is_some_and(|rect| contains(rect, x, y)) {
+            return Some(ClickTarget::TabScrollLeft);
+        }
+        if scroll_right.is_some_and(|rect| contains(rect, x, y)) {
+            return Some(ClickTarget::TabScrollRight);
+        }
         if contains(new_tab_area(main.tabs), x, y) {
             return Some(ClickTarget::NewTab);
         }
@@ -1353,7 +1361,7 @@ pub(super) fn render_tabs_with_scroll(
         );
         return;
     }
-    let tab_area = tab_strip_area(area);
+    let (tab_area, scroll_left, scroll_right) = tab_layout(area, workspace.tabs.len());
     let active_index = workspace
         .tabs
         .iter()
@@ -1412,6 +1420,34 @@ pub(super) fn render_tabs_with_scroll(
             cell.set_style(marker_style);
         }
     }
+    if let Some(rect) = scroll_left {
+        frame.render_widget(
+            Paragraph::new(" < ").style(
+                Style::default()
+                    .fg(if first_tab > 0 {
+                        super::ThemePalette::overlay1(&config)
+                    } else {
+                        super::ThemePalette::overlay0(&config)
+                    })
+                    .bg(surface0),
+            ),
+            rect,
+        );
+    }
+    if let Some(rect) = scroll_right {
+        frame.render_widget(
+            Paragraph::new(" > ").style(
+                Style::default()
+                    .fg(if visible_end < workspace.tabs.len() {
+                        super::ThemePalette::overlay1(&config)
+                    } else {
+                        super::ThemePalette::overlay0(&config)
+                    })
+                    .bg(surface0),
+            ),
+            rect,
+        );
+    }
     if area.width >= 4 {
         frame.render_widget(
             Paragraph::new(" + ").alignment(Alignment::Center).style(
@@ -1428,6 +1464,27 @@ fn tab_strip_area(area: Rect) -> Rect {
     Rect {
         width: area.width.saturating_sub(3),
         ..area
+    }
+}
+
+fn tab_layout(area: Rect, count: usize) -> (Rect, Option<Rect>, Option<Rect>) {
+    let strip = tab_strip_area(area);
+    let overflow = count
+        .saturating_mul(usize::from(MIN_TAB_WIDTH))
+        .saturating_add(count.saturating_sub(1))
+        > usize::from(strip.width);
+    if overflow && strip.width >= MIN_TAB_WIDTH.saturating_add(6) {
+        let left = Rect::new(strip.x, strip.y, 3, strip.height);
+        let right = Rect::new(strip.right().saturating_sub(3), strip.y, 3, strip.height);
+        let content = Rect::new(
+            left.right(),
+            strip.y,
+            strip.width.saturating_sub(6),
+            strip.height,
+        );
+        (content, Some(left), Some(right))
+    } else {
+        (strip, None, None)
     }
 }
 
