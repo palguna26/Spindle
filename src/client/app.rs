@@ -70,7 +70,9 @@ pub fn run(
         &client,
         startup_error,
         initial_sidebar_collapsed(&preferences, &config),
-        preferences.agent_priority_sort,
+        preferences
+            .agent_priority_sort
+            .unwrap_or(config.agent_priority_sort),
         preferences.collapsed_worktree_groups,
         &preferences_path,
     );
@@ -125,7 +127,7 @@ fn store_client_preferences(mouse_state: &MouseState) {
         &mouse_state.preferences_path,
         super::preferences::ClientPreferences {
             sidebar_collapsed: Some(mouse_state.sidebar_collapsed),
-            agent_priority_sort: mouse_state.agent_priority_sort,
+            agent_priority_sort: Some(mouse_state.agent_priority_sort),
             sidebar_section_split_percent: Some(
                 (mouse_state.sidebar_section_split.clamp(0.1, 0.9) * 100.0).round() as u8,
             ),

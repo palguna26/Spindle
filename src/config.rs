@@ -51,6 +51,7 @@ struct UiConfig {
     sidebar_max_width: u16,
     mobile_width_threshold: u16,
     sidebar_start_collapsed: bool,
+    agent_panel_sort: AgentPanelSort,
     sidebar_collapsed_mode: SidebarCollapsedMode,
     tab_bar_position: TabBarPosition,
     pane_borders: PaneBorders,
@@ -75,6 +76,15 @@ pub(crate) enum SidebarCollapsedMode {
     #[default]
     Compact,
     Hidden,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum AgentPanelSort {
+    #[default]
+    #[serde(alias = "workspaces")]
+    Spaces,
+    Priority,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
@@ -151,6 +161,7 @@ impl Default for UiConfig {
             sidebar_max_width: 36,
             mobile_width_threshold: 64,
             sidebar_start_collapsed: false,
+            agent_panel_sort: AgentPanelSort::Spaces,
             sidebar_collapsed_mode: SidebarCollapsedMode::Compact,
             tab_bar_position: TabBarPosition::Top,
             pane_borders: PaneBorders::Auto,
@@ -304,6 +315,7 @@ pub struct Config {
     pub(crate) sidebar_max_width: u16,
     pub(crate) mobile_width_threshold: u16,
     pub(crate) sidebar_start_collapsed: bool,
+    pub(crate) agent_priority_sort: bool,
     pub(crate) sidebar_collapsed_mode: SidebarCollapsedMode,
     pub(crate) tab_bar_position: TabBarPosition,
     pub(crate) pane_borders: PaneBorders,
@@ -350,6 +362,7 @@ impl Default for Config {
             sidebar_max_width: 36,
             mobile_width_threshold: 64,
             sidebar_start_collapsed: false,
+            agent_priority_sort: false,
             sidebar_collapsed_mode: SidebarCollapsedMode::Compact,
             tab_bar_position: TabBarPosition::Top,
             pane_borders: PaneBorders::Auto,
@@ -441,6 +454,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         sidebar_max_width: file.ui.sidebar_max_width,
         mobile_width_threshold: file.ui.mobile_width_threshold,
         sidebar_start_collapsed: file.ui.sidebar_start_collapsed,
+        agent_priority_sort: matches!(file.ui.agent_panel_sort, AgentPanelSort::Priority),
         sidebar_collapsed_mode: file.ui.sidebar_collapsed_mode,
         tab_bar_position: file.ui.tab_bar_position,
         pane_borders: file.ui.pane_borders,
@@ -582,6 +596,7 @@ sidebar_min_width = 18
 sidebar_max_width = 36
 mobile_width_threshold = 64
 sidebar_start_collapsed = false
+agent_panel_sort = "spaces"
 sidebar_collapsed_mode = "compact"
 tab_bar_position = "top"
 pane_borders = "auto"
@@ -992,6 +1007,20 @@ mod tests {
         ));
         std::fs::write(&path, "[ui]\ntab_bar_position = \"bottom\"\n").unwrap();
         assert_eq!(load_from(&path).tab_bar_position, TabBarPosition::Bottom);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn agent_panel_sort_matches_herdr_default_and_alias() {
+        assert!(!Config::default().agent_priority_sort);
+        let path = std::env::temp_dir().join(format!(
+            "spindle-agent-panel-sort-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[ui]\nagent_panel_sort = \"priority\"\n").unwrap();
+        assert!(load_from(&path).agent_priority_sort);
+        std::fs::write(&path, "[ui]\nagent_panel_sort = \"workspaces\"\n").unwrap();
+        assert!(!load_from(&path).agent_priority_sort);
         std::fs::remove_file(path).unwrap();
     }
 

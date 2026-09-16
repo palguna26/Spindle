@@ -9,7 +9,7 @@ pub(super) struct ClientPreferences {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) sidebar_collapsed: Option<bool>,
     #[serde(default)]
-    pub(super) agent_priority_sort: bool,
+    pub(super) agent_priority_sort: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) sidebar_section_split_percent: Option<u8>,
     #[serde(default)]
@@ -79,7 +79,7 @@ mod tests {
         std::fs::write(&path, br#"{"sidebar_collapsed":true}"#).unwrap();
         let preferences = load(&path);
         assert_eq!(preferences.sidebar_collapsed, Some(true));
-        assert!(!preferences.agent_priority_sort);
+        assert_eq!(preferences.agent_priority_sort, None);
         std::fs::remove_file(path).unwrap();
     }
 
@@ -91,14 +91,14 @@ mod tests {
             &path,
             ClientPreferences {
                 sidebar_collapsed: Some(true),
-                agent_priority_sort: true,
+                agent_priority_sort: Some(true),
                 sidebar_section_split_percent: Some(50),
                 collapsed_worktree_groups: vec!["repo-a".into(), "repo-b".into()],
             },
         )
         .unwrap();
         assert_eq!(load(&path).sidebar_collapsed, Some(true));
-        assert!(load(&path).agent_priority_sort);
+        assert_eq!(load(&path).agent_priority_sort, Some(true));
         assert_eq!(load(&path).sidebar_section_split_percent, Some(50));
         assert_eq!(load(&path).collapsed_worktree_groups, ["repo-a", "repo-b"]);
         store(&path, ClientPreferences::default()).unwrap();
