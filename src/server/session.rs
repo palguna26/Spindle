@@ -75,6 +75,14 @@ pub struct DisplayStateLabelsReportRequest {
     pub seq: Option<u64>,
 }
 
+#[derive(Debug)]
+pub struct MetadataTokensReportRequest {
+    pub source: String,
+    pub tokens: std::collections::HashMap<String, Option<String>>,
+    pub ttl: Option<std::time::Duration>,
+    pub seq: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaneView {
     pub pane_id: String,
@@ -100,6 +108,8 @@ pub struct PaneView {
     pub display_title: Option<String>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub state_labels: std::collections::BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub tokens: std::collections::HashMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_session: Option<crate::pane::AgentSessionInfo>,
     pub scrollback_bytes: usize,
@@ -806,6 +816,7 @@ impl Session {
             display_agent: None,
             display_title: None,
             state_labels: std::collections::BTreeMap::new(),
+            tokens: std::collections::HashMap::new(),
             agent_session: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
@@ -2988,21 +2999,43 @@ impl Session {
         Ok(serde_json::json!({ "pane_id": pane_id, "updated": changed }))
     }
 
+    pub fn report_metadata_tokens(
+        &mut self,
+        pane_id: &str,
+        report: MetadataTokensReportRequest,
+    ) -> Result<Value, String> {
+        let changed = self
+            .pane_manager
+            .report_metadata_tokens(
+                pane_id,
+                report.source,
+                report.tokens,
+                report.ttl,
+                report.seq,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        self.refresh_snapshot();
+        Ok(serde_json::json!({ "pane_id": pane_id, "updated": changed }))
+    }
+
     pub fn report_metadata(
         &mut self,
         pane_id: &str,
         agent: DisplayAgentReportRequest,
         title: DisplayTitleReportRequest,
         state_labels: DisplayStateLabelsReportRequest,
+        tokens: MetadataTokensReportRequest,
     ) -> Result<Value, String> {
         let agent_result = self.report_display_agent(pane_id, agent)?;
         let title_result = self.report_display_title(pane_id, title)?;
         let labels_result = self.report_display_state_labels(pane_id, state_labels)?;
+        let tokens_result = self.report_metadata_tokens(pane_id, tokens)?;
         Ok(serde_json::json!({
             "pane_id": pane_id,
             "updated": agent_result["updated"] == true
                 || title_result["updated"] == true
                 || labels_result["updated"] == true
+                || tokens_result["updated"] == true
         }))
     }
 
@@ -3387,6 +3420,7 @@ impl Session {
                 pane.display_agent = current.display_agent.clone();
                 pane.display_title = current.display_title.clone();
                 pane.state_labels = current.display_state_labels.clone();
+                pane.tokens = current.metadata_tokens.values();
                 pane.agent_session = current.agent_session.clone();
                 pane.cols = current.terminal.snapshot().cols;
                 pane.rows = current.terminal.snapshot().rows;
@@ -4062,6 +4096,7 @@ mod tests {
             display_title: None,
             state_labels: std::collections::BTreeMap::new(),
             status: PaneStatus::Completed { exit_code: 0 },
+            tokens: std::collections::HashMap::new(),
             agent_session: None,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -4627,6 +4662,7 @@ mod tests {
             display_agent: None,
             display_title: None,
             state_labels: std::collections::BTreeMap::new(),
+            tokens: std::collections::HashMap::new(),
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,
             agent_session: None,
@@ -4726,6 +4762,7 @@ mod tests {
             display_agent: None,
             display_title: None,
             state_labels: std::collections::BTreeMap::new(),
+            tokens: std::collections::HashMap::new(),
             status: PaneStatus::Completed { exit_code: 0 },
             agent_session: None,
             scrollback_bytes: 3,
@@ -4877,6 +4914,7 @@ mod tests {
             display_title: None,
             state_labels: std::collections::BTreeMap::new(),
             status: PaneStatus::Running,
+            tokens: std::collections::HashMap::new(),
             agent_session: None,
             scrollback_bytes: 0,
             scrollback: Vec::new(),
@@ -4918,6 +4956,7 @@ mod tests {
             display_agent: None,
             display_title: None,
             state_labels: std::collections::BTreeMap::new(),
+            tokens: std::collections::HashMap::new(),
             status: PaneStatus::Running,
             scrollback_bytes: 0,
             agent_session: None,
@@ -4959,6 +4998,7 @@ mod tests {
             display_title: None,
             state_labels: std::collections::BTreeMap::new(),
             agent_session: None,
+            tokens: std::collections::HashMap::new(),
             status: PaneStatus::Halted {
                 reason: "process exited".into(),
             },

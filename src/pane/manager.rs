@@ -4,6 +4,7 @@ use super::agent_detection::{
 };
 use super::PaneEvent;
 use crate::detect::{self, AgentKind, AgentProcessScan, AgentState};
+use crate::metadata_tokens::MetadataTokens;
 use crate::model::status::PaneStatus;
 use crate::pty::{PtyConfig, PtySession, PtySessionError};
 use crate::terminal::{TerminalEmulator, TerminalSnapshot};
@@ -36,6 +37,8 @@ pub struct Pane {
     pub display_title: Option<String>,
     display_state_labels_authority: Option<AgentAuthority>,
     pub display_state_labels: BTreeMap<String, String>,
+    pub(crate) metadata_tokens: MetadataTokens,
+    metadata_token_sequences: HashMap<String, u64>,
     pub agent_session: Option<AgentSessionInfo>,
     agent_session_seq: Option<(String, u64)>,
     pub scrollback: VecDeque<u8>,
@@ -111,6 +114,8 @@ impl PaneManager {
                 display_title: None,
                 display_state_labels_authority: None,
                 display_state_labels: BTreeMap::new(),
+                metadata_tokens: MetadataTokens::default(),
+                metadata_token_sequences: HashMap::new(),
                 agent_session: None,
                 agent_session_seq: None,
                 scrollback: VecDeque::with_capacity(self.scrollback_limit),
@@ -181,6 +186,7 @@ impl PaneManager {
             self.last_agent_scan = Instant::now();
         }
         for pane in self.panes.values_mut() {
+            pane.metadata_tokens.expire_at(Instant::now());
             let previous_agent = pane.agent;
             let previous_agent_state = pane.agent_state;
             let mut agent_changed = false;
@@ -463,6 +469,34 @@ impl PaneManager {
         pane.display_state_labels = next;
         pane.display_state_labels_authority = Some(AgentAuthority { source, seq });
         Ok(changed)
+    }
+
+    pub(crate) fn report_metadata_tokens(
+        &mut self,
+        id: &str,
+        source: String,
+        tokens: HashMap<String, Option<String>>,
+        ttl: Option<Duration>,
+        seq: Option<u64>,
+    ) -> Result<bool, PaneManagerError> {
+        let pane = self
+            .panes
+            .get_mut(id)
+            .ok_or_else(|| PaneManagerError::MissingPane(id.into()))?;
+        if seq.is_some_and(|next| {
+            pane.metadata_token_sequences
+                .get(&source)
+                .is_some_and(|last| next <= *last)
+        }) {
+            return Ok(false);
+        }
+        if pane.metadata_tokens.key_count_after_patch(&tokens) > crate::metadata_tokens::MAX_KEYS {
+            return Ok(false);
+        }
+        if let Some(seq) = seq {
+            pane.metadata_token_sequences.insert(source, seq);
+        }
+        Ok(pane.metadata_tokens.patch(tokens, ttl, Instant::now()))
     }
 
     pub(crate) fn report_agent_session(

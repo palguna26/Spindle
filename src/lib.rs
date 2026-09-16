@@ -3,6 +3,7 @@ pub mod client;
 pub mod config;
 pub mod detect;
 pub mod logging;
+mod metadata_tokens;
 pub mod model;
 pub mod pane;
 pub mod persist;

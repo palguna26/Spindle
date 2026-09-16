@@ -49,6 +49,10 @@ struct ReportMetadataRequest {
     #[serde(default)]
     state_labels: std::collections::BTreeMap<String, String>,
     #[serde(default)]
+    tokens: std::collections::HashMap<String, Option<String>>,
+    #[serde(default)]
+    ttl_ms: Option<u64>,
+    #[serde(default)]
     clear_display_agent: bool,
     #[serde(default)]
     clear_title: bool,
@@ -538,6 +542,7 @@ pub(crate) fn response_for_with_interactive(
                 && payload.display_title.is_none()
                 && !payload.clear_title
                 && payload.state_labels.is_empty()
+                && payload.tokens.is_empty()
                 && !payload.clear_state_labels
             {
                 return request_error(
@@ -554,6 +559,19 @@ pub(crate) fn response_for_with_interactive(
                     request.request_id,
                     "invalid_metadata_request",
                     "cannot set and clear the same metadata field".into(),
+                );
+            }
+            if payload
+                .ttl_ms
+                .is_some_and(|ttl| ttl == 0 || ttl > crate::metadata_tokens::MAX_TTL_MS)
+            {
+                return request_error(
+                    request.request_id,
+                    "invalid_metadata_ttl",
+                    format!(
+                        "ttl_ms must be between 1 and {}",
+                        crate::metadata_tokens::MAX_TTL_MS
+                    ),
                 );
             }
             let mut session = session.lock().expect("session lock poisoned");
@@ -574,9 +592,15 @@ pub(crate) fn response_for_with_interactive(
                         seq: payload.seq,
                     },
                     crate::server::session::DisplayStateLabelsReportRequest {
-                        source,
+                        source: source.clone(),
                         state_labels: payload.state_labels,
                         clear: payload.clear_state_labels,
+                        seq: payload.seq,
+                    },
+                    crate::server::session::MetadataTokensReportRequest {
+                        source,
+                        tokens: payload.tokens,
+                        ttl: payload.ttl_ms.map(std::time::Duration::from_millis),
                         seq: payload.seq,
                     },
                 )

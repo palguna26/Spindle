@@ -1459,14 +1459,17 @@ fn pane_report_metadata(project: &Project, id: &str, args: &[String]) -> io::Res
     let mut display_agent = None;
     let mut display_title = None;
     let mut state_labels = serde_json::Map::new();
+    let mut tokens = serde_json::Map::new();
     let mut clear_display_agent = false;
     let mut clear_title = false;
     let mut clear_state_labels = false;
     let mut seq = None;
+    let mut ttl_ms = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
-            "--source" | "--display-agent" | "--title" | "--state-label" | "--seq" => {
+            "--source" | "--display-agent" | "--title" | "--state-label" | "--token" | "--seq"
+            | "--ttl-ms" => {
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| io::Error::other(format!("{} requires a value", args[index])))?;
@@ -1485,6 +1488,23 @@ fn pane_report_metadata(project: &Project, id: &str, args: &[String]) -> io::Res
                             state.to_owned(),
                             serde_json::Value::String(label.to_owned()),
                         );
+                    }
+                    "--token" => {
+                        let (key, value) = value
+                            .split_once('=')
+                            .ok_or_else(|| io::Error::other("--token must be KEY=VALUE"))?;
+                        tokens.insert(key.to_owned(), serde_json::Value::String(value.to_owned()));
+                    }
+                    "--ttl-ms" => {
+                        let ttl = value.parse::<u64>().map_err(|_| {
+                            io::Error::other("--ttl-ms must be an unsigned integer")
+                        })?;
+                        if ttl == 0 || ttl > 86_400_000 {
+                            return Err(io::Error::other(
+                                "--ttl-ms must be between 1 and 86400000",
+                            ));
+                        }
+                        ttl_ms = Some(ttl);
                     }
                     "--seq" => {
                         seq =
@@ -1508,6 +1528,13 @@ fn pane_report_metadata(project: &Project, id: &str, args: &[String]) -> io::Res
                 clear_state_labels = true;
                 index += 1;
             }
+            "--clear-token" => {
+                let key = args
+                    .get(index + 1)
+                    .ok_or_else(|| io::Error::other("--clear-token requires a value"))?;
+                tokens.insert(key.clone(), serde_json::Value::Null);
+                index += 2;
+            }
             option => return Err(io::Error::other(format!("unknown option: {option}"))),
         }
     }
@@ -1517,6 +1544,7 @@ fn pane_report_metadata(project: &Project, id: &str, args: &[String]) -> io::Res
         && display_title.is_none()
         && !clear_title
         && state_labels.is_empty()
+        && tokens.is_empty()
         && !clear_state_labels
     {
         return Err(io::Error::other("provide metadata to set or clear"));
@@ -1533,6 +1561,8 @@ fn pane_report_metadata(project: &Project, id: &str, args: &[String]) -> io::Res
             "clear_title": clear_title,
             "state_labels": state_labels,
             "clear_state_labels": clear_state_labels,
+            "tokens": tokens,
+            "ttl_ms": ttl_ms,
             "seq": seq
         }),
     )
@@ -1880,7 +1910,7 @@ fn print_help() {
     );
     println!("  report-agent <id> --source ID --agent LABEL --state unknown|idle|working|blocked [--seq N] [--agent-session-id ID|--agent-session-path PATH]  report hook state");
     println!("  report-agent-session <id> --source ID --agent LABEL (--agent-session-id ID|--agent-session-path PATH) [--seq N]  report session identity");
-    println!("  report-metadata <id> --source ID [--display-agent LABEL|--clear-display-agent] [--title TEXT|--clear-title] [--state-label STATE=TEXT|--clear-state-labels] [--seq N]  report display metadata");
+    println!("  report-metadata <id> --source ID [--display-agent LABEL|--clear-display-agent] [--title TEXT|--clear-title] [--state-label STATE=TEXT|--clear-state-labels] [--token KEY=VALUE|--clear-token KEY] [--ttl-ms N] [--seq N]  report display metadata");
     println!("  release-agent <id> --source ID --agent LABEL [--seq N]  release hook authority");
     println!("  wait-output <id> (--match TEXT | --regex PATTERN) [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--raw]  wait for output");
     println!("  split <direction> [command args...] | [--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus|--no-focus]  split with a new pane");
