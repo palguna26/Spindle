@@ -6,6 +6,10 @@ intentionally rejected and ignored, matching Herdr's
 
 Reference: `C:\Users\Palguna\.opensrc\repos\github.com\herdrdev\herdr\master`.
 
+Pane wait note: `spindle pane wait-output` now supports Herdr's `--regex`
+matcher alongside literal `--match`, including mutual-exclusion and invalid
+pattern validation.
+
 CLI parity now includes Herdr's `pane current --pane ID` and `--current`
 selector forms, with `SPINDLE_PANE_ID`/`HERDR_PANE_ID` environment fallback.
 The same selectors now work with `spindle pane read`.
