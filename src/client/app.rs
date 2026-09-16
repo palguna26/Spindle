@@ -4,7 +4,8 @@ use super::global_menu::{Action as GlobalMenuAction, GlobalMenu, Outcome as Glob
 use super::input::{Action, Keymap};
 use super::mouse::{
     clear_mouse_capture, pane_mouse_target, should_forward_pane_mouse, visible_web_url_at_point,
-    CachedScrollbackView, MouseState, PaneClick, PaneMouseCapture, SplitDrag, WorkspaceDrag,
+    CachedScrollbackView, MouseState, PaneClick, PaneMouseCapture, SplitDrag, TabDrag,
+    WorkspaceDrag,
 };
 use super::navigator::{Navigator, Outcome as NavigatorOutcome, Target as NavigatorTarget};
 use super::palette::{move_selection, Command};
@@ -1517,6 +1518,24 @@ fn handle_mouse(
             });
             return Ok(());
         }
+        if let Some(renderer::ClickTarget::Tab(tab_id)) =
+            renderer::hit_test_with_sidebar_scroll_and_sort(
+                snapshot,
+                area,
+                mouse,
+                mouse_state.sidebar_collapsed,
+                mouse_state.sidebar_scroll,
+                mouse_state.agent_priority_sort,
+            )
+        {
+            if let Some(workspace) = active_workspace(snapshot) {
+                mouse_state.tab_drag = Some(TabDrag {
+                    workspace_id: workspace.workspace_id.clone(),
+                    tab_id,
+                });
+                return Ok(());
+            }
+        }
         let pane_area =
             renderer::pane_content_area_with_sidebar(area, mouse_state.sidebar_collapsed);
         if let Some(handle) = renderer::split_handles(snapshot, pane_area)
@@ -1620,6 +1639,38 @@ fn handle_mouse(
                 "switch_workspace",
                 json!({ "id": drag.workspace_id }),
                 "switch workspace",
+            )?;
+            ensure_active_default_pane(client, terminal_size)?;
+        }
+        return Ok(());
+    }
+    if matches!(
+        mouse.kind,
+        MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
+    ) && mouse_state.tab_drag.is_some()
+    {
+        let drag = mouse_state.tab_drag.take().expect("tab drag exists");
+        if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
+            if let Some((workspace_id, target_tab_id, insert_index)) =
+                renderer::tab_drop_target(snapshot, area, &drag.tab_id, mouse.column, mouse.row)
+            {
+                if workspace_id == drag.workspace_id && target_tab_id != drag.tab_id {
+                    request_action(
+                        client,
+                        "mouse-move-tab",
+                        "move_tab",
+                        json!({ "id": drag.tab_id, "insert_index": insert_index }),
+                        "move tab",
+                    )?;
+                    return Ok(());
+                }
+            }
+            request_action(
+                client,
+                "mouse-switch-tab",
+                "switch_tab",
+                json!({ "id": drag.tab_id }),
+                "switch tab",
             )?;
             ensure_active_default_pane(client, terminal_size)?;
         }

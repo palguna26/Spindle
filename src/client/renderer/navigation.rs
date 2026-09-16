@@ -219,6 +219,37 @@ pub fn workspace_drop_target(
     ))
 }
 
+/// Returns the tab insertion slot represented by a tab-strip row.
+pub fn tab_drop_target(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    source_tab_id: &str,
+    x: u16,
+    y: u16,
+) -> Option<(String, String, usize)> {
+    let main = super::layout::main_areas_with_sidebar(area, false);
+    if !contains(main.tabs, x, y) {
+        return None;
+    }
+    let workspace = active_workspace(snapshot)?;
+    let target_index = tab_index_at(main.tabs, x, workspace.tabs.len())?;
+    let target = workspace.tabs.get(target_index)?;
+    let source_index = workspace
+        .tabs
+        .iter()
+        .position(|tab| tab.tab_id == source_tab_id)?;
+    let insert_index = if source_index < target_index {
+        target_index.saturating_add(1)
+    } else {
+        target_index
+    };
+    Some((
+        workspace.workspace_id.clone(),
+        target.tab_id.clone(),
+        insert_index,
+    ))
+}
+
 pub fn sidebar_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -> usize {
     sidebar_scroll_max_with_sort(snapshot, area, collapsed, false)
 }
@@ -910,7 +941,8 @@ mod tests {
     use super::{
         agent_state_priority, hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
         hit_test_with_sidebar_scroll_and_sort, render_sidebar, render_sidebar_with_collapsed,
-        render_sidebar_with_scroll, render_tabs, workspace_drop_target, ClickTarget,
+        render_sidebar_with_scroll, render_tabs, tab_drop_target, workspace_drop_target,
+        ClickTarget,
     };
     use crate::model::layout::{Direction as SplitDirection, LayoutNode};
     use crate::server::session::{SessionSnapshot, SpaceView, TabView, WorkspaceView};
@@ -939,6 +971,23 @@ mod tests {
         assert_eq!(
             workspace_drop_target(&snapshot, area, 0, false, "workspace-1", 4, 3),
             Some(("space-1".into(), "workspace-2".into(), 2))
+        );
+    }
+
+    #[test]
+    fn tab_drop_target_uses_herdr_insert_index_order() {
+        let snapshot = sample_snapshot();
+        let area = Rect::new(0, 0, 100, 30);
+        let tabs = main_areas(area).tabs;
+        let second_tab_x = tabs.x + tabs.width / 2 + tabs.width / 4;
+        assert_eq!(
+            tab_drop_target(&snapshot, area, "tab-2", second_tab_x, tabs.y),
+            Some(("workspace-2".into(), "tab-3".into(), 2))
+        );
+        let first_tab_x = tabs.x + tabs.width / 4;
+        assert_eq!(
+            tab_drop_target(&snapshot, area, "tab-3", first_tab_x, tabs.y),
+            Some(("workspace-2".into(), "tab-2".into(), 0))
         );
     }
 
