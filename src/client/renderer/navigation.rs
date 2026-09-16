@@ -154,9 +154,8 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
         if !sidebar_collapsed && y == main.sidebar.y && x > main.sidebar.x {
             return Some(ClickTarget::ToggleAgentSort);
         }
-        if !sidebar_collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
-            let sections =
-                crate::client::sidebar::sections(sidebar_body(main.sidebar), sidebar_section_split);
+        if !sidebar_collapsed {
+            let sections = crate::client::sidebar::sections(main.sidebar, sidebar_section_split);
             let workspace_footer = sections.workspaces.bottom().saturating_sub(1);
             if y == workspace_footer {
                 if x > main.sidebar.x && x < main.sidebar.x.saturating_add(6) {
@@ -291,13 +290,24 @@ fn hit_test_split_sidebar(
         .filter(|row| matches!(row, SidebarRow::Agent { .. }))
         .collect::<Vec<_>>();
     let sidebar_config = crate::config::load().sidebar;
-    let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
+    let sections = crate::client::sidebar::sections(area, split_ratio);
     let workspace_body = crate::client::sidebar::workspace_body(sections);
     let workspace_visual = sidebar_visual_rows(&workspace_rows, false, &sidebar_config);
     if contains(workspace_body, x, y) {
         let max_scroll = workspace_visual
             .len()
             .saturating_sub(usize::from(workspace_body.height));
+        if max_scroll > 0
+            && workspace_body.width > 1
+            && x == workspace_body.right().saturating_sub(1)
+        {
+            return Some(ClickTarget::SidebarScroll(sidebar_scroll_for_track_row(
+                workspace_body,
+                workspace_visual.len(),
+                max_scroll,
+                y,
+            )));
+        }
         let visual_row = usize::from(y.saturating_sub(workspace_body.y))
             .saturating_add(workspace_scroll.min(max_scroll));
         let (Some(row), _) = workspace_visual.get(visual_row)? else {
@@ -547,13 +557,20 @@ pub fn sidebar_scroll_max_with_sort_and_groups_and_split(
 ) -> usize {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    let body = if !collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
-        let sections = crate::client::sidebar::sections(body, split_ratio);
+    let body = if !collapsed {
+        let sections = crate::client::sidebar::sections(sidebar, split_ratio);
         crate::client::sidebar::workspace_body(sections)
     } else {
         body
     };
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
+    let rows = if collapsed {
+        rows
+    } else {
+        rows.into_iter()
+            .filter(|row| matches!(row, SidebarRow::Space { .. } | SidebarRow::Workspace { .. }))
+            .collect()
+    };
     let visual_rows = sidebar_visual_rows(&rows, collapsed, &crate::config::load().sidebar);
     visual_rows.len().saturating_sub(usize::from(body.height))
 }
@@ -580,7 +597,7 @@ pub fn agent_sidebar_scroll_max(
         .copied()
         .filter(|row| matches!(row, SidebarRow::Agent { .. }))
         .collect::<Vec<_>>();
-    let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
+    let sections = crate::client::sidebar::sections(area, split_ratio);
     let height = crate::client::sidebar::agent_body(sections).height;
     sidebar_visual_rows(&agents, false, &crate::config::load().sidebar)
         .len()
@@ -597,7 +614,7 @@ pub fn agent_sidebar_scroll_region(
     if collapsed {
         return false;
     }
-    let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
+    let sections = crate::client::sidebar::sections(area, split_ratio);
     let panel = crate::client::sidebar::agent_body(sections);
     contains(panel, x, y)
 }
@@ -623,7 +640,7 @@ pub fn agent_sidebar_scroll_thumb_grab_offset(
         .copied()
         .filter(|row| matches!(row, SidebarRow::Agent { .. }))
         .collect::<Vec<_>>();
-    let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
+    let sections = crate::client::sidebar::sections(area, split_ratio);
     let body = crate::client::sidebar::agent_body(sections);
     let visual_rows = sidebar_visual_rows(&agents, false, &crate::config::load().sidebar);
     let max_scroll = visual_rows.len().saturating_sub(usize::from(body.height));
@@ -652,7 +669,7 @@ pub fn agent_sidebar_scroll_offset_from_drag_row(
         .copied()
         .filter(|row| matches!(row, SidebarRow::Agent { .. }))
         .collect::<Vec<_>>();
-    let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
+    let sections = crate::client::sidebar::sections(area, split_ratio);
     let body = crate::client::sidebar::agent_body(sections);
     let visual_rows = sidebar_visual_rows(&agents, false, &crate::config::load().sidebar).len();
     let max_scroll = visual_rows.saturating_sub(usize::from(body.height));
@@ -682,7 +699,7 @@ pub fn sidebar_section_divider(
         return false;
     }
     contains(
-        crate::client::sidebar::sections(sidebar_body(area), split_ratio).divider,
+        crate::client::sidebar::sections(area, split_ratio).divider,
         x,
         y,
     )
@@ -766,8 +783,8 @@ pub fn sidebar_scroll_thumb_grab_offset_with_sort_and_groups_and_split(
 ) -> Option<u16> {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    let body = if !collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
-        let sections = crate::client::sidebar::sections(body, split_ratio);
+    let body = if !collapsed {
+        let sections = crate::client::sidebar::sections(sidebar, split_ratio);
         crate::client::sidebar::workspace_body(sections)
     } else {
         body
@@ -788,6 +805,13 @@ pub fn sidebar_scroll_thumb_grab_offset_with_sort_and_groups_and_split(
         return None;
     }
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
+    let rows = if collapsed {
+        rows
+    } else {
+        rows.into_iter()
+            .filter(|row| matches!(row, SidebarRow::Space { .. } | SidebarRow::Workspace { .. }))
+            .collect()
+    };
     let visual_rows = sidebar_visual_rows(&rows, collapsed, &crate::config::load().sidebar);
     let (thumb_top, thumb_height) =
         sidebar_scrollbar_thumb(body, scroll, max_scroll, visual_rows.len())?;
@@ -865,8 +889,8 @@ pub fn sidebar_scroll_offset_from_drag_row_with_sort_and_groups_and_split(
 ) -> usize {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    let body = if !collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
-        let sections = crate::client::sidebar::sections(body, split_ratio);
+    let body = if !collapsed {
+        let sections = crate::client::sidebar::sections(sidebar, split_ratio);
         crate::client::sidebar::workspace_body(sections)
     } else {
         body
@@ -880,6 +904,13 @@ pub fn sidebar_scroll_offset_from_drag_row_with_sort_and_groups_and_split(
         split_ratio,
     );
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
+    let rows = if collapsed {
+        rows
+    } else {
+        rows.into_iter()
+            .filter(|row| matches!(row, SidebarRow::Space { .. } | SidebarRow::Workspace { .. }))
+            .collect()
+    };
     let rows = sidebar_visual_rows(&rows, collapsed, &crate::config::load().sidebar).len();
     let Some((_, thumb_height)) = sidebar_scrollbar_thumb(body, 0, max_scroll, rows) else {
         return 0;
@@ -1425,7 +1456,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
     sidebar_section_split: f32,
     agent_sidebar_scroll: usize,
 ) {
-    if !collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
+    if !collapsed {
         render_split_sidebar(
             frame,
             snapshot,
@@ -1611,7 +1642,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
         area,
     );
     if !collapsed {
-        let sections = crate::client::sidebar::sections(sidebar_body(area), sidebar_section_split);
+        let sections = crate::client::sidebar::sections(area, sidebar_section_split);
         if !sections.divider.is_empty() {
             let divider_style = Style::default().fg(surface_dim).bg(sidebar_bg);
             frame.render_widget(
@@ -1696,7 +1727,7 @@ fn render_split_sidebar(
         .copied()
         .filter(|row| matches!(row, SidebarRow::Agent { .. }))
         .collect::<Vec<_>>();
-    let sections = crate::client::sidebar::sections(sidebar_body(area), split_ratio);
+    let sections = crate::client::sidebar::sections(area, split_ratio);
     let workspace_body = crate::client::sidebar::workspace_body(sections);
     let agent_header = crate::client::sidebar::agent_header(sections);
     let agent_body = crate::client::sidebar::agent_body(sections);
@@ -2875,18 +2906,21 @@ mod tests {
 
         let area = Rect::new(0, 0, 80, 8);
         let main = super::super::layout::main_areas_with_sidebar(area, false);
-        let body = super::sidebar_body(main.sidebar);
+        let body = crate::client::sidebar::workspace_body(crate::client::sidebar::sections(
+            main.sidebar,
+            0.5,
+        ));
         let max_scroll = super::sidebar_scroll_max(&snapshot, area, false);
-        assert_eq!(max_scroll, 15);
+        assert_eq!(max_scroll, 19);
         assert_eq!(
             hit_test_with_sidebar_scroll(
                 &snapshot,
                 area,
-                click(body.right() - 1, body.y + 2),
+                click(body.right() - 1, body.y + 1),
                 false,
                 0,
             ),
-            Some(ClickTarget::SidebarScroll(4))
+            Some(ClickTarget::SidebarScroll(19))
         );
         let track_x = body.right() - 1;
         assert_eq!(
@@ -2922,7 +2956,7 @@ mod tests {
         let backend = TestBackend::new(80, 8);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| render_sidebar_with_scroll(frame, &snapshot, main.sidebar, false, 15))
+            .draw(|frame| render_sidebar_with_scroll(frame, &snapshot, main.sidebar, false, 19))
             .unwrap();
         let content: String = terminal
             .backend()
@@ -2981,6 +3015,7 @@ mod tests {
         assert!(content.contains("Docs"));
         assert!(content.contains("Activity"));
         assert!(content.contains("+"));
+        assert!(content.contains("Agents"));
     }
 
     #[test]
