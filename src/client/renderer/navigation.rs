@@ -572,7 +572,9 @@ fn sidebar_visual_rows(
             } else {
                 match row {
                     SidebarRow::Workspace { .. } => config.spaces.rows.len().max(1),
-                    SidebarRow::Agent { .. } => config.agents.rows.len().max(1),
+                    SidebarRow::Agent { pane, .. } => {
+                        config.agents.rows_for_agent(pane.agent).len().max(1)
+                    }
                     _ => 1,
                 }
             };
@@ -1104,7 +1106,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                 }
                 let row = sidebar_config
                     .agents
-                    .rows
+                    .rows_for_agent(pane.agent)
                     .get(*line_index)
                     .cloned()
                     .unwrap_or_default();
