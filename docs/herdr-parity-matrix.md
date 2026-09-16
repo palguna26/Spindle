@@ -17,6 +17,12 @@ connected pane is present. This follows Herdr's explicit modal/footer area
 handling in `src/ui/widgets.rs` and is covered by the connected-pane renderer
 test; interactive Windows Terminal verification remains pending.
 
+Desktop bottom-tab parity now places prefix, copy, and resize mode bars in the
+one-line bottom tab row, matching Herdr's `src/client/shell/composition.rs`
+and `src/client/shell/config.rs` layout. Spindle's pane/tab constraints and
+mode-bar geometry are covered by renderer tests; interactive Windows Terminal
+verification remains pending.
+
 First-run onboarding now follows Herdr's missing-setting default: Spindle
 shows a welcome overlay until Enter or Esc continues, then persists the
 top-level `onboarding = false` setting while preserving unrelated config.

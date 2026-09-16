@@ -728,3 +728,8 @@ For every code commit:
 Before calling the overall objective complete, verify each matrix row and
 acceptance item against the running app on Windows, including mouse use,
 Codex/OpenCode status, multi-client attach, detach/reattach, and recovery.
+
+Transient mode-bar note: prefix, copy, and resize feedback now uses Herdr's
+bottom tab row when the desktop tab bar is configured at the bottom. The
+bottom-tab pane and tab constraints keep that tab row to one line at the
+terminal bottom.
