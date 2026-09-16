@@ -17,6 +17,7 @@ use super::startup::{startup_error_action, StartupErrorAction};
 use super::workspace_navigation::{
     indexed_workspace_selection, move_workspace_selection, workspace_picker_key, WorkspacePickerKey,
 };
+use super::worktree_actions;
 use super::{ClientError, ControlClient};
 use crate::model::layout::Direction as SplitDirection;
 use crate::server::session::SessionSnapshot;
@@ -2480,7 +2481,7 @@ fn submit_rename(
             if workspace.name != name {
                 return Ok(());
             }
-            run_worktree_command(["remove", "--workspace", &workspace.workspace_id, "--force"])?;
+            worktree_actions::run(["remove", "--workspace", &workspace.workspace_id, "--force"])?;
         } else {
             let mut args = vec![
                 if target == RenameTarget::CreateWorktree {
@@ -2498,7 +2499,7 @@ fn submit_rename(
             } else {
                 args.extend(["--branch", name.as_str(), "--focus"]);
             }
-            run_worktree_command(args)?;
+            worktree_actions::run(args)?;
         }
         ensure_active_default_pane(client, terminal_size)?;
         return Ok(());
@@ -2624,23 +2625,6 @@ fn submit_rename(
         )?;
     }
     Ok(())
-}
-
-fn run_worktree_command<'a>(args: impl IntoIterator<Item = &'a str>) -> Result<(), ClientError> {
-    let executable = std::env::current_exe().map_err(ClientError::Io)?;
-    let output = std::process::Command::new(executable)
-        .args(std::iter::once("worktree").chain(args))
-        .output()
-        .map_err(ClientError::Io)?;
-    if output.status.success() {
-        return Ok(());
-    }
-    let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-    Err(ClientError::Server(if message.is_empty() {
-        "worktree command failed".into()
-    } else {
-        message
-    }))
 }
 
 fn active_workspace(snapshot: &SessionSnapshot) -> Option<&crate::server::session::WorkspaceView> {

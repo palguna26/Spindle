@@ -19,5 +19,6 @@ mod selection;
 mod settings;
 mod startup;
 mod workspace_navigation;
+mod worktree_actions;
 
 pub use control::{ClientError, ControlClient, EventStream};
