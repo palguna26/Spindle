@@ -45,6 +45,13 @@ enum Matcher {
     QoderPermission,
     DroidPermission,
     DroidSpinner,
+    DevinTrust,
+    DevinPermission,
+    DevinRunningTools,
+    DevinGuide,
+    DevinReading,
+    DevinWelcomeIdle,
+    DevinLiveIdle,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -286,6 +293,51 @@ const DROID_RULES: &[Rule] = &[
     },
 ];
 
+const DEVIN_RULES: &[Rule] = &[
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::DevinTrust,
+    },
+    Rule {
+        priority: 290,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::DevinPermission,
+    },
+    Rule {
+        priority: 200,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::DevinRunningTools,
+    },
+    Rule {
+        priority: 190,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(6),
+        matcher: Matcher::DevinGuide,
+    },
+    Rule {
+        priority: 180,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::DevinReading,
+    },
+    Rule {
+        priority: 120,
+        state: AgentState::Idle,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::DevinWelcomeIdle,
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Idle,
+        region: Region::BottomNonEmpty(6),
+        matcher: Matcher::DevinLiveIdle,
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -316,6 +368,10 @@ pub(crate) fn detect_qoder(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_droid(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, DROID_RULES)
+}
+
+pub(crate) fn detect_devin(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, DEVIN_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -427,7 +483,51 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                         .is_some_and(|ch| ('\u{2800}'..='\u{28ff}').contains(&ch))
                 })
         }
+        Matcher::DevinTrust => {
+            text.contains("do you trust the authors of this directory?")
+                && text.contains("with untrusted content.")
+                && text.contains("yes, trust ")
+        }
+        Matcher::DevinPermission => {
+            text.contains("approve once")
+                && text.contains("select")
+                && text.contains("confirm")
+                && text.contains("esc cancel")
+        }
+        Matcher::DevinRunningTools => {
+            text.contains("running tools")
+                && text.contains("esc to interrupt")
+                && !devin_blocked(text)
+        }
+        Matcher::DevinGuide => text.contains("guide devin while it works") && !devin_blocked(text),
+        Matcher::DevinReading => {
+            text.contains("reading shell ") && text.contains("timeout:") && !devin_blocked(text)
+        }
+        Matcher::DevinWelcomeIdle => {
+            text.contains("ask devin to build")
+                && text.contains("features, fix bugs")
+                && text.contains("your code")
+                && text.lines().any(|line| {
+                    line.trim_start().starts_with('❭') && line.contains("ask devin to build")
+                })
+                && !devin_blocked_or_working(text)
+        }
+        Matcher::DevinLiveIdle => {
+            text.contains("context:")
+                && text.lines().any(|line| line.trim_start().starts_with('❭'))
+                && !devin_blocked_or_working(text)
+        }
     }
+}
+
+fn devin_blocked(text: &str) -> bool {
+    text.contains("approve once") && text.contains("esc cancel")
+}
+
+fn devin_blocked_or_working(text: &str) -> bool {
+    devin_blocked(text)
+        || (text.contains("running tools") && text.contains("esc to interrupt"))
+        || text.contains("guide devin while it works")
 }
 
 fn recent_nonempty_lines(screen: &str, limit: usize) -> String {
@@ -455,8 +555,8 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_cline, detect_codex, detect_copilot, detect_droid, detect_gemini, detect_opencode,
-        detect_pi, detect_qoder, DetectionInput,
+        detect_cline, detect_codex, detect_copilot, detect_devin, detect_droid, detect_gemini,
+        detect_opencode, detect_pi, detect_qoder, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -518,6 +618,14 @@ mod tests {
 
     fn detect_droid_state(screen: &str) -> Option<AgentState> {
         detect_droid(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_devin_state(screen: &str) -> Option<AgentState> {
+        detect_devin(DetectionInput {
             screen,
             osc_title: "",
             _osc_progress: "",
@@ -656,5 +764,32 @@ mod tests {
         );
         assert_eq!(detect_droid_state("Esc to stop"), Some(AgentState::Working));
         assert_eq!(detect_droid_state("Working"), None);
+    }
+
+    #[test]
+    fn devin_manifest_matches_herdr_rules() {
+        assert_eq!(
+            detect_devin_state(
+                "Do you trust the authors of this directory?\nWith untrusted content.\n❭ Yes, trust this workspace"
+            ),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_devin_state("Approve once · Select · Confirm · Esc cancel"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_devin_state("Running tools · Esc to interrupt"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_devin_state("Guide Devin while it works"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_devin_state("❭ Ask Devin to build\nFeatures, fix bugs\nYour code"),
+            Some(AgentState::Idle)
+        );
+        assert_eq!(detect_devin_state("ordinary terminal output"), None);
     }
 }
