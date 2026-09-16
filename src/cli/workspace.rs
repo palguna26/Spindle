@@ -39,7 +39,7 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|move <workspace_id> <insert-index>|rename <workspace_id> <label>|close <workspace_id> [--group]>",
+                "usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|report-metadata <workspace_id>|move <workspace_id> <insert-index>|rename <workspace_id> <label>|close <workspace_id> [--group]>",
             ))
         }
     }
@@ -430,7 +430,7 @@ fn format_workspace_list(snapshot: &SessionSnapshot) -> String {
 }
 
 fn print_help() {
-    println!("Usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|move <workspace_id> <insert-index>|rename <workspace_id> <label>|close <workspace_id> [--group]>");
+    println!("Usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|report-metadata <workspace_id>|move <workspace_id> <insert-index>|rename <workspace_id> <label>|close <workspace_id> [--group]>");
     println!("  list    list workspaces in the current project session");
     println!(
         "  create  create a workspace and start its PowerShell pane (--cwd, --label, --env, --focus|--no-focus)"

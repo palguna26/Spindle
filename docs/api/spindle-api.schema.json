@@ -8,7 +8,19 @@
   "operations": {
     "ping": {}, "attach": {}, "detach": {}, "get_snapshot": {}, "stream_events": {}, "subscribe_events": {},
     "create_space": {}, "switch_space": {}, "rename_space": {}, "delete_space": {},
-    "create_workspace": {}, "switch_workspace": {}, "focus_workspace": {}, "rename_workspace": {}, "move_workspace": {}, "delete_workspace": {},
+    "create_workspace": {}, "switch_workspace": {}, "focus_workspace": {}, "rename_workspace": {}, "move_workspace": {}, "delete_workspace": {}, "report_workspace_metadata": {
+      "payload": {
+        "type": "object",
+        "required": ["workspace_id", "source", "tokens"],
+        "properties": {
+          "workspace_id": { "type": "string" },
+          "source": { "type": "string" },
+          "tokens": { "type": "object", "additionalProperties": { "type": ["string", "null"] } },
+          "ttl_ms": { "type": ["integer", "null"], "minimum": 1, "maximum": 86400000 },
+          "seq": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    },
     "create_tab": {}, "switch_tab": {}, "rename_tab": {}, "move_tab": {}, "close_tab": {},
     "create_pane": {
       "payload": {
