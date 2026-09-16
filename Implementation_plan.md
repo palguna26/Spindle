@@ -85,6 +85,9 @@ and tab drag targets.
 
 Hidden tabs now show Herdr-style edge ellipses in narrow strips.
 
+Mouse-wheel scrolling over a narrow tab strip now updates its visible-tab
+window, and the scroll offset is shared by tab hit-testing and rendering.
+
 An unset theme now defaults to Herdr's Catppuccin palette in both rendering
 and the settings overlay.
 
