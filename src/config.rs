@@ -32,6 +32,7 @@ struct UiConfig {
     sidebar_max_width: u16,
     mobile_width_threshold: u16,
     sidebar_start_collapsed: bool,
+    sidebar_collapsed_mode: SidebarCollapsedMode,
     prompt_new_tab_name: bool,
     prompt_new_workspace_name: bool,
     copy_on_select: bool,
@@ -42,6 +43,14 @@ struct UiConfig {
     hide_tab_bar_when_single_tab: bool,
     right_click_passthrough_modifier: String,
     redraw_on_focus_gained: bool,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum SidebarCollapsedMode {
+    #[default]
+    Compact,
+    Hidden,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
@@ -61,6 +70,7 @@ impl Default for UiConfig {
             sidebar_max_width: 36,
             mobile_width_threshold: 64,
             sidebar_start_collapsed: false,
+            sidebar_collapsed_mode: SidebarCollapsedMode::Compact,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -179,6 +189,7 @@ pub struct Config {
     pub(crate) sidebar_max_width: u16,
     pub(crate) mobile_width_threshold: u16,
     pub(crate) sidebar_start_collapsed: bool,
+    pub(crate) sidebar_collapsed_mode: SidebarCollapsedMode,
     pub(crate) prompt_new_tab_name: bool,
     pub(crate) prompt_new_workspace_name: bool,
     pub(crate) copy_on_select: bool,
@@ -207,6 +218,7 @@ impl Default for Config {
             sidebar_max_width: 36,
             mobile_width_threshold: 64,
             sidebar_start_collapsed: false,
+            sidebar_collapsed_mode: SidebarCollapsedMode::Compact,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -277,6 +289,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         sidebar_max_width: file.ui.sidebar_max_width,
         mobile_width_threshold: file.ui.mobile_width_threshold,
         sidebar_start_collapsed: file.ui.sidebar_start_collapsed,
+        sidebar_collapsed_mode: file.ui.sidebar_collapsed_mode,
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
         copy_on_select: file.ui.copy_on_select,
@@ -362,6 +375,7 @@ sidebar_min_width = 18
 sidebar_max_width = 36
 mobile_width_threshold = 64
 sidebar_start_collapsed = false
+sidebar_collapsed_mode = "compact"
 prompt_new_tab_name = true
 prompt_new_workspace_name = false
 copy_on_select = true
@@ -451,7 +465,10 @@ fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> S
 
 #[cfg(test)]
 mod tests {
-    use super::{load_from, upsert_section_key, Config, HostCursorMode, NotificationDelivery};
+    use super::{
+        load_from, upsert_section_key, Config, HostCursorMode, NotificationDelivery,
+        SidebarCollapsedMode,
+    };
     use crossterm::event::KeyModifiers;
 
     #[test]
@@ -650,10 +667,8 @@ mod tests {
     #[test]
     fn redraw_on_focus_gained_matches_herdr_default_and_value() {
         assert!(Config::default().redraw_on_focus_gained);
-        let path = std::env::temp_dir().join(format!(
-            "spindle-redraw-focus-{}.toml",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("spindle-redraw-focus-{}.toml", std::process::id()));
         std::fs::write(&path, "[ui]\nredraw_on_focus_gained = false\n").unwrap();
         assert!(!load_from(&path).redraw_on_focus_gained);
         std::fs::remove_file(path).unwrap();
@@ -665,6 +680,24 @@ mod tests {
             std::env::temp_dir().join(format!("spindle-notifications-{}.toml", std::process::id()));
         std::fs::write(&path, "[notifications]\nenabled = false\n").unwrap();
         assert!(!load_from(&path).notifications_enabled);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn sidebar_collapsed_mode_matches_herdr_default_and_hidden_value() {
+        assert_eq!(
+            Config::default().sidebar_collapsed_mode,
+            SidebarCollapsedMode::Compact
+        );
+        let path = std::env::temp_dir().join(format!(
+            "spindle-sidebar-collapsed-mode-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[ui]\nsidebar_collapsed_mode = \"hidden\"\n").unwrap();
+        assert_eq!(
+            load_from(&path).sidebar_collapsed_mode,
+            SidebarCollapsedMode::Hidden
+        );
         std::fs::remove_file(path).unwrap();
     }
 

@@ -80,7 +80,10 @@ fn main_areas_with_sidebar_and_tab_count(
     }
     let (sidebar_min_width, sidebar_max_width) = crate::config::sidebar_bounds(&config);
     let sidebar_width = if sidebar_collapsed {
-        4.min(area.width.saturating_sub(1))
+        match config.sidebar_collapsed_mode {
+            crate::config::SidebarCollapsedMode::Compact => 4.min(area.width.saturating_sub(1)),
+            crate::config::SidebarCollapsedMode::Hidden => 0,
+        }
     } else {
         area.width.min(
             config
