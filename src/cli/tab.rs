@@ -199,7 +199,7 @@ fn tab_create(project: &Project, args: &[String]) -> io::Result<()> {
         serde_json::json!({
             "command": command,
             "args": args,
-            "cwd": cwd.or(repository_path).or_else(|| std::env::current_dir().ok().map(|path| path.to_string_lossy().into_owned())),
+            "cwd": cwd.or_else(|| Some(super::new_terminal_cwd(repository_path))),
             "env": env,
             "cols": 80,
             "rows": 24,

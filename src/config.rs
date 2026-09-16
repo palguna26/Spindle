@@ -48,6 +48,31 @@ struct FileConfig {
 struct TerminalConfig {
     default_shell: Option<String>,
     shell_mode: ShellMode,
+    new_cwd: NewCwd,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) enum NewCwd {
+    #[default]
+    Follow,
+    Home,
+    Current,
+    Path(String),
+}
+
+impl<'de> Deserialize<'de> for NewCwd {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(match value.trim() {
+            "" | "follow" => Self::Follow,
+            "home" => Self::Home,
+            "current" => Self::Current,
+            _ => Self::Path(value),
+        })
+    }
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, Default, PartialEq, Eq)]
@@ -362,6 +387,7 @@ pub struct Config {
     pub(crate) redraw_on_focus_gained: bool,
     pub(crate) default_shell: Option<String>,
     pub(crate) shell_mode: ShellMode,
+    pub(crate) new_cwd: NewCwd,
 }
 
 impl Default for Config {
@@ -416,6 +442,7 @@ impl Default for Config {
             redraw_on_focus_gained: true,
             default_shell: None,
             shell_mode: ShellMode::Auto,
+            new_cwd: NewCwd::Follow,
         }
     }
 }
@@ -520,6 +547,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
             .default_shell
             .filter(|shell| !shell.trim().is_empty()),
         shell_mode: file.terminal.shell_mode,
+        new_cwd: file.terminal.new_cwd,
     }
 }
 
@@ -646,6 +674,7 @@ sound = true
 [terminal]
 # default_shell = "powershell.exe"
 # shell_mode = "auto" # auto, login, or non_login
+# new_cwd = "follow" # follow, home, current, or a fixed path
 
 [ui]
 sidebar_width = 26
@@ -759,7 +788,7 @@ fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> S
 #[cfg(test)]
 mod tests {
     use super::{
-        load_from, upsert_section_key, upsert_top_level_bool, Config, HostCursorMode,
+        load_from, upsert_section_key, upsert_top_level_bool, Config, HostCursorMode, NewCwd,
         NotificationDelivery, PaneBorders, ShellMode, SidebarCollapsedMode, TabBarPosition,
     };
     use crossterm::event::KeyModifiers;
@@ -798,6 +827,17 @@ mod tests {
         ));
         std::fs::write(&path, "[terminal]\nshell_mode = \"login\"\n").unwrap();
         assert_eq!(load_from(&path).shell_mode, ShellMode::Login);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_herdr_style_terminal_new_cwd_modes() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-terminal-cwd-config-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[terminal]\nnew_cwd = \"~/Projects\"\n").unwrap();
+        assert_eq!(load_from(&path).new_cwd, NewCwd::Path("~/Projects".into()));
         std::fs::remove_file(path).unwrap();
     }
 

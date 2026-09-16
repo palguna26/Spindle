@@ -3873,9 +3873,7 @@ fn pane_size(terminal_size: (u16, u16)) -> (u16, u16) {
 }
 
 fn pane_request(terminal_size: (u16, u16)) -> serde_json::Value {
-    let cwd = std::env::current_dir()
-        .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| ".".into());
+    let cwd = crate::cli::new_terminal_cwd(None);
     let (cols, rows) = pane_size(terminal_size);
     let (command, args) = crate::cli::default_shell();
     json!({
@@ -3892,11 +3890,15 @@ fn pane_request_for_snapshot(
     terminal_size: (u16, u16),
 ) -> serde_json::Value {
     let mut request = pane_request(terminal_size);
-    if let Some(repository_path) =
-        active_workspace(snapshot).and_then(|workspace| workspace.repository_path.as_deref())
-    {
-        request["cwd"] = json!(repository_path);
-    }
+    let follow_cwd = snapshot
+        .focused_pane_id
+        .as_deref()
+        .and_then(|pane_id| snapshot.panes.iter().find(|pane| pane.pane_id == pane_id))
+        .map(|pane| pane.cwd.clone())
+        .or_else(|| {
+            active_workspace(snapshot).and_then(|workspace| workspace.repository_path.clone())
+        });
+    request["cwd"] = json!(crate::cli::new_terminal_cwd(follow_cwd));
     request
 }
 

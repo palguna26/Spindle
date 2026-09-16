@@ -177,11 +177,7 @@ fn workspace_create(project: &Project, args: &[String]) -> io::Result<()> {
             value => return Err(io::Error::other(format!("unexpected argument: {value}"))),
         }
     }
-    let cwd = cwd.or_else(|| {
-        std::env::current_dir()
-            .ok()
-            .map(|path| path.to_string_lossy().into_owned())
-    });
+    let cwd = cwd.or_else(|| Some(super::new_terminal_cwd(None)));
     let before = get_snapshot(project)?;
     let previous_workspace_id = before
         .spaces

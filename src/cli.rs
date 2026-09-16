@@ -51,6 +51,42 @@ pub(crate) fn default_shell() -> (String, Vec<String>) {
     (command, args)
 }
 
+pub(crate) fn new_terminal_cwd(follow_cwd: Option<String>) -> String {
+    match crate::config::load().new_cwd {
+        crate::config::NewCwd::Follow => follow_cwd
+            .or_else(|| {
+                env::current_dir()
+                    .ok()
+                    .map(|path| path.to_string_lossy().into_owned())
+            })
+            .unwrap_or_else(|| ".".into()),
+        crate::config::NewCwd::Home => env::var_os("USERPROFILE")
+            .or_else(|| env::var_os("HOME"))
+            .map(PathBuf::from)
+            .map(|path| path.to_string_lossy().into_owned())
+            .or_else(|| {
+                env::current_dir()
+                    .ok()
+                    .map(|path| path.to_string_lossy().into_owned())
+            })
+            .unwrap_or_else(|| ".".into()),
+        crate::config::NewCwd::Current => env::current_dir()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| ".".into()),
+        crate::config::NewCwd::Path(path) => {
+            if let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\")) {
+                env::var_os("USERPROFILE")
+                    .or_else(|| env::var_os("HOME"))
+                    .map(PathBuf::from)
+                    .map(|home| home.join(rest).to_string_lossy().into_owned())
+                    .unwrap_or(path)
+            } else {
+                path
+            }
+        }
+    }
+}
+
 mod agent;
 mod api;
 mod completion;
