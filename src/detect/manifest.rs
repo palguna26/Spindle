@@ -1,7 +1,7 @@
 //! Small manifest evaluator shared by screen-based agent detectors.
 //!
 //! The regions and rule priority follow Herdr's `src/detect/manifest.rs`.
-//! Codex is the first migrated manifest; other agents still use their
+//! Codex and OpenCode are migrated first; other agents still use their
 //! compatibility detectors until their rules are moved here.
 
 use super::{agents, AgentState};
@@ -28,6 +28,7 @@ enum Region {
     TopNonEmpty(usize),
     BottomNonEmpty(usize),
     AfterLastPrompt,
+    WholeRecent,
     WholeRecentWithoutCurrentPrompt,
 }
 
@@ -39,6 +40,7 @@ enum Matcher {
     Regex(&'static str),
     LineRegex(&'static str),
     TrustDirectory,
+    OpenCodePermission,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -120,9 +122,48 @@ const CODEX_RULES: &[Rule] = &[
     },
 ];
 
+const OPENCODE_RULES: &[Rule] = &[
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::OpenCodePermission,
+    },
+    Rule {
+        priority: 110,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::Any(&[
+            &["esc to interrupt"],
+            &["ctrl+c to interrupt"],
+            &["press esc to interrupt"],
+        ]),
+    },
+    Rule {
+        priority: 105,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::LineRegex(r"(?i).*opencode.*esc (again to )?interrupt"),
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::Regex(r"(■|⬝){4,}"),
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, CODEX_RULES)
+}
+
+pub(crate) fn detect_opencode(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, OPENCODE_RULES)
+}
+
+fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
     let mut matched = None;
-    for rule in CODEX_RULES {
+    for rule in rules {
         let region = region(input, rule.region);
         if matcher_matches(rule.matcher, &region)
             && matches!(rule.region, Region::BottomNonEmpty(3))
@@ -145,6 +186,7 @@ fn region(input: DetectionInput<'_>, region: Region) -> String {
         Region::TopNonEmpty(limit) => top_nonempty_lines(input.screen, limit),
         Region::BottomNonEmpty(limit) => recent_nonempty_lines(input.screen, limit),
         Region::AfterLastPrompt => agents::codex_after_last_prompt_marker(input.screen),
+        Region::WholeRecent => recent_nonempty_lines(input.screen, 20),
         Region::WholeRecentWithoutCurrentPrompt => {
             if agents::codex_has_current_prompt_marker(input.screen) {
                 String::new()
@@ -173,6 +215,14 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                 .is_some_and(|line| line.starts_with("> you are in "))
                 && text.contains("do you trust the contents of this directory?")
         }
+        Matcher::OpenCodePermission => {
+            text.contains("△ permission required")
+                || (text.contains("esc dismiss")
+                    && (text.contains("enter confirm")
+                        || text.contains("enter submit")
+                        || text.contains("enter toggle"))
+                    && (text.contains("↑↓ select") || text.contains("⇆ tab")))
+        }
     }
 }
 
@@ -200,13 +250,21 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_codex, DetectionInput};
+    use super::{detect_codex, detect_opencode, DetectionInput};
     use crate::detect::AgentState;
 
     fn detect(screen: &str, title: &str) -> Option<AgentState> {
         detect_codex(DetectionInput {
             screen,
             osc_title: title,
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_opencode_state(screen: &str) -> Option<AgentState> {
+        detect_opencode(DetectionInput {
+            screen,
+            osc_title: "",
             _osc_progress: "",
         })
     }
@@ -230,5 +288,31 @@ mod tests {
             ),
             Some(AgentState::Blocked)
         );
+    }
+
+    #[test]
+    fn opencode_manifest_requires_permission_controls() {
+        assert_eq!(
+            detect_opencode_state("△ Permission required"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_opencode_state("Esc dismiss · Enter confirm · ↑↓ select"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(detect_opencode_state("Esc dismiss · Enter confirm"), None);
+    }
+
+    #[test]
+    fn opencode_manifest_matches_interrupt_and_progress_rules() {
+        assert_eq!(
+            detect_opencode_state("Press esc to interrupt"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_opencode_state("build ■■■■"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_opencode_state("build ■■■"), None);
     }
 }
