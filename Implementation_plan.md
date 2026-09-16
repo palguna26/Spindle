@@ -435,6 +435,8 @@ approved design changes it.
   `[ui] mouse_capture` now controls Spindle's mouse UI capture and terminal
   tracking, matching Herdr's default-enabled behavior and allowing host
   terminal mouse handling when disabled.
+  `[ui] host_cursor = "auto"|"native"|"drawn"` now follows Herdr's host
+  cursor policy; `auto` keeps the Windows-first drawn default.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
