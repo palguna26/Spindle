@@ -13,6 +13,9 @@ use super::navigator::{Navigator, Outcome as NavigatorOutcome, Target as Navigat
 use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
 use super::renderer;
+use super::scrollbar::{
+    max_offset_for_pane, offset_from_drag_row, offset_from_row, thumb_grab_offset,
+};
 use super::selection::TextSelection;
 use super::settings::{Outcome as SettingsOutcome, Settings};
 use super::startup::{startup_error_action, StartupErrorAction};
@@ -1616,10 +1619,16 @@ fn handle_mouse(
                     .iter()
                     .find(|pane| pane.pane_id == drag.pane_id)
                 {
-                    let max_offset = scrollbar_max_offset(pane, drag.track.height);
+                    let max_offset = max_offset_for_pane(pane, drag.track.height);
                     mouse_state.scroll_offsets.insert(
                         drag.pane_id.clone(),
-                        scrollbar_offset_from_row(max_offset, drag.track, mouse.row),
+                        offset_from_drag_row(
+                            max_offset,
+                            drag.track.height,
+                            drag.track,
+                            mouse.row,
+                            drag.grab_offset,
+                        ),
                     );
                 }
                 return Ok(());
@@ -1640,12 +1649,24 @@ fn handle_mouse(
                 .iter()
                 .find(|pane| pane.pane_id == pane_id)
                 .expect("scrollbar target pane exists");
-            let max_offset = scrollbar_max_offset(pane, track.height);
+            let max_offset = max_offset_for_pane(pane, track.height);
+            let current_offset = mouse_state
+                .scroll_offsets
+                .get(&pane_id)
+                .copied()
+                .unwrap_or(0);
             mouse_state.scroll_offsets.insert(
                 pane_id.clone(),
-                scrollbar_offset_from_row(max_offset, track, mouse.row),
+                offset_from_row(max_offset, track.height, track, mouse.row),
             );
-            mouse_state.pane_scrollbar_drag = Some(PaneScrollbarDrag { pane_id, track });
+            mouse_state.pane_scrollbar_drag =
+                thumb_grab_offset(max_offset, track.height, track, mouse.row, current_offset).map(
+                    |grab_offset| PaneScrollbarDrag {
+                        pane_id,
+                        track,
+                        grab_offset,
+                    },
+                );
             return Ok(());
         }
     }
@@ -2362,30 +2383,9 @@ fn pane_scrollbar_at(
             .iter()
             .find(|view| view.pane_id == pane.pane_id)?;
         (track.contains((mouse.column, mouse.row).into())
-            && scrollbar_max_offset(view, track.height) > 0)
+            && max_offset_for_pane(view, track.height) > 0)
             .then_some((pane.pane_id, track))
     })
-}
-
-fn scrollbar_max_offset(pane: &crate::server::session::PaneView, viewport_height: u16) -> usize {
-    let total_rows = pane.screen.lines().count().max(1).saturating_add(
-        pane.scrollback
-            .iter()
-            .filter(|byte| **byte == b'\n')
-            .count(),
-    );
-    total_rows.saturating_sub(usize::from(viewport_height))
-}
-
-fn scrollbar_offset_from_row(max_offset: usize, track: Rect, row: u16) -> usize {
-    if max_offset == 0 || track.height <= 1 {
-        return 0;
-    }
-    let position = usize::from(
-        row.clamp(track.y, track.bottom() - 1)
-            .saturating_sub(track.y),
-    );
-    max_offset.saturating_sub(position * max_offset / usize::from(track.height - 1))
 }
 
 fn forward_mouse_to_pane(
@@ -4141,11 +4141,11 @@ mod tests {
         current_snapshot, ensure_active_default_pane, indexed_workspace_selection, input_pane_id,
         key_code_bytes, move_workspace_selection, page_key_bytes, pane_mouse_target, pane_size,
         reconnect_requires_reattach, record_action_error, rename_target, renderer,
-        require_server_success, scrollbar_offset_from_row, should_forward_pane_mouse,
-        should_forward_pane_mouse_with_modifier, snapshot_has_focused_pane, startup_error_action,
-        uses_mobile_navigation, visible_web_url_at_point, workspace_has_linked_children,
-        workspace_id_by_name, workspace_picker_key, CachedScrollbackView, ControlClient, PaneClick,
-        PaneMouseCapture, SplitDirection, SplitDrag, StartupErrorAction, WorkspacePickerKey,
+        require_server_success, should_forward_pane_mouse, should_forward_pane_mouse_with_modifier,
+        snapshot_has_focused_pane, startup_error_action, uses_mobile_navigation,
+        visible_web_url_at_point, workspace_has_linked_children, workspace_id_by_name,
+        workspace_picker_key, CachedScrollbackView, ControlClient, PaneClick, PaneMouseCapture,
+        SplitDirection, SplitDrag, StartupErrorAction, WorkspacePickerKey,
     };
     use crate::client::input::{Action, Keymap};
     use crate::config::Config;
@@ -4993,8 +4993,17 @@ mod tests {
     #[test]
     fn pane_scrollbar_click_mapping_matches_history_direction() {
         let track = Rect::new(0, 10, 1, 11);
-        assert_eq!(scrollbar_offset_from_row(100, track, track.y), 100);
-        assert_eq!(scrollbar_offset_from_row(100, track, track.bottom() - 1), 0);
-        assert_eq!(scrollbar_offset_from_row(100, track, track.y + 5), 50);
+        assert_eq!(
+            crate::client::scrollbar::offset_from_row(100, 10, track, track.y),
+            100
+        );
+        assert_eq!(
+            crate::client::scrollbar::offset_from_row(100, 10, track, track.bottom() - 1),
+            0
+        );
+        assert_eq!(
+            crate::client::scrollbar::offset_from_row(100, 10, track, track.y + 5),
+            50
+        );
     }
 }

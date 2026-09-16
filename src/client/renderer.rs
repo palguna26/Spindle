@@ -7,6 +7,8 @@ use super::context_menu::ContextMenu;
 use super::copy_mode::{CopyMode, SelectionKind};
 use super::global_menu::GlobalMenu;
 use super::input::{Action, Keymap};
+use super::scrollbar;
+use super::scrollbar::max_offset_for_pane;
 use super::selection::TextSelection;
 use super::settings::Settings;
 use crate::model::status::PaneStatus;
@@ -346,35 +348,18 @@ fn render_pane_scrollbar(
         return;
     }
     let track = Rect::new(inner.right(), inner.y, 1, inner.height);
-    let screen_rows = pane.screen.lines().count().max(1);
-    let total_rows = screen_rows.saturating_add(
-        pane.scrollback
-            .iter()
-            .filter(|byte| **byte == b'\n')
-            .count(),
-    );
-    if total_rows <= usize::from(inner.height) {
+    let max_offset = max_offset_for_pane(pane, inner.height);
+    if max_offset == 0 {
         return;
     }
-    let thumb_height = (usize::from(inner.height) * usize::from(inner.height) / total_rows)
-        .max(1)
-        .min(usize::from(inner.height)) as u16;
-    let max_offset = total_rows.saturating_sub(usize::from(inner.height));
-    let scrolled_from_top = max_offset.saturating_sub(offset.min(max_offset));
-    let available = usize::from(track.height.saturating_sub(thumb_height));
-    let thumb_top = track
-        .y
-        .saturating_add(((scrolled_from_top * available) / max_offset.max(1)) as u16);
-    for row in track.y..track.bottom() {
-        if let Some(cell) = frame.buffer_mut().cell_mut((track.x, row)) {
-            cell.set_symbol(if row >= thumb_top { "█" } else { "│" });
-            cell.set_fg(if focused {
-                Color::Cyan
-            } else {
-                Color::DarkGray
-            });
-        }
-    }
+    scrollbar::render(
+        frame.buffer_mut(),
+        max_offset,
+        inner.height,
+        track,
+        focused,
+        offset,
+    );
 }
 
 #[cfg(test)]

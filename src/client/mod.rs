@@ -15,6 +15,7 @@ mod plugins;
 mod preferences;
 pub mod prompt;
 pub mod renderer;
+mod scrollbar;
 mod selection;
 mod settings;
 mod startup;

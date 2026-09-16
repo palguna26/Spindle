@@ -37,6 +37,7 @@ pub(super) struct TabDrag {
 pub(super) struct PaneScrollbarDrag {
     pub(super) pane_id: String,
     pub(super) track: Rect,
+    pub(super) grab_offset: u16,
 }
 
 #[derive(Default)]
