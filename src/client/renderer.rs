@@ -18,17 +18,18 @@ pub(crate) use layout::{
     pane_inner_size_with_options, pane_rectangles, pane_sizes, sidebar_area, split_handles,
     PaneRect, PaneSize,
 };
-use navigation::render_tabs;
+use navigation::render_tabs_with_scroll;
 pub use navigation::{
     hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
     hit_test_with_sidebar_scroll_and_sort, hit_test_with_sidebar_scroll_and_sort_and_groups,
-    render_tab_drop_indicator, render_workspace_drop_indicator, sidebar_scroll_max,
-    sidebar_scroll_max_with_sort, sidebar_scroll_max_with_sort_and_groups,
-    sidebar_scroll_offset_from_drag_row, sidebar_scroll_offset_from_drag_row_with_sort,
+    hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll, render_tab_drop_indicator,
+    render_workspace_drop_indicator, sidebar_scroll_max, sidebar_scroll_max_with_sort,
+    sidebar_scroll_max_with_sort_and_groups, sidebar_scroll_offset_from_drag_row,
+    sidebar_scroll_offset_from_drag_row_with_sort,
     sidebar_scroll_offset_from_drag_row_with_sort_and_groups, sidebar_scroll_region,
     sidebar_scroll_thumb_grab_offset, sidebar_scroll_thumb_grab_offset_with_sort,
-    sidebar_scroll_thumb_grab_offset_with_sort_and_groups, tab_drop_target, workspace_drop_target,
-    workspace_drop_target_with_groups, ClickTarget,
+    sidebar_scroll_thumb_grab_offset_with_sort_and_groups, tab_drop_target, tab_scroll_max,
+    tab_scroll_region, workspace_drop_target, workspace_drop_target_with_groups, ClickTarget,
 };
 pub use navigator::{hit_test_navigator, render_navigator, Hit as NavigatorHit};
 use ratatui::layout::Rect;
@@ -555,6 +556,35 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
     collapsed_groups: &HashSet<String>,
     scroll_offsets: &HashMap<String, usize>,
 ) {
+    render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_groups_with_tab_scroll(
+        frame,
+        snapshot,
+        connected,
+        sidebar_collapsed,
+        sidebar_scroll,
+        show_host_cursor,
+        agent_priority_sort,
+        navigation_workspace,
+        collapsed_groups,
+        scroll_offsets,
+        0,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_groups_with_tab_scroll(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    connected: bool,
+    sidebar_collapsed: bool,
+    sidebar_scroll: usize,
+    show_host_cursor: bool,
+    agent_priority_sort: bool,
+    navigation_workspace: Option<(&str, &str)>,
+    collapsed_groups: &HashSet<String>,
+    scroll_offsets: &HashMap<String, usize>,
+    tab_scroll: usize,
+) {
     let theme = ThemePalette::from_config(&crate::config::load());
     let main = layout::main_areas_for_snapshot(snapshot, frame.area(), sidebar_collapsed);
     mobile::render_header(frame, main.mobile_header, snapshot);
@@ -568,7 +598,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
         navigation_workspace,
         collapsed_groups,
     );
-    render_tabs(frame, snapshot, main.tabs);
+    render_tabs_with_scroll(frame, snapshot, main.tabs, tab_scroll);
     let panes = pane_rectangles(snapshot, main.panes);
     let config = crate::config::load();
     if panes.is_empty() {

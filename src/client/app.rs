@@ -387,7 +387,7 @@ fn event_loop(
         if !skip_draw {
             terminal
                 .draw(|frame| {
-                renderer::render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_groups(
+                renderer::render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_groups_with_tab_scroll(
                     frame,
                     &snapshot,
                     connected,
@@ -401,6 +401,7 @@ fn event_loop(
                         .map(|(space, workspace)| (space.as_str(), workspace.as_str())),
                     &mouse_state.collapsed_worktree_groups,
                     &mouse_state.scroll_offsets,
+                    mouse_state.tab_scroll,
                 );
                 if let Some(insert_index) = mouse_state
                     .tab_drag
@@ -1727,6 +1728,17 @@ fn handle_mouse(
             };
             return Ok(());
         }
+        if renderer::tab_scroll_region(area, mouse_state.sidebar_collapsed, mouse.column, mouse.row)
+        {
+            let max_scroll =
+                renderer::tab_scroll_max(snapshot, area, mouse_state.sidebar_collapsed);
+            mouse_state.tab_scroll = if mouse.kind == MouseEventKind::ScrollUp {
+                mouse_state.tab_scroll.saturating_sub(1)
+            } else {
+                mouse_state.tab_scroll.saturating_add(1).min(max_scroll)
+            };
+            return Ok(());
+        }
         if forward_mouse_to_pane(
             client,
             snapshot,
@@ -1770,7 +1782,7 @@ fn handle_mouse(
         )? {
             return Ok(());
         } else {
-            let target = renderer::hit_test_with_sidebar_scroll_and_sort_and_groups(
+            let target = renderer::hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
                 snapshot,
                 area,
                 mouse,
@@ -1778,6 +1790,7 @@ fn handle_mouse(
                 mouse_state.sidebar_scroll,
                 mouse_state.agent_priority_sort,
                 &mouse_state.collapsed_worktree_groups,
+                mouse_state.tab_scroll,
             );
             let agent_pane = if let Some(renderer::ClickTarget::Agent {
                 space_id,
@@ -1923,7 +1936,7 @@ fn handle_mouse(
             return Ok(());
         }
         if let Some(renderer::ClickTarget::Tab(tab_id)) =
-            renderer::hit_test_with_sidebar_scroll_and_sort_and_groups(
+            renderer::hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
                 snapshot,
                 area,
                 mouse,
@@ -1931,6 +1944,7 @@ fn handle_mouse(
                 mouse_state.sidebar_scroll,
                 mouse_state.agent_priority_sort,
                 &mouse_state.collapsed_worktree_groups,
+                mouse_state.tab_scroll,
             )
         {
             if let Some(workspace) = active_workspace(snapshot) {
@@ -2188,7 +2202,7 @@ fn handle_mouse(
     if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
         return Ok(());
     }
-    let Some(target) = renderer::hit_test_with_sidebar_scroll_and_sort_and_groups(
+    let Some(target) = renderer::hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
         snapshot,
         area,
         mouse,
@@ -2196,6 +2210,7 @@ fn handle_mouse(
         mouse_state.sidebar_scroll,
         mouse_state.agent_priority_sort,
         &mouse_state.collapsed_worktree_groups,
+        mouse_state.tab_scroll,
     ) else {
         return Ok(());
     };

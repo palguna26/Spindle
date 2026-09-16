@@ -94,6 +94,29 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups(
     agent_priority_sort: bool,
     collapsed_groups: &HashSet<String>,
 ) -> Option<ClickTarget> {
+    hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
+        snapshot,
+        area,
+        mouse,
+        sidebar_collapsed,
+        sidebar_scroll,
+        agent_priority_sort,
+        collapsed_groups,
+        0,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    mouse: MouseEvent,
+    sidebar_collapsed: bool,
+    sidebar_scroll: usize,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+    tab_scroll: usize,
+) -> Option<ClickTarget> {
     if !matches!(
         mouse.kind,
         MouseEventKind::Down(MouseButton::Left | MouseButton::Right)
@@ -181,7 +204,8 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups(
             .iter()
             .position(|tab| tab.tab_id == workspace.active_tab_id)
             .unwrap_or(0);
-        let index = tab_index_at(tab_area, x, workspace.tabs.len(), active_index)?;
+        let index =
+            tab_index_at_with_scroll(tab_area, x, workspace.tabs.len(), active_index, tab_scroll)?;
         return workspace
             .tabs
             .get(index)
@@ -1305,7 +1329,17 @@ fn render_sidebar_scrollbar(
     }
 }
 
+#[cfg(test)]
 pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, area: Rect) {
+    render_tabs_with_scroll(frame, snapshot, area, 0);
+}
+
+pub(super) fn render_tabs_with_scroll(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    tab_scroll: usize,
+) {
     let Some(workspace) = active_workspace(snapshot) else {
         return;
     };
@@ -1325,7 +1359,12 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
         .iter()
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
-    let (first_tab, widths) = tab_window(tab_area.width, workspace.tabs.len(), active_index);
+    let (first_tab, widths) = tab_window_with_scroll(
+        tab_area.width,
+        workspace.tabs.len(),
+        active_index,
+        tab_scroll,
+    );
     let visible_end = first_tab.saturating_add(widths.len());
     let mut x = tab_area.x;
     for (tab, width) in workspace.tabs.iter().skip(first_tab).zip(widths) {
@@ -1401,6 +1440,30 @@ fn new_tab_area(area: Rect) -> Rect {
     )
 }
 
+pub fn tab_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -> usize {
+    let main = super::layout::main_areas_for_snapshot(snapshot, area, collapsed);
+    let Some(workspace) = active_workspace(snapshot) else {
+        return 0;
+    };
+    let active_index = workspace
+        .tabs
+        .iter()
+        .position(|tab| tab.tab_id == workspace.active_tab_id)
+        .unwrap_or(0);
+    let (_, widths) = tab_window_with_scroll(
+        tab_strip_area(main.tabs).width,
+        workspace.tabs.len(),
+        active_index,
+        usize::MAX,
+    );
+    workspace.tabs.len().saturating_sub(widths.len())
+}
+
+pub fn tab_scroll_region(area: Rect, collapsed: bool, x: u16, y: u16) -> bool {
+    let main = super::layout::main_areas_with_sidebar(area, collapsed);
+    contains(tab_strip_area(main.tabs), x, y)
+}
+
 pub fn render_tab_drop_indicator(
     frame: &mut Frame<'_>,
     snapshot: &SessionSnapshot,
@@ -1463,10 +1526,20 @@ fn equal_widths(total: u16, count: usize) -> Vec<u16> {
 }
 
 fn tab_index_at(area: Rect, x: u16, count: usize, active_index: usize) -> Option<usize> {
+    tab_index_at_with_scroll(area, x, count, active_index, 0)
+}
+
+fn tab_index_at_with_scroll(
+    area: Rect,
+    x: u16,
+    count: usize,
+    active_index: usize,
+    tab_scroll: usize,
+) -> Option<usize> {
     if count == 0 || area.width == 0 {
         return None;
     }
-    let (first_tab, widths) = tab_window(area.width, count, active_index);
+    let (first_tab, widths) = tab_window_with_scroll(area.width, count, active_index, tab_scroll);
     let offset = x.checked_sub(area.x)?;
     let mut edge = 0u16;
     widths
@@ -1480,6 +1553,15 @@ fn tab_index_at(area: Rect, x: u16, count: usize, active_index: usize) -> Option
 }
 
 fn tab_window(total: u16, count: usize, active_index: usize) -> (usize, Vec<u16>) {
+    tab_window_with_scroll(total, count, active_index, 0)
+}
+
+fn tab_window_with_scroll(
+    total: u16,
+    count: usize,
+    active_index: usize,
+    tab_scroll: usize,
+) -> (usize, Vec<u16>) {
     if count == 0 || total == 0 {
         return (0, Vec::new());
     }
@@ -1490,10 +1572,14 @@ fn tab_window(total: u16, count: usize, active_index: usize) -> (usize, Vec<u16>
         return (0, equal_widths(total, count));
     }
     let visible = usize::from((total / MIN_TAB_WIDTH).max(1)).min(count);
-    let first = active_index
-        .min(count - 1)
-        .saturating_sub(visible / 2)
-        .min(count - visible);
+    let first = if tab_scroll == 0 {
+        active_index
+            .min(count - 1)
+            .saturating_sub(visible / 2)
+            .min(count - visible)
+    } else {
+        tab_scroll.min(count - visible)
+    };
     (first, equal_widths(total, visible))
 }
 

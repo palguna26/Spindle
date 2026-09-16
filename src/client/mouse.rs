@@ -47,6 +47,7 @@ pub(super) struct MouseState {
     pub(super) copy_on_select: bool,
     pub(super) mouse_scroll_lines: usize,
     pub(super) sidebar_scroll: usize,
+    pub(super) tab_scroll: usize,
     pub(super) sidebar_scroll_drag: Option<u16>,
     pub(super) preferences_path: std::path::PathBuf,
     pub(super) split_drag: Option<SplitDrag>,
