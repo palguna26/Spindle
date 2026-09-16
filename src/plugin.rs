@@ -101,6 +101,33 @@ pub(crate) struct LaunchLog {
     pub(crate) pid: u32,
 }
 
+const EVENT_HOOK_NAMES: &[&str] = &[
+    "workspace.created",
+    "workspace.updated",
+    "workspace.closed",
+    "workspace.renamed",
+    "workspace.moved",
+    "workspace.reordered",
+    "workspace.focused",
+    "worktree.created",
+    "worktree.opened",
+    "worktree.removed",
+    "tab.created",
+    "tab.closed",
+    "tab.renamed",
+    "tab.moved",
+    "tab.focused",
+    "pane.created",
+    "pane.closed",
+    "pane.updated",
+    "pane.focused",
+    "pane.moved",
+    "pane.exited",
+    "pane.agent_detected",
+    "pane.agent_status_changed",
+    "layout.updated",
+];
+
 fn default_enabled() -> bool {
     true
 }
@@ -227,6 +254,16 @@ pub(crate) fn load(path: &Path) -> io::Result<Manifest> {
             "plugin manifest id cannot be empty",
         ));
     }
+    if let Some(event) = manifest
+        .events
+        .iter()
+        .find(|event| !EVENT_HOOK_NAMES.contains(&event.on.as_str()))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unsupported plugin event hook: {}", event.on),
+        ));
+    }
     Ok(manifest)
 }
 
@@ -277,6 +314,24 @@ mod tests {
         assert_eq!(manifest.events[11].on, "layout.updated");
         assert_eq!(manifest.events[12].on, "pane.agent_detected");
         assert_eq!(manifest.events[13].on, "pane.agent_status_changed");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn manifest_rejects_unknown_event_hooks_like_herdr() {
+        let root = std::env::temp_dir().join(format!(
+            "spindle-plugin-invalid-event-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("herdr-plugin.toml"),
+            "id = \"example.invalid\"\n[[events]]\non = \"pane.unknown\"\ncommand = [\"tool\"]\n",
+        )
+        .unwrap();
+        let error = super::load(&root).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("pane.unknown"));
         let _ = std::fs::remove_dir_all(root);
     }
 }
