@@ -36,6 +36,12 @@ struct WorkspaceDeleteRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct WorkspaceMoveRequest {
+    id: String,
+    insert_index: usize,
+}
+
+#[derive(Debug, Deserialize)]
 struct InputRequest {
     pane_id: String,
     bytes: Vec<u8>,
@@ -621,6 +627,18 @@ pub(crate) fn response_for_with_interactive(
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
                 session.rename_workspace(&payload.id, payload.name)
+            })
+        }
+        "move_workspace" => {
+            let payload: WorkspaceMoveRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.move_workspace_anywhere(&payload.id, payload.insert_index)
             })
         }
         "delete_workspace" => {

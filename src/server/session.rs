@@ -968,6 +968,65 @@ impl Session {
         Ok(serde_json::json!({ "workspace_id": workspace_id }))
     }
 
+    pub fn move_workspace_anywhere(
+        &mut self,
+        workspace_id: &str,
+        insert_index: usize,
+    ) -> Result<Value, String> {
+        let Some((space_index, workspace_index)) = self
+            .snapshot
+            .spaces
+            .iter()
+            .enumerate()
+            .find_map(|(space_index, space)| {
+                space
+                    .workspaces
+                    .iter()
+                    .position(|workspace| workspace.workspace_id == workspace_id)
+                    .map(|workspace_index| (space_index, workspace_index))
+            })
+        else {
+            return Err(format!("workspace '{workspace_id}' does not exist"));
+        };
+
+        let workspaces = &mut self.snapshot.spaces[space_index].workspaces;
+        if insert_index > workspaces.len() {
+            return Err(format!(
+                "insert index {insert_index} is out of bounds for {} workspaces",
+                workspaces.len()
+            ));
+        }
+        let target_index = if workspace_index < insert_index {
+            insert_index.saturating_sub(1)
+        } else {
+            insert_index
+        }
+        .min(workspaces.len().saturating_sub(1));
+        if workspace_index == target_index {
+            return Ok(serde_json::json!({
+                "workspace_id": workspace_id,
+                "insert_index": insert_index,
+                "moved": false,
+            }));
+        }
+
+        let moved = workspaces.remove(workspace_index);
+        workspaces.insert(target_index, moved);
+        self.record_event(
+            "workspace_moved",
+            serde_json::json!({
+                "workspace_id": workspace_id,
+                "space_id": self.snapshot.spaces[space_index].space_id,
+                "insert_index": insert_index,
+            }),
+        );
+        Ok(serde_json::json!({
+            "workspace_id": workspace_id,
+            "insert_index": insert_index,
+            "moved": true,
+        }))
+    }
+
     pub fn delete_workspace(&mut self, workspace_id: &str) -> Result<Value, String> {
         let active_space_id = self.snapshot.active_space_id.clone();
         self.close_workspace(&active_space_id, workspace_id)?;
@@ -4665,6 +4724,41 @@ mod tests {
             event.event == "tab_moved"
                 && event.payload["tab_id"] == first
                 && event.payload["workspace_id"] == workspace_id
+        }));
+    }
+
+    #[test]
+    fn moving_a_workspace_reorders_it_without_changing_focus() {
+        let mut session = Session::default();
+        let first = session.snapshot.spaces[0].workspaces[0]
+            .workspace_id
+            .clone();
+        let second = session.create_workspace("Second".into()).unwrap()["workspace_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let third = session.create_workspace("Third".into()).unwrap()["workspace_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        session.focus_workspace(&second).unwrap();
+
+        let result = session.move_workspace_anywhere(&first, 3).unwrap();
+        let space = &session.snapshot.spaces[0];
+        let ids: Vec<_> = space
+            .workspaces
+            .iter()
+            .map(|workspace| workspace.workspace_id.as_str())
+            .collect();
+        let active = space.active_workspace_id.clone();
+        let space_id = space.space_id.clone();
+        assert_eq!(ids, vec![second.as_str(), third.as_str(), first.as_str()]);
+        assert_eq!(active.as_deref(), Some(second.as_str()));
+        assert_eq!(result["moved"], true);
+        assert!(session.events_since(0).iter().any(|event| {
+            event.event == "workspace_moved"
+                && event.payload["workspace_id"] == first
+                && event.payload["space_id"] == space_id
         }));
     }
 }
