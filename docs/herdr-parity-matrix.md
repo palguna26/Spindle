@@ -22,6 +22,8 @@ Plugin popup borders now display the pane label/title with a command fallback,
 matching Herdr's declared popup title behavior.
 Popup border hit testing now keeps the popup modal instead of allowing clicks
 to fall through to the background layout.
+Custom popup commands accept numeric cell sizes and percentage dimensions,
+matching Herdr's `[[keys.command]]` configuration behavior.
 
 Numeric manifest popup dimensions are honored for plugin panes; CLI dimensions
 override manifest defaults. Width and height also accept Herdr's percentage

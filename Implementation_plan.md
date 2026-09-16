@@ -44,6 +44,8 @@ Plugin popup borders now use the pane's declared title or label, matching
 Herdr's popup surface instead of showing a generic title.
 The full popup outer rectangle is now modal for mouse routing; unsupported
 border clicks cannot fall through to the tiled background.
+Configured popup commands now accept Herdr's numeric and percentage width /
+height forms and retain those specs through live popup resizing.
 
 Latest sidebar milestone: nested Herdr-style sidebar row tokens now render in
 the live Spindle sidebar. Workspace and agent rows resolve state, names,
