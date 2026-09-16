@@ -3,6 +3,8 @@ use crate::server::session::SessionSnapshot;
 use std::io;
 use std::time::{Duration, Instant};
 
+const AGENT_PROMPT_EFFECT_TIMEOUT: Duration = Duration::from_secs(5);
+
 pub(super) fn run_agent_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
         [command] if command == "list" => agent_list(project),
@@ -230,7 +232,7 @@ fn agent_wait(project: &Project, args: &[String]) -> io::Result<()> {
                 ) {
                     return Err(io::Error::other(format!("invalid agent state: {state}")));
                 }
-                states.push(state.as_str());
+                states.push(state.clone());
                 index += 2;
             }
             "--timeout" => {
@@ -248,9 +250,12 @@ fn agent_wait(project: &Project, args: &[String]) -> io::Result<()> {
     }
     let default_states = ["idle", "done", "blocked"];
     let wanted = if states.is_empty() {
-        &default_states[..]
+        default_states
+            .iter()
+            .map(|state| (*state).to_owned())
+            .collect::<Vec<_>>()
     } else {
-        &states[..]
+        states
     };
     let deadline = Instant::now() + timeout;
     loop {
@@ -258,7 +263,7 @@ fn agent_wait(project: &Project, args: &[String]) -> io::Result<()> {
         let (_, row) = resolve_agent(&agent_rows(&snapshot), pane_id)?;
         if row["state"]
             .as_str()
-            .is_some_and(|state| wanted.contains(&state))
+            .is_some_and(|state| wanted.iter().any(|wanted| wanted == state))
         {
             println!(
                 "{}",
@@ -332,7 +337,7 @@ fn agent_prompt(project: &Project, args: &[String]) -> io::Result<()> {
     if let Some(wait_args) = wait_args {
         let mut wait = vec![pane_id.to_owned()];
         wait.extend(wait_args);
-        agent_wait(project, &wait)?;
+        agent_wait_after_prompt(project, &wait)?;
     }
     Ok(())
 }
@@ -392,6 +397,97 @@ fn parse_prompt_options(args: &[String]) -> io::Result<(Vec<String>, Option<Vec<
         ));
     }
     Ok((text, wait.then_some(wait_args)))
+}
+
+fn agent_wait_after_prompt(project: &Project, args: &[String]) -> io::Result<()> {
+    let Some(pane_id) = args.first() else {
+        return Err(io::Error::other("usage: spindle agent wait <pane-id>"));
+    };
+    let (wanted, requested_timeout) = wait_options(args)?;
+    // Herdr always gives a prompt five seconds to produce a first activity
+    // signal, even when the caller asks for a shorter overall wait.
+    let timeout = prompt_wait_timeout(requested_timeout);
+    let deadline = Instant::now() + timeout;
+    let activity_deadline = Instant::now() + AGENT_PROMPT_EFFECT_TIMEOUT;
+    let mut activity_seen = false;
+
+    loop {
+        let snapshot = get_snapshot(project)?;
+        let (_, row) = resolve_agent(&agent_rows(&snapshot), pane_id)?;
+        let state = row["state"].as_str().unwrap_or("unknown");
+        activity_seen |= matches!(state, "working" | "blocked");
+        if activity_seen && wanted.iter().any(|wanted| wanted == state) {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&row).map_err(io::Error::other)?
+            );
+            return Ok(());
+        }
+        let now = Instant::now();
+        if !activity_seen && now >= activity_deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!(
+                    "agent prompt produced no observed working or blocked state within {} ms; current state is {state}",
+                    AGENT_PROMPT_EFFECT_TIMEOUT.as_millis()
+                ),
+            ));
+        }
+        if now >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("timed out waiting for agent in pane '{pane_id}'"),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn prompt_wait_timeout(requested: Duration) -> Duration {
+    requested.max(AGENT_PROMPT_EFFECT_TIMEOUT)
+}
+
+fn wait_options(args: &[String]) -> io::Result<(Vec<String>, Duration)> {
+    let mut states = Vec::new();
+    let mut timeout = Duration::from_secs(30);
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--until" => {
+                let Some(state) = args.get(index + 1) else {
+                    return Err(io::Error::other("--until requires a state"));
+                };
+                if !matches!(
+                    state.as_str(),
+                    "unknown" | "idle" | "working" | "blocked" | "done"
+                ) {
+                    return Err(io::Error::other(format!("invalid agent state: {state}")));
+                }
+                states.push(state.clone());
+                index += 2;
+            }
+            "--timeout" => {
+                let Some(raw) = args.get(index + 1) else {
+                    return Err(io::Error::other("--timeout requires milliseconds"));
+                };
+                let milliseconds = raw
+                    .parse::<u64>()
+                    .map_err(|_| io::Error::other(format!("invalid timeout: {raw}")))?;
+                timeout = Duration::from_millis(milliseconds);
+                index += 2;
+            }
+            option => return Err(io::Error::other(format!("unknown option: {option}"))),
+        }
+    }
+    let default_states = ["idle", "done", "blocked"];
+    Ok((
+        if states.is_empty() {
+            default_states.into_iter().map(str::to_owned).collect()
+        } else {
+            states
+        },
+        timeout,
+    ))
 }
 
 fn agent_rename(project: &Project, args: &[String]) -> io::Result<()> {
@@ -504,8 +600,24 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_command, agent_rows, parse_prompt_options, resolve_agent, shell_quote};
+    use super::{
+        agent_command, agent_rows, parse_prompt_options, prompt_wait_timeout, resolve_agent,
+        shell_quote,
+    };
     use crate::server::session::Session;
+    use std::time::Duration;
+
+    #[test]
+    fn prompt_wait_keeps_herdr_five_second_activity_window() {
+        assert_eq!(
+            prompt_wait_timeout(Duration::from_millis(500)),
+            Duration::from_secs(5)
+        );
+        assert_eq!(
+            prompt_wait_timeout(Duration::from_secs(12)),
+            Duration::from_secs(12)
+        );
+    }
 
     #[test]
     fn agent_list_reports_detected_agents_across_spaces() {
