@@ -261,7 +261,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   Herdr's popup input ownership.
 - [ ] Test input routing, hit regions, drag boundaries, menu actions, and
   passthrough behavior. Tests now cover pane edge hits, captured drags outside
-  pane bounds, event-mode routing, and right-click passthrough; existing tests
+  pane bounds, scrollbar-gutter exclusion, Herdr inner-rect PTY coordinate
+  mapping, event-mode routing, and right-click passthrough; existing tests
   cover menu items and split-drag limits. Manual Windows Terminal verification
   remains.
 
