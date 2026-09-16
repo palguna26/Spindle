@@ -19,6 +19,23 @@ struct ReportAgentRequest {
     state: crate::detect::AgentState,
     #[serde(default)]
     seq: Option<u64>,
+    #[serde(default)]
+    agent_session_id: Option<String>,
+    #[serde(default)]
+    agent_session_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReportAgentSessionRequest {
+    pane_id: String,
+    source: String,
+    agent: String,
+    #[serde(default)]
+    seq: Option<u64>,
+    #[serde(default)]
+    agent_session_id: Option<String>,
+    #[serde(default)]
+    agent_session_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -450,10 +467,42 @@ pub(crate) fn response_for_with_interactive(
             save_after(&mut session, |session| {
                 session.report_agent(
                     &payload.pane_id,
-                    agent,
-                    payload.state,
-                    payload.source,
-                    payload.seq,
+                    crate::server::session::AgentReportRequest {
+                        agent,
+                        state: payload.state,
+                        source: payload.source,
+                        seq: payload.seq,
+                        session_id: payload.agent_session_id,
+                        session_path: payload.agent_session_path,
+                    },
+                )
+            })
+        }
+        "report_agent_session" => {
+            let payload: ReportAgentSessionRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let Some(agent) = crate::detect::parse_agent_label(&payload.agent) else {
+                return request_error(
+                    request.request_id,
+                    "invalid_agent",
+                    format!("unknown agent: {}", payload.agent),
+                );
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.report_agent_session(
+                    &payload.pane_id,
+                    crate::server::session::AgentSessionReportRequest {
+                        agent,
+                        source: payload.source,
+                        seq: payload.seq,
+                        session_id: payload.agent_session_id,
+                        session_path: payload.agent_session_path,
+                    },
                 )
             })
         }

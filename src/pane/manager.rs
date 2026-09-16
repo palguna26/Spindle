@@ -1,5 +1,7 @@
-use super::agent_detection::AgentAuthority;
-use super::agent_detection::{observe_agent_process, AgentStartupGrace, PendingIdleConfirmation};
+use super::agent_detection::{
+    observe_agent_process, AgentAuthority, AgentReport, AgentSessionInfo, AgentSessionReport,
+    AgentStartupGrace, PendingIdleConfirmation,
+};
 use super::PaneEvent;
 use crate::detect::{self, AgentKind, AgentProcessScan, AgentState};
 use crate::model::status::PaneStatus;
@@ -28,6 +30,8 @@ pub struct Pane {
     pub agent_done: bool,
     agent_missing_scans: u8,
     agent_authority: Option<AgentAuthority>,
+    pub agent_session: Option<AgentSessionInfo>,
+    agent_session_seq: Option<(String, u64)>,
     pub scrollback: VecDeque<u8>,
     pub terminal: TerminalEmulator,
     session: PtySession,
@@ -95,6 +99,8 @@ impl PaneManager {
                 agent_done: false,
                 agent_missing_scans: 0,
                 agent_authority: None,
+                agent_session: None,
+                agent_session_seq: None,
                 scrollback: VecDeque::with_capacity(self.scrollback_limit),
                 terminal: TerminalEmulator::new(rows, cols, self.scrollback_limit),
                 session,
@@ -321,13 +327,10 @@ impl PaneManager {
             .ok_or_else(|| PaneManagerError::MissingPane(id.into()))
     }
 
-    pub fn report_agent(
+    pub(crate) fn report_agent(
         &mut self,
         id: &str,
-        agent: AgentKind,
-        state: AgentState,
-        source: String,
-        seq: Option<u64>,
+        report: AgentReport,
     ) -> Result<bool, PaneManagerError> {
         let pane = self
             .panes
@@ -336,18 +339,65 @@ impl PaneManager {
         if pane
             .agent_authority
             .as_ref()
-            .is_some_and(|authority| !authority.accepts(&source, seq))
+            .is_some_and(|authority| !authority.accepts(&report.source, report.seq))
         {
             return Ok(false);
         }
-        let changed = pane.agent != Some(agent) || pane.agent_state != Some(state);
-        pane.agent = Some(agent);
-        pane.agent_state = Some(state);
+        let changed = pane.agent != Some(report.agent) || pane.agent_state != Some(report.state);
+        pane.agent = Some(report.agent);
+        pane.agent_state = Some(report.state);
         pane.agent_done = false;
         pane.agent_missing_scans = 0;
         pane.pending_idle.clear();
         pane.startup_grace.start(None, Instant::now());
-        pane.agent_authority = Some(AgentAuthority { source, seq });
+        pane.agent_authority = Some(AgentAuthority {
+            source: report.source,
+            seq: report.seq,
+        });
+        pane.agent_session = AgentSessionInfo::from_report(
+            pane.agent_authority.as_ref().unwrap().source.as_str(),
+            report.agent,
+            report.session_id,
+            report.session_path,
+        );
+        pane.agent_session_seq = report
+            .seq
+            .map(|value| (pane.agent_authority.as_ref().unwrap().source.clone(), value));
+        Ok(changed)
+    }
+
+    pub(crate) fn report_agent_session(
+        &mut self,
+        id: &str,
+        report: AgentSessionReport,
+    ) -> Result<bool, PaneManagerError> {
+        let pane = self
+            .panes
+            .get_mut(id)
+            .ok_or_else(|| PaneManagerError::MissingPane(id.into()))?;
+        if let (Some((current_source, current_seq)), Some(next_seq)) =
+            (pane.agent_session_seq.as_ref(), report.seq)
+        {
+            if current_source == &report.source && next_seq <= *current_seq {
+                return Ok(false);
+            }
+        }
+        let Some(session) = AgentSessionInfo::from_report(
+            &report.source,
+            report.agent,
+            report.session_id,
+            report.session_path,
+        ) else {
+            return Ok(false);
+        };
+        let changed = pane.agent_session.as_ref() != Some(&session);
+        pane.agent_session = Some(session);
+        pane.agent_session_seq = report.seq.map(|value| (report.source, value));
+        if pane.agent.is_none() {
+            pane.agent = Some(report.agent);
+            pane.agent_state = Some(AgentState::Unknown);
+            pane.agent_done = false;
+        }
         Ok(changed)
     }
 
@@ -379,6 +429,8 @@ impl PaneManager {
         pane.agent_done = false;
         pane.agent_missing_scans = 0;
         pane.agent_authority = None;
+        pane.agent_session = None;
+        pane.agent_session_seq = None;
         pane.pending_idle.clear();
         pane.terminal.clear_agent_osc_evidence();
         Ok(true)

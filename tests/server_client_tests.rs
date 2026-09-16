@@ -140,6 +140,22 @@ fn pane_agent_reports_are_authoritative_and_sequence_checked() {
         .unwrap();
     let pane_id = pane["pane_id"].as_str().unwrap();
 
+    let session_report = client
+        .request(
+            "agent-session-report",
+            "report_agent_session",
+            serde_json::json!({
+                "pane_id": pane_id,
+                "source": "herdr:codex",
+                "agent": "codex.exe",
+                "agent_session_id": "session-1",
+                "seq": 1
+            }),
+        )
+        .unwrap();
+    assert!(session_report.ok);
+    assert_eq!(session_report.payload.unwrap()["updated"], true);
+
     let report = client
         .request(
             "agent-report",
@@ -149,7 +165,8 @@ fn pane_agent_reports_are_authoritative_and_sequence_checked() {
                 "source": "herdr:codex",
                 "agent": "codex",
                 "state": "working",
-                "seq": 4
+                "seq": 4,
+                "agent_session_id": "session-1"
             }),
         )
         .unwrap();
@@ -189,6 +206,9 @@ fn pane_agent_reports_are_authoritative_and_sequence_checked() {
         .unwrap();
     assert_eq!(current["agent"], "codex");
     assert_eq!(current["agent_state"], "working");
+    assert_eq!(current["agent_session"]["source"], "herdr:codex");
+    assert_eq!(current["agent_session"]["kind"], "id");
+    assert_eq!(current["agent_session"]["value"], "session-1");
 
     let release = client
         .request(
@@ -222,6 +242,7 @@ fn pane_agent_reports_are_authoritative_and_sequence_checked() {
         .unwrap();
     assert!(released["agent"].is_null());
     assert!(released["agent_state"].is_null());
+    assert!(released["agent_session"].is_null());
 
     client
         .request("stop", "stop_server", Value::Object(Default::default()))

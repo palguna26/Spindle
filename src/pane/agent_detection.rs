@@ -1,5 +1,65 @@
 use crate::detect::{AgentKind, AgentProcessScan, AgentState};
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct AgentSessionInfo {
+    pub source: String,
+    pub agent: String,
+    pub kind: AgentSessionRefKind,
+    pub value: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct AgentReport {
+    pub(crate) agent: AgentKind,
+    pub(crate) state: AgentState,
+    pub(crate) source: String,
+    pub(crate) seq: Option<u64>,
+    pub(crate) session_id: Option<String>,
+    pub(crate) session_path: Option<String>,
+}
+
+#[derive(Debug)]
+pub(crate) struct AgentSessionReport {
+    pub(crate) agent: AgentKind,
+    pub(crate) source: String,
+    pub(crate) seq: Option<u64>,
+    pub(crate) session_id: Option<String>,
+    pub(crate) session_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSessionRefKind {
+    Id,
+    Path,
+}
+
+impl AgentSessionInfo {
+    pub(super) fn from_report(
+        source: &str,
+        agent: AgentKind,
+        session_id: Option<String>,
+        session_path: Option<String>,
+    ) -> Option<Self> {
+        let (kind, value) = session_path
+            .filter(|value| !value.is_empty())
+            .map(|value| (AgentSessionRefKind::Path, value))
+            .or_else(|| {
+                session_id
+                    .filter(|value| !value.is_empty())
+                    .map(|value| (AgentSessionRefKind::Id, value))
+            })?;
+        Some(Self {
+            source: source.into(),
+            agent: agent.label().into(),
+            kind,
+            value,
+        })
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct AgentAuthority {

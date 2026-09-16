@@ -64,6 +64,9 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         [command, id, options @ ..] if command == "report-agent" => {
             pane_report_agent(project, id, options)
         }
+        [command, id, options @ ..] if command == "report-agent-session" => {
+            pane_report_agent_session(project, id, options)
+        }
         [command, id, options @ ..] if command == "release-agent" => {
             pane_release_agent(project, id, options)
         }
@@ -78,7 +81,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|release-agent|wait-output|split|resize>",
+                "usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|report-agent-session|release-agent|wait-output|split|resize>",
             ))
         }
     }
@@ -1358,6 +1361,8 @@ fn pane_report_agent(project: &Project, id: &str, args: &[String]) -> io::Result
     let mut agent = None;
     let mut state = None;
     let mut seq = None;
+    let mut session_id = None;
+    let mut session_path = None;
     let mut index = 0;
     while index < args.len() {
         let value = |name: &str, index: &mut usize| -> io::Result<String> {
@@ -1378,6 +1383,10 @@ fn pane_report_agent(project: &Project, id: &str, args: &[String]) -> io::Result
                         .map_err(|_| io::Error::other("--seq must be an unsigned integer"))?,
                 )
             }
+            "--agent-session-id" => session_id = Some(value("--agent-session-id", &mut index)?),
+            "--agent-session-path" => {
+                session_path = Some(value("--agent-session-path", &mut index)?)
+            }
             option => return Err(io::Error::other(format!("unknown option: {option}"))),
         }
     }
@@ -1394,7 +1403,51 @@ fn pane_report_agent(project: &Project, id: &str, args: &[String]) -> io::Result
     pane_mutation_with_payload(
         project,
         "report_agent",
-        serde_json::json!({ "pane_id": id, "source": source, "agent": agent, "state": state, "seq": seq }),
+        serde_json::json!({ "pane_id": id, "source": source, "agent": agent, "state": state, "seq": seq, "agent_session_id": session_id, "agent_session_path": session_path }),
+    )
+}
+
+fn pane_report_agent_session(project: &Project, id: &str, args: &[String]) -> io::Result<()> {
+    let mut source = None;
+    let mut agent = None;
+    let mut seq = None;
+    let mut session_id = None;
+    let mut session_path = None;
+    let mut index = 0;
+    while index < args.len() {
+        let Some(value) = args.get(index + 1) else {
+            return Err(io::Error::other(format!(
+                "{} requires a value",
+                args[index]
+            )));
+        };
+        match args[index].as_str() {
+            "--source" => source = Some(value.clone()),
+            "--agent" => agent = Some(value.clone()),
+            "--agent-session-id" => session_id = Some(value.clone()),
+            "--agent-session-path" => session_path = Some(value.clone()),
+            "--seq" => {
+                seq = Some(
+                    value
+                        .parse::<u64>()
+                        .map_err(|_| io::Error::other("--seq must be an unsigned integer"))?,
+                )
+            }
+            option => return Err(io::Error::other(format!("unknown option: {option}"))),
+        }
+        index += 2;
+    }
+    let source = source.ok_or_else(|| io::Error::other("missing required --source"))?;
+    let agent = agent.ok_or_else(|| io::Error::other("missing required --agent"))?;
+    if session_id.is_none() && session_path.is_none() {
+        return Err(io::Error::other(
+            "one of --agent-session-id or --agent-session-path is required",
+        ));
+    }
+    pane_mutation_with_payload(
+        project,
+        "report_agent_session",
+        serde_json::json!({ "pane_id": id, "source": source, "agent": agent, "seq": seq, "agent_session_id": session_id, "agent_session_path": session_path }),
     )
 }
 
@@ -1708,7 +1761,7 @@ fn pane_resize_options(project: &Project, args: &[String]) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|release-agent|wait-output|split|resize>");
+    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|report-agent-session|release-agent|wait-output|split|resize>");
     println!("  list [--workspace <id>]  list panes in a workspace");
     println!("  current [<id>]   show the focused or requested pane");
     println!("  get <id>         show a pane as JSON");
@@ -1738,7 +1791,8 @@ fn print_help() {
     println!(
         "  move <id> --new-tab [--label TEXT] | --tab ID [--pane ID] [--split right|down]  move a pane"
     );
-    println!("  report-agent <id> --source ID --agent LABEL --state unknown|idle|working|blocked [--seq N]  report hook state");
+    println!("  report-agent <id> --source ID --agent LABEL --state unknown|idle|working|blocked [--seq N] [--agent-session-id ID|--agent-session-path PATH]  report hook state");
+    println!("  report-agent-session <id> --source ID --agent LABEL (--agent-session-id ID|--agent-session-path PATH) [--seq N]  report session identity");
     println!("  release-agent <id> --source ID --agent LABEL [--seq N]  release hook authority");
     println!("  wait-output <id> (--match TEXT | --regex PATTERN) [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--raw]  wait for output");
     println!("  split <direction> [command args...] | [--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus|--no-focus]  split with a new pane");
