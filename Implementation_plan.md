@@ -456,6 +456,10 @@ Terminal verification is still pending.
   Python plugin under the Herdr-compatible Hermes plugin directory and
   preserves the existing YAML config while enabling or removing Spindle's
   plugin entry.
+- [x] Add the Antigravity CLI integration. Install/uninstall now manages a
+  Windows PowerShell session hook under `.gemini/config/hooks`, preserves
+  unrelated named hooks in `hooks.json`, and reports Antigravity conversation
+  IDs through Spindle's pane session-report command.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
