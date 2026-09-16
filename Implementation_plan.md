@@ -421,6 +421,9 @@ approved design changes it.
   path, and protocol so users can identify which build they launched.
   Sidebar width settings now accept Herdr-style `[ui] sidebar_width`,
   `sidebar_min_width`, and `sidebar_max_width` values with safe bound fallback.
+  Narrow terminals now use a Herdr-style single-column mobile header; its
+  `switch` control opens Spindle's searchable navigator without hiding access
+  to workspace, tab, and pane navigation.
   Windows PTY children now use kill-on-close Job Objects so child tools do not
   outlive their pane; assignment safely falls back when Windows denies it.
 - [x] Make `spindle stop` wait for endpoint cleanup and retry Windows named-pipe
