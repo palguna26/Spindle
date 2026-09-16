@@ -99,7 +99,7 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups(
     }
     let x = mouse.column;
     let y = mouse.row;
-    let main = super::layout::main_areas_with_sidebar(area, sidebar_collapsed);
+    let main = super::layout::main_areas_for_snapshot(snapshot, area, sidebar_collapsed);
     if contains(super::layout::mobile_switch_rect(main.mobile_header), x, y) {
         return Some(ClickTarget::MobileSwitcher);
     }
@@ -295,7 +295,7 @@ pub fn tab_drop_target(
     x: u16,
     y: u16,
 ) -> Option<(String, String, usize)> {
-    let main = super::layout::main_areas_with_sidebar(area, collapsed);
+    let main = super::layout::main_areas_for_snapshot(snapshot, area, collapsed);
     if !contains(main.tabs, x, y) {
         return None;
     }
@@ -1067,7 +1067,7 @@ pub fn render_tab_drop_indicator(
     collapsed: bool,
     insert_index: usize,
 ) {
-    let area = super::layout::main_areas_with_sidebar(frame.area(), collapsed).tabs;
+    let area = super::layout::main_areas_for_snapshot(snapshot, frame.area(), collapsed).tabs;
     let Some(workspace) = active_workspace(snapshot) else {
         return;
     };

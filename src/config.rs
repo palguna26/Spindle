@@ -38,6 +38,7 @@ struct UiConfig {
     host_cursor: HostCursorMode,
     mouse_scroll_lines: u16,
     confirm_close: bool,
+    hide_tab_bar_when_single_tab: bool,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
@@ -64,6 +65,7 @@ impl Default for UiConfig {
             host_cursor: HostCursorMode::Auto,
             mouse_scroll_lines: 3,
             confirm_close: true,
+            hide_tab_bar_when_single_tab: false,
         }
     }
 }
@@ -179,6 +181,7 @@ pub struct Config {
     pub(crate) host_cursor: HostCursorMode,
     pub(crate) mouse_scroll_lines: usize,
     pub(crate) confirm_close: bool,
+    pub(crate) hide_tab_bar_when_single_tab: bool,
 }
 
 impl Default for Config {
@@ -204,6 +207,7 @@ impl Default for Config {
             host_cursor: HostCursorMode::Auto,
             mouse_scroll_lines: 3,
             confirm_close: true,
+            hide_tab_bar_when_single_tab: false,
         }
     }
 }
@@ -271,6 +275,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         host_cursor: file.ui.host_cursor,
         mouse_scroll_lines: usize::from(file.ui.mouse_scroll_lines.max(1)),
         confirm_close: file.ui.confirm_close,
+        hide_tab_bar_when_single_tab: file.ui.hide_tab_bar_when_single_tab,
     }
 }
 
@@ -328,6 +333,7 @@ mouse_capture = true
 host_cursor = "auto"
 mouse_scroll_lines = 3
 confirm_close = true
+hide_tab_bar_when_single_tab = false
 "#
 }
 
@@ -570,6 +576,16 @@ mod tests {
             std::env::temp_dir().join(format!("spindle-confirm-close-{}.toml", std::process::id()));
         std::fs::write(&path, "[ui]\nconfirm_close = false\n").unwrap();
         assert!(!load_from(&path).confirm_close);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn hide_tab_bar_matches_herdr_default_and_value() {
+        assert!(!Config::default().hide_tab_bar_when_single_tab);
+        let path =
+            std::env::temp_dir().join(format!("spindle-hide-tab-bar-{}.toml", std::process::id()));
+        std::fs::write(&path, "[ui]\nhide_tab_bar_when_single_tab = true\n").unwrap();
+        assert!(load_from(&path).hide_tab_bar_when_single_tab);
         std::fs::remove_file(path).unwrap();
     }
 

@@ -12,7 +12,7 @@ use super::settings::Settings;
 use crate::model::status::PaneStatus;
 use crate::server::session::{SessionSnapshot, WorkspaceView};
 pub(crate) use layout::{
-    pane_content_area, pane_content_area_with_sidebar, pane_inner_size, pane_rectangles,
+    pane_content_area, pane_content_area_for_snapshot, pane_inner_size, pane_rectangles,
     pane_sizes, sidebar_area, split_handles, PaneSize,
 };
 use navigation::render_tabs;
@@ -183,7 +183,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
     collapsed_groups: &HashSet<String>,
 ) {
     let theme = ThemePalette::from_name(crate::config::load().theme_name.as_deref());
-    let main = layout::main_areas_with_sidebar(frame.area(), sidebar_collapsed);
+    let main = layout::main_areas_for_snapshot(snapshot, frame.area(), sidebar_collapsed);
     mobile::render_header(frame, main.mobile_header, snapshot);
     navigation::render_sidebar_with_scroll_sort_and_navigation_and_groups(
         frame,
@@ -334,7 +334,7 @@ pub(crate) fn render_selection_with_sidebar(
     }
     let Some(pane) = pane_rectangles(
         snapshot,
-        pane_content_area_with_sidebar(frame.area(), sidebar_collapsed),
+        layout::pane_content_area_for_snapshot(snapshot, frame.area(), sidebar_collapsed),
     )
     .into_iter()
     .find(|pane| pane.pane_id == selection.pane_id) else {
@@ -371,7 +371,7 @@ pub(crate) fn render_copy_mode(
 ) {
     let Some(pane) = pane_rectangles(
         snapshot,
-        pane_content_area_with_sidebar(frame.area(), sidebar_collapsed),
+        layout::pane_content_area_for_snapshot(snapshot, frame.area(), sidebar_collapsed),
     )
     .into_iter()
     .find(|pane| pane.pane_id == mode.pane_id) else {

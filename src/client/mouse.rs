@@ -119,7 +119,7 @@ pub(super) fn pane_mouse_target(
     }
     if let Some(popup_id) = snapshot.popup_pane_id.as_deref() {
         let popup = super::renderer::popup_rect(
-            super::renderer::pane_content_area_with_sidebar(area, sidebar_collapsed),
+            super::renderer::pane_content_area_for_snapshot(snapshot, area, sidebar_collapsed),
             snapshot.popup_width,
             snapshot.popup_height,
         );
@@ -139,7 +139,7 @@ pub(super) fn pane_mouse_target(
     }
     super::renderer::pane_rectangles(
         snapshot,
-        super::renderer::pane_content_area_with_sidebar(area, sidebar_collapsed),
+        super::renderer::pane_content_area_for_snapshot(snapshot, area, sidebar_collapsed),
     )
     .into_iter()
     .find(|pane| {

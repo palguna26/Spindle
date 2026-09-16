@@ -347,7 +347,11 @@ fn event_loop(
                 ));
         let pane_sizes = renderer::pane_sizes(
             &snapshot,
-            renderer::pane_content_area_with_sidebar(area, mouse_state.sidebar_collapsed),
+            renderer::pane_content_area_for_snapshot(
+                &snapshot,
+                area,
+                mouse_state.sidebar_collapsed,
+            ),
         );
         if connected && last_pane_sizes.as_ref() != Some(&pane_sizes) {
             resize_panes(client, &pane_sizes)?;
@@ -1689,7 +1693,7 @@ fn handle_mouse(
     {
         if let Some(url) = visible_web_url_at_point(
             snapshot,
-            renderer::pane_content_area_with_sidebar(area, mouse_state.sidebar_collapsed),
+            renderer::pane_content_area_for_snapshot(snapshot, area, mouse_state.sidebar_collapsed),
             mouse.column,
             mouse.row,
         ) {
@@ -1769,7 +1773,7 @@ fn handle_mouse(
             }
         }
         let pane_area =
-            renderer::pane_content_area_with_sidebar(area, mouse_state.sidebar_collapsed);
+            renderer::pane_content_area_for_snapshot(snapshot, area, mouse_state.sidebar_collapsed);
         if let Some(handle) = renderer::split_handles(snapshot, pane_area)
             .into_iter()
             .find(|handle| {
@@ -2288,7 +2292,7 @@ fn begin_text_selection(
 ) -> Result<bool, ClientError> {
     let Some(pane) = renderer::pane_rectangles(
         snapshot,
-        renderer::pane_content_area_with_sidebar(area, sidebar_collapsed),
+        renderer::pane_content_area_for_snapshot(snapshot, area, sidebar_collapsed),
     )
     .into_iter()
     .find(|pane| {
@@ -4129,7 +4133,7 @@ mod tests {
         let area = Rect::new(0, 0, 120, 40);
         let pane_rect = renderer::pane_rectangles(
             &snapshot,
-            renderer::pane_content_area_with_sidebar(area, false),
+            renderer::pane_content_area_for_snapshot(&snapshot, area, false),
         )[0]
         .rect;
         let capture = Some(PaneMouseCapture {
@@ -4164,7 +4168,7 @@ mod tests {
         let area = Rect::new(0, 0, 120, 40);
         let pane_rect = renderer::pane_rectangles(
             &snapshot,
-            renderer::pane_content_area_with_sidebar(area, false),
+            renderer::pane_content_area_for_snapshot(&snapshot, area, false),
         )[0]
         .rect;
         let inner = Rect::new(

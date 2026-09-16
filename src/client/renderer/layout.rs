@@ -42,6 +42,23 @@ pub(crate) fn sidebar_area(area: Rect, sidebar_collapsed: bool) -> Rect {
 }
 
 pub(super) fn main_areas_with_sidebar(area: Rect, sidebar_collapsed: bool) -> MainAreas {
+    main_areas_with_sidebar_and_tab_count(area, sidebar_collapsed, usize::MAX)
+}
+
+pub(super) fn main_areas_for_snapshot(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    sidebar_collapsed: bool,
+) -> MainAreas {
+    let tab_count = active_workspace(snapshot).map_or(0, |workspace| workspace.tabs.len());
+    main_areas_with_sidebar_and_tab_count(area, sidebar_collapsed, tab_count)
+}
+
+fn main_areas_with_sidebar_and_tab_count(
+    area: Rect,
+    sidebar_collapsed: bool,
+    tab_count: usize,
+) -> MainAreas {
     let body = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
@@ -76,9 +93,13 @@ pub(super) fn main_areas_with_sidebar(area: Rect, sidebar_collapsed: bool) -> Ma
         .constraints([Constraint::Length(sidebar_width), Constraint::Min(1)])
         .split(body);
     let right = columns[1];
+    let tab_bar_hidden = config.hide_tab_bar_when_single_tab && tab_count == 1;
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(1)])
+        .constraints([
+            Constraint::Length(if tab_bar_hidden { 0 } else { 1 }),
+            Constraint::Min(1),
+        ])
         .split(right);
     MainAreas {
         sidebar: columns[0],
@@ -102,8 +123,12 @@ pub(crate) fn pane_content_area(area: Rect) -> Rect {
     main_areas(area).panes
 }
 
-pub(crate) fn pane_content_area_with_sidebar(area: Rect, sidebar_collapsed: bool) -> Rect {
-    main_areas_with_sidebar(area, sidebar_collapsed).panes
+pub(crate) fn pane_content_area_for_snapshot(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    sidebar_collapsed: bool,
+) -> Rect {
+    main_areas_for_snapshot(snapshot, area, sidebar_collapsed).panes
 }
 
 pub(crate) fn pane_rectangles(snapshot: &SessionSnapshot, area: Rect) -> Vec<PaneRect> {
@@ -174,6 +199,18 @@ fn active_tab(snapshot: &SessionSnapshot) -> Option<&crate::server::session::Tab
         .tabs
         .iter()
         .find(|tab| tab.tab_id == workspace.active_tab_id)
+}
+
+fn active_workspace(snapshot: &SessionSnapshot) -> Option<&crate::server::session::WorkspaceView> {
+    let space = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == snapshot.active_space_id)?;
+    let workspace_id = space.active_workspace_id.as_ref()?;
+    space
+        .workspaces
+        .iter()
+        .find(|workspace| &workspace.workspace_id == workspace_id)
 }
 
 fn collect_pane_rectangles(node: &LayoutNode, area: Rect, panes: &mut Vec<PaneRect>) {
