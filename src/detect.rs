@@ -355,6 +355,15 @@ pub(crate) fn detect_state_with_osc(
         }
         return muse_state(screen);
     }
+    if agent == AgentKind::Claude {
+        if let Some(state) = manifest::detect_claude(manifest::DetectionInput {
+            screen,
+            osc_title: title,
+            _osc_progress: osc_progress,
+        }) {
+            return state;
+        }
+    }
     let blocked = match agent {
         AgentKind::Pi => false,
         AgentKind::QoderCli => qodercli_permission_required(&recent),

@@ -31,6 +31,9 @@ enum Region {
     AfterLastPrompt,
     WholeRecent,
     WholeRecentWithoutCurrentPrompt,
+    LastNonEmptyAbovePromptBox,
+    PromptBoxBody,
+    AfterLastHorizontalRule,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -95,6 +98,20 @@ enum Matcher {
     QwenCancelHint,
     QwenNarrowCancelHint,
     QwenComposerIdle,
+    ClaudeOscTitleWorking,
+    ClaudeLiveTurnWorking,
+    ClaudeBackgroundAgentsWorking,
+    ClaudeBackgroundMcpTaskWorking,
+    ClaudeBtwOverlayWorking,
+    ClaudeTranscriptViewer,
+    ClaudeLiveBlockedForm,
+    ClaudeDynamicWorkflowPrompt,
+    ClaudeMcpElicitationPrompt,
+    ClaudeLivePromptBox,
+    ClaudeModelPickerMenu,
+    ClaudeBashPermissionPrompt,
+    ClaudeGenericPermissionPrompt,
+    ClaudeLegacyBlocker,
     GrokOption,
     GrokLegacyPermission,
     GrokBackgroundChip,
@@ -863,6 +880,105 @@ const QWEN_RULES: &[Rule] = &[
     },
 ];
 
+const CLAUDE_RULES: &[Rule] = &[
+    Rule {
+        priority: 1100,
+        state: AgentState::Working,
+        region: Region::OscTitle,
+        matcher: Matcher::ClaudeOscTitleWorking,
+    },
+    Rule {
+        priority: 970,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(12),
+        matcher: Matcher::ClaudeLiveTurnWorking,
+    },
+    Rule {
+        priority: 965,
+        state: AgentState::Working,
+        region: Region::LastNonEmptyAbovePromptBox,
+        matcher: Matcher::ClaudeBackgroundAgentsWorking,
+    },
+    Rule {
+        priority: 965,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(12),
+        matcher: Matcher::ClaudeBackgroundMcpTaskWorking,
+    },
+    Rule {
+        priority: 975,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(5),
+        matcher: Matcher::ClaudeBtwOverlayWorking,
+    },
+    Rule {
+        priority: 1000,
+        state: AgentState::Unknown,
+        region: Region::BottomNonEmpty(3),
+        matcher: Matcher::ClaudeTranscriptViewer,
+    },
+    Rule {
+        priority: 980,
+        state: AgentState::Blocked,
+        region: Region::AfterLastHorizontalRule,
+        matcher: Matcher::ClaudeLiveBlockedForm,
+    },
+    Rule {
+        priority: 980,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::ClaudeDynamicWorkflowPrompt,
+    },
+    Rule {
+        priority: 980,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::ClaudeMcpElicitationPrompt,
+    },
+    Rule {
+        priority: 950,
+        state: AgentState::Idle,
+        region: Region::PromptBoxBody,
+        matcher: Matcher::ClaudeLivePromptBox,
+    },
+    Rule {
+        priority: 900,
+        state: AgentState::Unknown,
+        region: Region::WholeRecent,
+        matcher: Matcher::ClaudeModelPickerMenu,
+    },
+    Rule {
+        priority: 850,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::ClaudeBashPermissionPrompt,
+    },
+    Rule {
+        priority: 840,
+        state: AgentState::Blocked,
+        region: Region::AfterLastHorizontalRule,
+        matcher: Matcher::ClaudeGenericPermissionPrompt,
+    },
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::ClaudeLegacyBlocker,
+    },
+    Rule {
+        priority: 250,
+        state: AgentState::Idle,
+        region: Region::OscTitle,
+        matcher: Matcher::Regex(r"^\u{2733} "),
+    },
+    Rule {
+        priority: 250,
+        state: AgentState::Idle,
+        region: Region::OscProgress,
+        matcher: Matcher::Regex(r"^4;0"),
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -943,6 +1059,10 @@ pub(crate) fn detect_qwen(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, QWEN_RULES)
 }
 
+pub(crate) fn detect_claude(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, CLAUDE_RULES)
+}
+
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
     let mut matched = None;
     for rule in rules {
@@ -977,6 +1097,9 @@ fn region(input: DetectionInput<'_>, region: Region) -> String {
                 recent_nonempty_lines(input.screen, 20)
             }
         }
+        Region::LastNonEmptyAbovePromptBox => last_nonempty_line(above_prompt_box(input.screen)),
+        Region::PromptBoxBody => prompt_box_body(input.screen).unwrap_or("").to_owned(),
+        Region::AfterLastHorizontalRule => after_last_horizontal_rule(input.screen).to_owned(),
     };
     text.to_ascii_lowercase()
 }
@@ -1440,6 +1563,92 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                 && !text.contains("esc:cancel")
                 && !text.contains("ctrl+c:cancel")
         }
+        Matcher::ClaudeOscTitleWorking => text.chars().next().is_some_and(|character| {
+            ('\u{2800}'..='\u{28ff}').contains(&character)
+                || ('\u{25d0}'..='\u{25d3}').contains(&character)
+        }) && text.chars().nth(1).is_some_and(char::is_whitespace),
+        Matcher::ClaudeLiveTurnWorking => claude_live_turn_working(text),
+        Matcher::ClaudeBackgroundAgentsWorking => Regex::new(
+            r"^\s*[\*\u{00b7}\u{2722}\u{2736}\u{273b}\u{273d}]\s+waiting for [1-9]\d* background agents? to finish\s*$",
+        )
+        .is_ok_and(|regex| regex.is_match(text)),
+        Matcher::ClaudeBackgroundMcpTaskWorking => claude_background_mcp_task_working(text),
+        Matcher::ClaudeBtwOverlayWorking => {
+            text.lines().any(|line| line.trim_start().starts_with("/btw"))
+                && text.lines().any(|line| line.trim_end().ends_with("esc to close"))
+        }
+        Matcher::ClaudeTranscriptViewer => {
+            text.contains("showing detailed transcript")
+                && ((text.contains("ctrl+o") && text.contains("to toggle"))
+                    || (text.contains("ctrl+e")
+                        && (text.contains("show all") || text.contains("collapse")))
+                    || text.contains("scroll")
+                    || text.contains("? for shortcuts"))
+        }
+        Matcher::ClaudeLiveBlockedForm => {
+            text.contains("esc to cancel")
+                && (text.contains("enter to confirm")
+                    || (text.contains("enter to select") && text.contains("navigate")))
+        }
+        Matcher::ClaudeDynamicWorkflowPrompt => {
+            text.contains("run a dynamic workflow?") && text.contains("esc to cancel")
+        }
+        Matcher::ClaudeMcpElicitationPrompt => {
+            text.contains("esc to cancel")
+                && text.lines().any(|line| {
+                    line.trim_start().starts_with("mcp server ")
+                        && line.contains("requests your input")
+                })
+                && text.lines().any(|line| {
+                    let line = line.trim_start();
+                    line.strip_prefix('❯')
+                        .unwrap_or(line)
+                        .trim_start()
+                        .starts_with("accept")
+                        || line.strip_prefix('❯')
+                            .unwrap_or(line)
+                            .trim_start()
+                            .starts_with("decline")
+                })
+        }
+        Matcher::ClaudeLivePromptBox => {
+            text.lines().any(|line| line.trim_start().starts_with('❯'))
+                && !text.contains("enter to select")
+                && !text.contains("esc to cancel")
+                && !text.contains("navigate")
+        }
+        Matcher::ClaudeModelPickerMenu => {
+            text.contains("select model")
+                && text.contains("enter to set as default")
+                && text.contains("esc to cancel")
+                && !text.contains("enter to select")
+        }
+        Matcher::ClaudeBashPermissionPrompt => {
+            text.contains("do you want to proceed?")
+                && (text.contains("bash command")
+                    || text.contains("bash(")
+                    || text.contains("contains expansion")
+                    || text.contains("tab to amend")
+                    || text.contains("ctrl+e to explain"))
+                && text.lines().any(claude_yes_option)
+        }
+        Matcher::ClaudeGenericPermissionPrompt => {
+            text.contains("do you want to proceed?")
+                && text.contains("esc to cancel")
+                && text.lines().any(claude_yes_option)
+        }
+        Matcher::ClaudeLegacyBlocker => {
+            (text.contains("do you want to") && (text.contains("yes") || text.contains('❯')))
+                || (text.contains("would you like to")
+                    && (text.contains("yes") || text.contains('❯')))
+                || text.contains("waiting for permission")
+                || text.contains("do you want to allow this connection?")
+                || text.contains("tab to amend")
+                || text.contains("ctrl+e to explain")
+                || (text.contains("do you want to proceed?") && text.contains("esc to cancel"))
+                || text.contains("review your answers")
+                || text.contains("skip interview and plan immediately")
+        }
         Matcher::QwenTitleBlocked => Regex::new(r"^\u{2733}\u{fe0e}? ")
             .is_ok_and(|regex| regex.is_match(text)),
         Matcher::QwenTitleWorking => Regex::new(r"^\u{25d0}\u{fe0e}? ")
@@ -1568,6 +1777,140 @@ fn devin_blocked_or_working(text: &str) -> bool {
         || text.contains("guide devin while it works")
 }
 
+fn claude_live_turn_working(text: &str) -> bool {
+    text.lines().any(|line| {
+        let line = line.trim_start();
+        let Some(marker) = line.chars().next() else {
+            return false;
+        };
+        let markers = [
+            '*', '\u{00b7}', '\u{2722}', '\u{2736}', '\u{273b}', '\u{273d}',
+        ];
+        if !markers.contains(&marker) {
+            return false;
+        }
+        let rest = line[marker.len_utf8()..].trim_start();
+        !rest.is_empty() && (rest.contains('\u{2026}') || rest.contains("..."))
+    })
+}
+
+fn claude_background_mcp_task_working(text: &str) -> bool {
+    if [
+        "do you want to proceed?",
+        "esc to cancel",
+        "waiting for permission",
+        "do you want to allow this connection?",
+        "tab to amend",
+        "ctrl+e to explain",
+    ]
+    .iter()
+    .any(|signal| text.contains(signal))
+    {
+        return false;
+    }
+    let lines: Vec<_> = text.lines().collect();
+    lines.iter().enumerate().any(|(index, line)| {
+        let line = line.trim_start();
+        let Some(marker) = line.chars().next() else {
+            return false;
+        };
+        let markers = [
+            '*', '\u{00b7}', '\u{2722}', '\u{2736}', '\u{273b}', '\u{273d}',
+        ];
+        if !markers.contains(&marker) {
+            return false;
+        }
+        let rest = line[marker.len_utf8()..].trim_start();
+        let lower = rest.to_ascii_lowercase();
+        if lower.contains('\u{00b7}') && lower.contains("mcp tasks still running") {
+            return true;
+        }
+        (1..=3).any(|offset| {
+            let summary_index = index + offset;
+            summary_index < lines.len()
+                && lines[index + 1..summary_index].iter().all(|continuation| {
+                    continuation.starts_with(' ') || continuation.starts_with('\t')
+                })
+                && lines[summary_index]
+                    .to_ascii_lowercase()
+                    .contains("mcp tasks still running")
+        })
+    })
+}
+
+fn claude_yes_option(line: &str) -> bool {
+    let line = line.trim_start();
+    let line = line.strip_prefix('❯').unwrap_or(line).trim_start();
+    line.starts_with("yes") || line.starts_with("1. yes") || line.starts_with("2. yes")
+}
+
+fn above_prompt_box(content: &str) -> &str {
+    let lines: Vec<_> = content.lines().collect();
+    let mut rules = 0;
+    for index in (0..lines.len()).rev() {
+        if is_horizontal_rule(lines[index]) {
+            rules += 1;
+            if rules == 2 {
+                return &content[..line_start_offset(content, &lines, index)];
+            }
+        }
+    }
+    content
+}
+
+fn prompt_box_body(content: &str) -> Option<&str> {
+    let lines: Vec<_> = content.lines().collect();
+    let mut rules = 0;
+    let top = (0..lines.len()).rev().find(|&index| {
+        if is_horizontal_rule(lines[index]) {
+            rules += 1;
+        }
+        rules == 2
+    })?;
+    let start = line_start_offset(content, &lines, top + 1);
+    let end_index = lines[top + 1..]
+        .iter()
+        .position(|line| is_horizontal_rule(line))
+        .map(|relative| top + 1 + relative)
+        .unwrap_or(lines.len());
+    let end = line_start_offset(content, &lines, end_index);
+    Some(&content[start.min(content.len())..end.min(content.len())])
+}
+
+fn after_last_horizontal_rule(content: &str) -> &str {
+    let lines: Vec<_> = content.lines().collect();
+    let Some(index) = lines.iter().rposition(|line| is_horizontal_rule(line)) else {
+        return content;
+    };
+    &content[line_start_offset(content, &lines, index + 1).min(content.len())..]
+}
+
+fn last_nonempty_line(content: &str) -> String {
+    content
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("")
+        .to_owned()
+}
+
+fn line_start_offset(content: &str, lines: &[&str], index: usize) -> usize {
+    lines
+        .iter()
+        .take(index)
+        .map(|line| line.len() + 1)
+        .sum::<usize>()
+        .min(content.len())
+}
+
+fn is_horizontal_rule(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.chars().count() >= 3
+        && trimmed
+            .chars()
+            .all(|character| matches!(character, '─' | '━' | '═' | '-'))
+}
+
 fn recent_nonempty_lines(screen: &str, limit: usize) -> String {
     screen
         .lines()
@@ -1593,10 +1936,10 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_amp, detect_antigravity, detect_cline, detect_codex, detect_copilot, detect_cursor,
-        detect_devin, detect_droid, detect_gemini, detect_grok, detect_hermes, detect_kilo,
-        detect_kimi, detect_kiro, detect_maki, detect_muse, detect_opencode, detect_pi,
-        detect_qoder, detect_qwen, DetectionInput,
+        detect_amp, detect_antigravity, detect_claude, detect_cline, detect_codex, detect_copilot,
+        detect_cursor, detect_devin, detect_droid, detect_gemini, detect_grok, detect_hermes,
+        detect_kilo, detect_kimi, detect_kiro, detect_maki, detect_muse, detect_opencode,
+        detect_pi, detect_qoder, detect_qwen, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -1758,6 +2101,46 @@ mod tests {
             osc_title: title,
             _osc_progress: progress,
         })
+    }
+
+    fn detect_claude_state(screen: &str, title: &str, progress: &str) -> Option<AgentState> {
+        detect_claude(DetectionInput {
+            screen,
+            osc_title: title,
+            _osc_progress: progress,
+        })
+    }
+
+    #[test]
+    fn claude_manifest_matches_herdr_priority_rules() {
+        assert_eq!(
+            detect_claude_state(
+                "Do you want to proceed?\nEsc to cancel\nEnter to confirm",
+                "",
+                ""
+            ),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_claude_state("* Searching the web…", "", ""),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_claude_state("", "◐ Claude", ""),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_claude_state("", "Claude", "4;0"),
+            Some(AgentState::Idle)
+        );
+        assert_eq!(
+            detect_claude_state(
+                "\u{2500}\u{2500}\u{2500}\n❯ \n\u{2500}\u{2500}\u{2500}",
+                "",
+                ""
+            ),
+            Some(AgentState::Idle)
+        );
     }
 
     #[test]
