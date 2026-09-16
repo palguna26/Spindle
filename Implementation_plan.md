@@ -36,6 +36,10 @@ The release binary was verified on Windows with a live pane: a newer report
 was applied, an older report was ignored, and release returned the pane to
 detector control.
 
+Latest plugin pane milestone: popup width and height accept Herdr's cell-count
+or percentage forms, such as `90` and `80%`. Numeric manifest values remain
+compatible; percentage values are resolved against the invoking terminal.
+
 Latest sidebar milestone: nested Herdr-style sidebar row tokens now render in
 the live Spindle sidebar. Workspace and agent rows resolve state, names,
 branches, terminal titles, pane IDs, machine identity, and custom metadata;
