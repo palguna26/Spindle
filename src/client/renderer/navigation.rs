@@ -29,6 +29,7 @@ pub enum ClickTarget {
         pane_id: String,
     },
     Tab(String),
+    NewTab,
     Pane(String),
     SplitBorder(Vec<bool>),
 }
@@ -164,7 +165,11 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups(
     }
     if contains(main.tabs, x, y) {
         let workspace = active_workspace(snapshot)?;
-        let index = tab_index_at(main.tabs, x, workspace.tabs.len())?;
+        let tab_area = tab_strip_area(main.tabs);
+        if contains(new_tab_area(main.tabs), x, y) {
+            return Some(ClickTarget::NewTab);
+        }
+        let index = tab_index_at(tab_area, x, workspace.tabs.len())?;
         return workspace
             .tabs
             .get(index)
@@ -1035,8 +1040,9 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
         frame.render_widget(Paragraph::new("No tabs"), area);
         return;
     }
-    let widths = equal_widths(area.width, workspace.tabs.len());
-    let mut x = area.x;
+    let tab_area = tab_strip_area(area);
+    let widths = equal_widths(tab_area.width, workspace.tabs.len());
+    let mut x = tab_area.x;
     for (tab, width) in workspace.tabs.iter().zip(widths) {
         let rect = Rect::new(x, area.y, width, area.height);
         let selected = tab.tab_id == workspace.active_tab_id;
@@ -1059,6 +1065,30 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
         );
         x = x.saturating_add(width);
     }
+    if area.width >= 4 {
+        frame.render_widget(
+            Paragraph::new("+")
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::Gray)),
+            new_tab_area(area),
+        );
+    }
+}
+
+fn tab_strip_area(area: Rect) -> Rect {
+    Rect {
+        width: area.width.saturating_sub(3),
+        ..area
+    }
+}
+
+fn new_tab_area(area: Rect) -> Rect {
+    Rect::new(
+        area.right().saturating_sub(3),
+        area.y,
+        3.min(area.width),
+        area.height,
+    )
 }
 
 pub fn render_tab_drop_indicator(
@@ -1506,6 +1536,10 @@ mod tests {
             ),
             Some(ClickTarget::Tab("tab-3".into()))
         );
+        assert_eq!(
+            hit_test(&snapshot, area, click(main.tabs.right() - 2, main.tabs.y)),
+            Some(ClickTarget::NewTab)
+        );
         let [first, second] = split_areas(main.panes, SplitDirection::Horizontal, 0.5);
         let pane_sizes = pane_sizes(&snapshot, main.panes);
         assert_eq!(pane_sizes.len(), 2);
@@ -1698,6 +1732,7 @@ mod tests {
         assert!(content.contains("Current project · m"));
         assert!(content.contains("Docs"));
         assert!(content.contains("Activity"));
+        assert!(content.contains("+"));
     }
 
     #[test]

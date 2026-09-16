@@ -2113,6 +2113,20 @@ fn handle_mouse(
                 create_workspace_from_current_directory(client, terminal_size)?;
             }
         }
+        renderer::ClickTarget::NewTab => {
+            if crate::config::load().prompt_new_tab_name {
+                *rename_prompt = Some(RenamePrompt::new_tab(next_tab_name(snapshot)));
+            } else {
+                request_action(
+                    client,
+                    "mouse-new-tab",
+                    "create_tab",
+                    json!({ "name": "Activity" }),
+                    "create tab",
+                )?;
+                ensure_active_default_pane(client, terminal_size)?;
+            }
+        }
         renderer::ClickTarget::SidebarToggle => {
             mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
             mouse_state.selection = None;

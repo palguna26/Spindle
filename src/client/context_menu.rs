@@ -60,6 +60,7 @@ impl ContextMenu {
             | ClickTarget::MobileSwitcher
             | ClickTarget::GlobalMenu
             | ClickTarget::NewWorkspace
+            | ClickTarget::NewTab
             | ClickTarget::ToggleAgentSort
             | ClickTarget::SidebarScroll(_)
             | ClickTarget::Space(_)
