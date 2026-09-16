@@ -564,6 +564,7 @@ enum SidebarRow<'a> {
         name: &'a str,
         branch: Option<&'a str>,
         tokens: &'a std::collections::HashMap<String, String>,
+        agent_state: Option<crate::detect::AgentDisplayState>,
         is_linked_worktree: bool,
         indented: bool,
         last_child: bool,
@@ -637,6 +638,12 @@ fn sidebar_rows_with_collapsed<'a>(
                 name: &workspace.name,
                 branch: workspace.branch.as_deref(),
                 tokens: &workspace.tokens,
+                agent_state: workspace_agent_state(
+                    snapshot,
+                    &space.space_id,
+                    workspace,
+                    collapsed_groups,
+                ),
                 is_linked_worktree: workspace.is_linked_worktree,
                 indented,
                 last_child,
@@ -689,6 +696,48 @@ fn agent_state_priority(state: crate::detect::AgentDisplayState) -> u8 {
         crate::detect::AgentDisplayState::Idle => 1,
         crate::detect::AgentDisplayState::Unknown => 0,
     }
+}
+
+fn workspace_agent_state(
+    snapshot: &SessionSnapshot,
+    space_id: &str,
+    workspace: &WorkspaceView,
+    collapsed_groups: &HashSet<String>,
+) -> Option<crate::detect::AgentDisplayState> {
+    let space = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == space_id)?;
+    let workspace_ids: Vec<&str> = if let Some(group) = workspace
+        .worktree_group
+        .as_deref()
+        .filter(|group| collapsed_groups.contains(*group))
+    {
+        space
+            .workspaces
+            .iter()
+            .filter(|candidate| candidate.worktree_group.as_deref() == Some(group))
+            .map(|candidate| candidate.workspace_id.as_str())
+            .collect()
+    } else {
+        vec![workspace.workspace_id.as_str()]
+    };
+    snapshot
+        .panes
+        .iter()
+        .filter(|pane| {
+            pane.agent.is_some()
+                && space.workspaces.iter().any(|candidate| {
+                    workspace_ids.contains(&candidate.workspace_id.as_str())
+                        && candidate.tabs.iter().any(|tab| {
+                            tab.layout.as_ref().is_some_and(|layout| {
+                                layout.pane_ids().contains(&pane.pane_id.as_str())
+                            })
+                        })
+                })
+        })
+        .map(|pane| pane.agent_display_state())
+        .max_by_key(|state| agent_state_priority(*state))
 }
 
 #[cfg(test)]
@@ -803,6 +852,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                 name,
                 branch,
                 tokens,
+                agent_state,
                 is_linked_worktree,
                 indented,
                 last_child,
@@ -837,6 +887,17 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                 } else {
                     "  "
                 };
+                let (marker, marker_color) = match agent_state {
+                    Some(state) => (state.sidebar_marker().to_owned(), agent_state_color(*state)),
+                    None => (
+                        if active { "●" } else { "○" }.to_owned(),
+                        if active {
+                            Color::Green
+                        } else {
+                            Color::DarkGray
+                        },
+                    ),
+                };
                 let mut spans = vec![
                     Span::styled(
                         indent,
@@ -847,18 +908,12 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                         },
                     ),
                     Span::styled(
-                        if active { "● " } else { "○ " },
-                        Style::default()
-                            .fg(if active {
-                                Color::Green
-                            } else {
-                                Color::DarkGray
-                            })
-                            .bg(if previewed {
-                                Color::DarkGray
-                            } else {
-                                Color::Reset
-                            }),
+                        format!("{marker} "),
+                        Style::default().fg(marker_color).bg(if previewed {
+                            Color::DarkGray
+                        } else {
+                            Color::Reset
+                        }),
                     ),
                 ];
                 let display_name = if *is_linked_worktree {
@@ -1034,6 +1089,16 @@ fn visible_metadata_tokens(
     entries.sort_by(|left, right| left.0.cmp(right.0).then_with(|| left.1.cmp(right.1)));
     entries.sort_by_key(|(key, _)| *key != "summary");
     entries
+}
+
+fn agent_state_color(state: crate::detect::AgentDisplayState) -> Color {
+    match state {
+        crate::detect::AgentDisplayState::Unknown => Color::DarkGray,
+        crate::detect::AgentDisplayState::Idle => Color::Green,
+        crate::detect::AgentDisplayState::Working => Color::Yellow,
+        crate::detect::AgentDisplayState::Blocked => Color::Red,
+        crate::detect::AgentDisplayState::Done => Color::Cyan,
+    }
 }
 
 fn sidebar_title(area: Rect, agent_priority_sort: bool, navigating: bool) -> String {
@@ -1951,6 +2016,33 @@ mod tests {
         assert!(content.contains("priority"));
         assert!(content.contains("Agents"));
         assert!(content.find("OpenCode").unwrap() < content.find("Codex").unwrap());
+    }
+
+    #[test]
+    fn workspace_sidebar_uses_the_highest_priority_agent_state() {
+        let mut snapshot = sample_snapshot();
+        snapshot.panes = vec![
+            agent_pane("pane-1", "codex", "working"),
+            agent_pane("pane-2", "open_code", "blocked"),
+        ];
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let sidebar = main_areas(Rect::new(0, 0, 100, 30)).sidebar;
+        terminal
+            .draw(|frame| {
+                super::render_sidebar_with_scroll_and_sort(
+                    frame, &snapshot, sidebar, false, 0, false,
+                )
+            })
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("! Docs"), "workspace status: {content}");
     }
 
     #[test]
