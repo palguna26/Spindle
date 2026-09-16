@@ -290,7 +290,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
             frame.render_widget(Clear, popup);
             let border = Block::default()
                 .borders(Borders::ALL)
-                .title("Popup")
+                .title(popup_title(pane))
                 .border_style(Style::default().fg(theme.focused_border));
             frame.render_widget(
                 Paragraph::new(pane.screen.lines().map(Line::from).collect::<Vec<_>>())
@@ -1033,6 +1033,15 @@ fn pane_title_text(pane: &crate::server::session::PaneView) -> String {
     )
 }
 
+fn popup_title(pane: &crate::server::session::PaneView) -> String {
+    pane.label
+        .as_deref()
+        .filter(|label| !label.is_empty())
+        .or_else(|| (!pane.title.is_empty()).then_some(pane.title.as_str()))
+        .unwrap_or(pane.command.as_str())
+        .to_owned()
+}
+
 fn status_detail(status: &PaneStatus) -> String {
     match status {
         PaneStatus::Running => "running".into(),
@@ -1055,9 +1064,9 @@ mod tests {
     use super::super::input::Keymap;
     use super::super::selection::TextSelection;
     use super::{
-        active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, render,
-        render_action_error, render_help, render_palette, render_selection, render_startup_error,
-        render_with_connection, status_color,
+        active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, popup_title,
+        render, render_action_error, render_help, render_palette, render_selection,
+        render_startup_error, render_with_connection, status_color,
     };
     use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
@@ -1432,6 +1441,50 @@ mod tests {
         let wire = serde_json::to_value(&pane).unwrap();
         assert_eq!(wire["agent_state"], "idle");
         assert_eq!(wire["agent_done"], true);
+    }
+
+    #[test]
+    fn popup_title_prefers_declared_label_and_falls_back_to_command() {
+        let mut pane = PaneView {
+            pane_id: "pane-1".into(),
+            command: "powershell.exe".into(),
+            args: Vec::new(),
+            cwd: "C:/".into(),
+            cols: 80,
+            rows: 24,
+            label: Some("Plugin Popup".into()),
+            agent: None,
+            agent_state: None,
+            agent_done: false,
+            display_agent: None,
+            display_title: None,
+            state_labels: std::collections::BTreeMap::new(),
+            tokens: std::collections::HashMap::new(),
+            agent_session: None,
+            status: PaneStatus::Running,
+            scrollback_bytes: 0,
+            scrollback: Vec::new(),
+            screen: String::new(),
+            cursor: (0, 0),
+            cursor_visible: true,
+            title: "Manifest title".into(),
+            alternate_screen: false,
+            hyperlinks: Vec::new(),
+            mouse_reporting: false,
+            mouse_release: false,
+            mouse_motion: false,
+            mouse_any_motion: false,
+            sgr_mouse: false,
+            utf8_mouse: false,
+            application_cursor: false,
+            bracketed_paste: false,
+            right_click_passthrough: false,
+        };
+        assert_eq!(popup_title(&pane), "Plugin Popup");
+        pane.label = None;
+        assert_eq!(popup_title(&pane), "Manifest title");
+        pane.title.clear();
+        assert_eq!(popup_title(&pane), "powershell.exe");
     }
 
     #[test]
