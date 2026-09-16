@@ -52,6 +52,9 @@ accents follow the matching Herdr palette definitions.
 Theme configuration now accepts Herdr's `[theme.custom] accent` hex override
 on top of the selected built-in theme; broader token overrides remain.
 
+The accent parser also accepts Herdr's `rgb(...)`, named-color, and reset
+forms, with safe fallback for invalid values.
+
 An unset theme now defaults to Herdr's Catppuccin palette in both rendering
 and the settings overlay.
 
