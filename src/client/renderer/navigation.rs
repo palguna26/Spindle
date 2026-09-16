@@ -1292,9 +1292,14 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
     let Some(workspace) = active_workspace(snapshot) else {
         return;
     };
-    let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
+    let config = crate::config::load();
+    let palette = super::ThemePalette::from_config(&config);
+    let surface0 = super::ThemePalette::surface0(&config);
     if workspace.tabs.is_empty() {
-        frame.render_widget(Paragraph::new("No tabs"), area);
+        frame.render_widget(
+            Paragraph::new("No tabs").style(Style::default().bg(surface0)),
+            area,
+        );
         return;
     }
     let tab_area = tab_strip_area(area);
@@ -1313,10 +1318,11 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
                 .alignment(Alignment::Center)
                 .style(if selected {
                     Style::default()
-                        .fg(accent)
-                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                        .fg(Color::Black)
+                        .bg(palette.accent)
+                        .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Color::Gray)
+                    Style::default().fg(Color::Gray).bg(surface0)
                 }),
             rect,
         );
@@ -1326,7 +1332,7 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
         frame.render_widget(
             Paragraph::new("+")
                 .alignment(Alignment::Center)
-                .style(Style::default().fg(Color::Gray)),
+                .style(Style::default().fg(Color::Gray).bg(surface0)),
             new_tab_area(area),
         );
     }

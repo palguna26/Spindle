@@ -183,6 +183,14 @@ impl ThemePalette {
             .and_then(parse_theme_color)
             .unwrap_or(Color::DarkGray)
     }
+
+    pub(super) fn surface0(config: &crate::config::Config) -> Color {
+        config
+            .theme_custom_surface0
+            .as_deref()
+            .and_then(parse_theme_color)
+            .unwrap_or_else(|| Self::panel_bg(config))
+    }
 }
 
 fn parse_theme_color(value: &str) -> Option<Color> {
@@ -1441,6 +1449,15 @@ mod tests {
             super::ThemePalette::selection_bg(&config),
             Color::Rgb(7, 8, 9)
         );
+        assert_eq!(
+            super::ThemePalette::surface0(&config),
+            Color::Rgb(24, 24, 37)
+        );
+        let config = crate::config::Config {
+            theme_custom_surface0: Some("#070809".into()),
+            ..config
+        };
+        assert_eq!(super::ThemePalette::surface0(&config), Color::Rgb(7, 8, 9));
     }
 
     #[test]
