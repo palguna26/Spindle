@@ -176,6 +176,7 @@ fn event_loop(
     let mut mouse_capture = crate::config::load().mouse_capture;
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
+    let mut previous_pane_id: Option<String> = None;
     let mut action_error: Option<(String, Instant)> = None;
     let mut status_notice: Option<(String, Instant)> = None;
     let mut notifications = VecDeque::new();
@@ -273,6 +274,9 @@ fn event_loop(
                             now,
                         );
                     }
+                }
+                if snapshot.focused_pane_id != current.focused_pane_id {
+                    previous_pane_id = snapshot.focused_pane_id.clone();
                 }
                 snapshot = current;
                 true
@@ -822,7 +826,13 @@ fn event_loop(
                         continue;
                     }
                 }
-                match execute_action(command.action(), client, &snapshot, terminal_size) {
+                match execute_action(
+                    command.action(),
+                    client,
+                    &snapshot,
+                    previous_pane_id.as_deref(),
+                    terminal_size,
+                ) {
                     Ok(true) => break,
                     Ok(false) => {}
                     Err(error) => record_action_error(
@@ -1355,6 +1365,21 @@ fn event_loop(
                         "focus previous pane",
                     ),
                 );
+            }
+            Action::LastPane => {
+                if let Some(pane_id) = last_pane_target(&snapshot, previous_pane_id.as_deref()) {
+                    record_action_error(
+                        &mut action_error,
+                        "focus last pane",
+                        request_action(
+                            client,
+                            "focus-last-pane",
+                            "focus_pane",
+                            json!({ "pane_id": pane_id }),
+                            "focus last pane",
+                        ),
+                    );
+                }
             }
             Action::FocusLeft | Action::FocusRight | Action::FocusUp | Action::FocusDown => {
                 record_action_error(
@@ -3143,6 +3168,7 @@ fn execute_action(
     pressed: Action,
     client: &ControlClient,
     snapshot: &SessionSnapshot,
+    previous_pane_id: Option<&str>,
     terminal_size: (u16, u16),
 ) -> Result<bool, ClientError> {
     match pressed {
@@ -3325,6 +3351,18 @@ fn execute_action(
                 json!({}),
                 "focus previous pane",
             )?;
+            Ok(false)
+        }
+        Action::LastPane => {
+            if let Some(pane_id) = last_pane_target(snapshot, previous_pane_id) {
+                request_action(
+                    client,
+                    "palette-focus-last-pane",
+                    "focus_pane",
+                    json!({ "pane_id": pane_id }),
+                    "focus last pane",
+                )?;
+            }
             Ok(false)
         }
         Action::FocusLeft | Action::FocusRight | Action::FocusUp | Action::FocusDown => {
@@ -3584,7 +3622,8 @@ fn switch_navigator_target(
             return create_workspace_from_current_directory(client, terminal_size);
         }
         NavigatorTarget::NewTab => {
-            return execute_action(Action::NewTab, client, snapshot, terminal_size).map(|_| ());
+            return execute_action(Action::NewTab, client, snapshot, None, terminal_size)
+                .map(|_| ());
         }
         NavigatorTarget::Menu(_) => {
             return Err(ClientError::Server(
@@ -3931,6 +3970,16 @@ fn active_tab_position(snapshot: &SessionSnapshot) -> Option<(String, usize, usi
         .iter()
         .position(|tab| tab.tab_id == workspace.active_tab_id)?;
     Some((workspace.active_tab_id.clone(), index, workspace.tabs.len()))
+}
+
+fn last_pane_target(snapshot: &SessionSnapshot, previous_pane_id: Option<&str>) -> Option<String> {
+    let pane_id = previous_pane_id?;
+    if snapshot.focused_pane_id.as_deref() == Some(pane_id)
+        || !snapshot.panes.iter().any(|pane| pane.pane_id == pane_id)
+    {
+        return None;
+    }
+    Some(pane_id.to_owned())
 }
 
 fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
