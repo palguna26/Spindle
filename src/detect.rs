@@ -245,6 +245,15 @@ pub(crate) fn detect_state_with_osc(
             return state;
         }
     }
+    if agent == AgentKind::Amp {
+        if let Some(state) = manifest::detect_amp(manifest::DetectionInput {
+            screen,
+            osc_title: title,
+            _osc_progress: osc_progress,
+        }) {
+            return state;
+        }
+    }
     let title_lower = title.to_ascii_lowercase();
     let recent = recent_nonempty_lines(screen, 20).to_ascii_lowercase();
     let bottom_fourteen = recent_nonempty_lines(screen, 14).to_ascii_lowercase();

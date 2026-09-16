@@ -55,6 +55,10 @@ enum Matcher {
     CursorWriteFile,
     CursorApproval,
     CursorSpinner,
+    AmpApproval,
+    AmpTitleSpinner,
+    AmpStatusFooter,
+    AmpTitleIdle,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -374,6 +378,45 @@ const CURSOR_RULES: &[Rule] = &[
     },
 ];
 
+const AMP_RULES: &[Rule] = &[
+    Rule {
+        priority: 1100,
+        state: AgentState::Blocked,
+        region: Region::OscTitle,
+        matcher: Matcher::Contains(&["plugin confirmation needed"]),
+    },
+    Rule {
+        priority: 1050,
+        state: AgentState::Working,
+        region: Region::OscTitle,
+        matcher: Matcher::AmpTitleSpinner,
+    },
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::AmpApproval,
+    },
+    Rule {
+        priority: 200,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(5),
+        matcher: Matcher::AmpStatusFooter,
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::Contains(&["esc to cancel"]),
+    },
+    Rule {
+        priority: 50,
+        state: AgentState::Idle,
+        region: Region::OscTitle,
+        matcher: Matcher::AmpTitleIdle,
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -412,6 +455,10 @@ pub(crate) fn detect_devin(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_cursor(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CURSOR_RULES)
+}
+
+pub(crate) fn detect_amp(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, AMP_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -587,6 +634,35 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                 })
         }
         Matcher::CursorSpinner => text.lines().any(cursor_spinner_line),
+        Matcher::AmpApproval => {
+            text.contains("waiting for approval")
+                || text.contains("invoke tool")
+                || text.contains("run this command?")
+                || text.contains("allow editing file:")
+                || text.contains("allow creating file:")
+                || text.contains("confirm tool call")
+                || (text.contains("approve")
+                    && [
+                        "allow all for this session",
+                        "allow all for every session",
+                        "allow file for every session",
+                        "deny with feedback",
+                    ]
+                    .iter()
+                    .any(|signal| text.contains(signal)))
+        }
+        Matcher::AmpTitleSpinner => {
+            Regex::new(r"^[\u{2800}-\u{28ff}] ").is_ok_and(|regex| regex.is_match(text))
+        }
+        Matcher::AmpStatusFooter => {
+            Regex::new(r"(?i)^\s*╰\s+\S+\s+(thinking|streaming|running tools|waiting)\s+─")
+                .is_ok_and(|regex| text.lines().any(|line| regex.is_match(line)))
+        }
+        Matcher::AmpTitleIdle => {
+            text.contains(" - amp - ")
+                && !Regex::new(r"^[\u{2800}-\u{28ff}] ").is_ok_and(|regex| regex.is_match(text))
+                && !text.contains("plugin confirmation needed")
+        }
     }
 }
 
@@ -660,8 +736,8 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_cline, detect_codex, detect_copilot, detect_cursor, detect_devin, detect_droid,
-        detect_gemini, detect_opencode, detect_pi, detect_qoder, DetectionInput,
+        detect_amp, detect_cline, detect_codex, detect_copilot, detect_cursor, detect_devin,
+        detect_droid, detect_gemini, detect_opencode, detect_pi, detect_qoder, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -741,6 +817,14 @@ mod tests {
         detect_cursor(DetectionInput {
             screen,
             osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_amp_state(screen: &str, title: &str) -> Option<AgentState> {
+        detect_amp(DetectionInput {
+            screen,
+            osc_title: title,
             _osc_progress: "",
         })
     }
@@ -926,5 +1010,37 @@ mod tests {
         );
         assert_eq!(detect_cursor_state("⬡ Thinking"), Some(AgentState::Working));
         assert_eq!(detect_cursor_state("ordinary Cursor output"), None);
+    }
+
+    #[test]
+    fn amp_manifest_matches_herdr_rules() {
+        assert_eq!(
+            detect_amp_state("Waiting for approval", ""),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_amp_state("Approve this action\nAllow all for this session", ""),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_amp_state("Esc to cancel", ""),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_amp_state("╰ main thinking ─", ""),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_amp_state("", "⠋ amp - project"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_amp_state("", "project - amp - workspace"),
+            Some(AgentState::Idle)
+        );
+        assert_eq!(
+            detect_amp_state("", "Plugin confirmation needed - amp - workspace"),
+            Some(AgentState::Blocked)
+        );
     }
 }
