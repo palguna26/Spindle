@@ -224,6 +224,28 @@ impl ThemePalette {
         }
     }
 
+    pub(super) fn agent_status_color(
+        config: &crate::config::Config,
+        state: crate::detect::AgentDisplayState,
+    ) -> Color {
+        match state {
+            crate::detect::AgentDisplayState::Unknown => Self::overlay0(config),
+            crate::detect::AgentDisplayState::Idle => Color::Green,
+            crate::detect::AgentDisplayState::Working => {
+                Self::pane_status_color(config, &PaneStatus::Running)
+            }
+            crate::detect::AgentDisplayState::Blocked => Self::pane_status_color(
+                config,
+                &PaneStatus::Halted {
+                    reason: String::new(),
+                },
+            ),
+            crate::detect::AgentDisplayState::Done => {
+                Self::pane_status_color(config, &PaneStatus::Completed { exit_code: 0 })
+            }
+        }
+    }
+
     pub(super) fn panel_bg(config: &crate::config::Config) -> Color {
         if let Some(value) = config.theme_custom_panel_bg.as_deref() {
             if let Some(color) = parse_theme_color(value) {

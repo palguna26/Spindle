@@ -696,6 +696,7 @@ fn render_space_token_row(
     text: Color,
     subtext0: Color,
     overlay0: Color,
+    config: &crate::config::Config,
 ) -> Line<'static> {
     let state_icon = state
         .map(|state| state.sidebar_marker().to_owned())
@@ -709,7 +710,9 @@ fn render_space_token_row(
         |token| match token.strip_prefix('$').unwrap_or(token) {
             "state_icon" => Some((
                 state_icon.clone(),
-                Style::default().fg(state.map_or(Color::DarkGray, agent_state_color)),
+                Style::default().fg(state.map_or(overlay0, |state| {
+                    super::ThemePalette::agent_status_color(config, state)
+                })),
             )),
             "state_text" => Some((state_text.clone(), Style::default().fg(subtext0))),
             "workspace" => Some((name.to_owned(), workspace_style)),
@@ -738,6 +741,7 @@ fn render_agent_token_row(
     text: Color,
     subtext0: Color,
     overlay0: Color,
+    config: &crate::config::Config,
 ) -> Line<'static> {
     let state = pane.agent_display_state();
     let state_icon = state.sidebar_marker().to_owned();
@@ -763,13 +767,9 @@ fn render_agent_token_row(
         |token| match token.strip_prefix('$').unwrap_or(token) {
             "state_icon" => Some((
                 state_icon.clone(),
-                focused_style(Style::default().fg(match state {
-                    crate::detect::AgentDisplayState::Unknown => Color::DarkGray,
-                    crate::detect::AgentDisplayState::Idle => Color::Green,
-                    crate::detect::AgentDisplayState::Working => Color::Yellow,
-                    crate::detect::AgentDisplayState::Blocked => Color::Red,
-                    crate::detect::AgentDisplayState::Done => Color::Cyan,
-                })),
+                focused_style(
+                    Style::default().fg(super::ThemePalette::agent_status_color(config, state)),
+                ),
             )),
             "state_text" => Some((state_text.clone(), focused_style(Style::default().fg(text)))),
             "machine" => Some((
@@ -1180,6 +1180,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                         text,
                         subtext0,
                         overlay0,
+                        &config,
                     );
                     let line = append_summary(line, tokens, overlay0);
                     if previewed {
@@ -1215,6 +1216,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                             text,
                             subtext0,
                             overlay0,
+                            &config,
                         ),
                         &pane.tokens,
                         overlay0,
@@ -1310,16 +1312,6 @@ fn append_summary(
         }
     }
     line
-}
-
-fn agent_state_color(state: crate::detect::AgentDisplayState) -> Color {
-    match state {
-        crate::detect::AgentDisplayState::Unknown => Color::DarkGray,
-        crate::detect::AgentDisplayState::Idle => Color::Green,
-        crate::detect::AgentDisplayState::Working => Color::Yellow,
-        crate::detect::AgentDisplayState::Blocked => Color::Red,
-        crate::detect::AgentDisplayState::Done => Color::Cyan,
-    }
 }
 
 fn sidebar_title(area: Rect, agent_priority_sort: bool, navigating: bool) -> String {
@@ -2522,6 +2514,7 @@ mod tests {
             Color::White,
             Color::Gray,
             Color::DarkGray,
+            &crate::config::Config::default(),
         );
         let content = line
             .spans
