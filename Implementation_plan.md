@@ -422,6 +422,8 @@ approved design changes it.
   path, and protocol so users can identify which build they launched.
   Sidebar width settings now accept Herdr-style `[ui] sidebar_width`,
   `sidebar_min_width`, and `sidebar_max_width` values with safe bound fallback.
+  `[ui] sidebar_start_collapsed` now matches Herdr and is applied only when a
+  saved client preference has not already selected the sidebar state.
   Narrow terminals now use a Herdr-style single-column mobile header; its
   `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;

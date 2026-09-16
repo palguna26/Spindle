@@ -57,6 +57,8 @@ does not yet match Herdr.
 
 Agent navigation parity note: Spindle now accepts Herdr-compatible
 `previous_agent` and `next_agent` bindings and wraps across detected panes.
+The Herdr-compatible `[ui] sidebar_start_collapsed` setting is also honored
+on startup, while saved client preferences still take precedence.
 
 | User behavior | Spindle status | Herdr reference | Evidence / next verification |
 | --- | --- | --- | --- |
