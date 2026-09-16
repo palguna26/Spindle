@@ -1589,8 +1589,8 @@ fn handle_mouse(
                 renderer::workspace_drop_target(
                     snapshot,
                     area,
-                    mouse_state.sidebar_collapsed,
                     mouse_state.sidebar_scroll,
+                    mouse_state.agent_priority_sort,
                     &drag.workspace_id,
                     mouse.column,
                     mouse.row,

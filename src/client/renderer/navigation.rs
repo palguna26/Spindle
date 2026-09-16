@@ -170,21 +170,18 @@ pub fn hit_test_with_sidebar_scroll_and_sort(
 pub fn workspace_drop_target(
     snapshot: &SessionSnapshot,
     area: Rect,
-    collapsed: bool,
     sidebar_scroll: usize,
+    agent_priority_sort: bool,
     source_workspace_id: &str,
     x: u16,
     y: u16,
 ) -> Option<(String, String, usize)> {
-    if collapsed {
-        return None;
-    }
-    let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
+    let sidebar = super::layout::main_areas_with_sidebar(area, false).sidebar;
     let body = sidebar_body(sidebar);
     if !contains(body, x, y) {
         return None;
     }
-    let rows = sidebar_rows(snapshot, false);
+    let rows = sidebar_rows(snapshot, agent_priority_sort);
     let max_scroll = rows.len().saturating_sub(usize::from(body.height));
     let row = usize::from(y.saturating_sub(body.y)).saturating_add(sidebar_scroll.min(max_scroll));
     let SidebarRow::Workspace {
@@ -936,11 +933,11 @@ mod tests {
         let snapshot = sample_snapshot();
         let area = Rect::new(0, 0, 100, 30);
         assert_eq!(
-            workspace_drop_target(&snapshot, area, false, 0, "workspace-2", 4, 2),
+            workspace_drop_target(&snapshot, area, 0, false, "workspace-2", 4, 2),
             Some(("space-1".into(), "workspace-1".into(), 0))
         );
         assert_eq!(
-            workspace_drop_target(&snapshot, area, false, 0, "workspace-1", 4, 3),
+            workspace_drop_target(&snapshot, area, 0, false, "workspace-1", 4, 3),
             Some(("space-1".into(), "workspace-2".into(), 2))
         );
     }
