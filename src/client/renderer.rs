@@ -1,4 +1,5 @@
 mod layout;
+mod mobile;
 mod navigation;
 mod navigator;
 
@@ -183,6 +184,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
 ) {
     let theme = ThemePalette::from_name(crate::config::load().theme_name.as_deref());
     let main = layout::main_areas_with_sidebar(frame.area(), sidebar_collapsed);
+    mobile::render_header(frame, main.mobile_header, snapshot);
     navigation::render_sidebar_with_scroll_sort_and_navigation_and_groups(
         frame,
         snapshot,
@@ -975,7 +977,8 @@ mod tests {
         let content: String = buffer.content().iter().map(|cell| cell.symbol()).collect();
         assert!(content.contains("Default"));
         assert!(content.contains("Current project"));
-        assert!(content.contains("Spaces"));
+        assert!(content.contains("switch"));
+        assert!(content.contains("Ctrl-b g"));
         assert!(content.contains("Main"));
     }
 

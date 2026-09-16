@@ -577,6 +577,20 @@ fn event_loop(
                     global_menu = Some(GlobalMenu::default());
                     continue;
                 }
+                if mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                    && matches!(
+                        renderer::hit_test_with_sidebar(
+                            &snapshot,
+                            Rect::new(0, 0, terminal_size.0, terminal_size.1),
+                            mouse,
+                            mouse_state.sidebar_collapsed,
+                        ),
+                        Some(renderer::ClickTarget::MobileSwitcher)
+                    )
+                {
+                    navigator = Some(Navigator::new(&snapshot));
+                    continue;
+                }
                 if let Some(mode) = mouse_state.copy_mode.take() {
                     mouse_state
                         .scroll_offsets
@@ -1883,6 +1897,7 @@ fn handle_mouse(
         return Ok(());
     };
     match target {
+        renderer::ClickTarget::MobileSwitcher => {}
         renderer::ClickTarget::GlobalMenu => {}
         renderer::ClickTarget::NewWorkspace => {
             create_workspace_from_current_directory(client, terminal_size)?;

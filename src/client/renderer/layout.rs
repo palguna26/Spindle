@@ -8,6 +8,7 @@ pub(super) struct MainAreas {
     pub(super) sidebar: Rect,
     pub(super) tabs: Rect,
     pub(super) panes: Rect,
+    pub(super) mobile_header: Rect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +47,20 @@ pub(super) fn main_areas_with_sidebar(area: Rect, sidebar_collapsed: bool) -> Ma
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(area)[0];
     let config = crate::config::load();
+    if area.width <= config.mobile_width_threshold {
+        let header_height = body.height.min(2);
+        return MainAreas {
+            sidebar: Rect::default(),
+            tabs: Rect::default(),
+            panes: Rect::new(
+                0,
+                body.y.saturating_add(header_height),
+                area.width,
+                body.height.saturating_sub(header_height),
+            ),
+            mobile_header: Rect::new(0, body.y, area.width, header_height),
+        };
+    }
     let (sidebar_min_width, sidebar_max_width) = crate::config::sidebar_bounds(&config);
     let sidebar_width = if sidebar_collapsed {
         4.min(area.width.saturating_sub(1))
@@ -69,7 +84,18 @@ pub(super) fn main_areas_with_sidebar(area: Rect, sidebar_collapsed: bool) -> Ma
         sidebar: columns[0],
         tabs: rows[0],
         panes: rows[1],
+        mobile_header: Rect::default(),
     }
+}
+
+pub(super) fn mobile_switch_rect(header: Rect) -> Rect {
+    let width = 10.min(header.width);
+    Rect::new(
+        header.right().saturating_sub(width),
+        header.y,
+        width,
+        header.height,
+    )
 }
 
 pub(crate) fn pane_content_area(area: Rect) -> Rect {

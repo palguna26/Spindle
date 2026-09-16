@@ -11,6 +11,7 @@ use super::layout::{pane_rectangles, split_handles};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickTarget {
+    MobileSwitcher,
     GlobalMenu,
     NewWorkspace,
     SidebarToggle,
@@ -99,6 +100,9 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups(
     let x = mouse.column;
     let y = mouse.row;
     let main = super::layout::main_areas_with_sidebar(area, sidebar_collapsed);
+    if contains(super::layout::mobile_switch_rect(main.mobile_header), x, y) {
+        return Some(ClickTarget::MobileSwitcher);
+    }
     if contains(main.sidebar, x, y) {
         if y == main.sidebar.bottom().saturating_sub(1) {
             if !sidebar_collapsed && x > main.sidebar.x && x < main.sidebar.x.saturating_add(6) {
@@ -1173,6 +1177,20 @@ mod tests {
     fn expanded_sidebar_matches_herdr_default_width_at_normal_terminal_size() {
         let main = main_areas_with_sidebar(Rect::new(0, 0, 120, 30), false);
         assert_eq!(main.sidebar.width, 26);
+    }
+
+    #[test]
+    fn narrow_terminal_exposes_the_mobile_switcher_hit_target() {
+        let snapshot = sample_snapshot();
+        let area = Rect::new(0, 0, 40, 10);
+        let main = main_areas_with_sidebar(area, false);
+        assert!(main.sidebar.is_empty());
+        assert!(main.tabs.is_empty());
+        assert_eq!(main.panes.y, 2);
+        assert_eq!(
+            hit_test(&snapshot, area, click(area.right() - 2, area.y)),
+            Some(ClickTarget::MobileSwitcher)
+        );
     }
 
     #[test]

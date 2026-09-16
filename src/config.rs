@@ -29,6 +29,7 @@ struct UiConfig {
     sidebar_width: u16,
     sidebar_min_width: u16,
     sidebar_max_width: u16,
+    mobile_width_threshold: u16,
 }
 
 impl Default for UiConfig {
@@ -37,6 +38,7 @@ impl Default for UiConfig {
             sidebar_width: 26,
             sidebar_min_width: 18,
             sidebar_max_width: 36,
+            mobile_width_threshold: 64,
         }
     }
 }
@@ -143,6 +145,7 @@ pub struct Config {
     pub(crate) sidebar_width: u16,
     pub(crate) sidebar_min_width: u16,
     pub(crate) sidebar_max_width: u16,
+    pub(crate) mobile_width_threshold: u16,
 }
 
 impl Default for Config {
@@ -159,6 +162,7 @@ impl Default for Config {
             sidebar_width: 26,
             sidebar_min_width: 18,
             sidebar_max_width: 36,
+            mobile_width_threshold: 64,
         }
     }
 }
@@ -217,6 +221,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         sidebar_width: file.ui.sidebar_width,
         sidebar_min_width: file.ui.sidebar_min_width,
         sidebar_max_width: file.ui.sidebar_max_width,
+        mobile_width_threshold: file.ui.mobile_width_threshold,
     }
 }
 
@@ -265,6 +270,7 @@ sound = true
 sidebar_width = 26
 sidebar_min_width = 18
 sidebar_max_width = 36
+mobile_width_threshold = 64
 "#
 }
 
