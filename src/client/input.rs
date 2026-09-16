@@ -126,28 +126,38 @@ impl Keymap {
             let parsed: Vec<_> = values
                 .iter()
                 .filter_map(|value| parse_binding(value))
+                .map(|(code, modifiers, prefix)| Binding {
+                    action,
+                    code,
+                    modifiers,
+                    prefix,
+                })
                 .collect();
             if !parsed.is_empty() {
                 keymap.bindings.retain(|binding| binding.action != action);
-                keymap
-                    .bindings
-                    .extend(parsed.into_iter().map(|(code, modifiers, prefix)| Binding {
-                        action,
-                        code,
-                        modifiers,
-                        prefix,
-                    }));
+                for binding in parsed {
+                    let combo = normalize_key_combo((binding.code, binding.modifiers));
+                    keymap.bindings.retain(|existing| {
+                        normalize_key_combo((existing.code, existing.modifiers)) != combo
+                    });
+                    keymap.bindings.push(binding);
+                }
             }
         }
         for (index, command) in config.custom_commands.iter().enumerate() {
             for value in &command.bindings {
                 if let Some((code, modifiers, prefix)) = parse_binding(value) {
-                    keymap.bindings.push(Binding {
+                    let binding = Binding {
                         action: Action::CustomCommand(index),
                         code,
                         modifiers,
                         prefix,
+                    };
+                    let combo = normalize_key_combo((code, modifiers));
+                    keymap.bindings.retain(|existing| {
+                        normalize_key_combo((existing.code, existing.modifiers)) != combo
                     });
+                    keymap.bindings.push(binding);
                 }
             }
         }
@@ -696,6 +706,19 @@ mod tests {
         );
         assert_eq!(
             keymap.action(true, KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE)),
+            Action::NewTab
+        );
+    }
+
+    #[test]
+    fn configured_binding_wins_when_it_reuses_a_default_chord() {
+        let keymap = Keymap::from_config(&Config {
+            bindings: BTreeMap::from([(String::from("new_tab"), vec![String::from("prefix+n")])]),
+            ..Config::default()
+        });
+
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE)),
             Action::NewTab
         );
     }
