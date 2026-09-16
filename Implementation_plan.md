@@ -531,8 +531,10 @@ checks the session-report entry.
 Display metadata now has a first slice: `report_metadata` can set or clear
 source-sequenced display-agent labels, custom display titles, and custom state
 labels. The client renders these labels consistently in pane and navigator
-views while preserving terminal titles and semantic lifecycle state. Herdr's
-metadata tokens and TTL expiry remain deliberately pending.
+views while preserving terminal titles and semantic lifecycle state. Metadata
+tokens now support per-source sequence ordering, individual clears, bounded
+key storage, and TTL expiry in the pane poll loop. Richer source-scoped
+metadata application rules remain pending.
 
 ## Verification gates
 

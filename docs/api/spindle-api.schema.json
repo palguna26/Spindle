@@ -76,6 +76,8 @@
           "clear_title": { "type": "boolean", "default": false },
           "state_labels": { "type": "object", "additionalProperties": { "type": "string" } },
           "clear_state_labels": { "type": "boolean", "default": false },
+          "tokens": { "type": "object", "additionalProperties": { "type": ["string", "null"] } },
+          "ttl_ms": { "type": ["integer", "null"], "minimum": 1, "maximum": 86400000 },
           "seq": { "type": ["integer", "null"], "minimum": 0 }
         },
         "anyOf": [
@@ -84,7 +86,8 @@
           { "required": ["display_title"] },
           { "required": ["clear_title"] },
           { "required": ["state_labels"] },
-          { "required": ["clear_state_labels"] }
+          { "required": ["clear_state_labels"] },
+          { "required": ["tokens"] }
         ]
       }
     },
