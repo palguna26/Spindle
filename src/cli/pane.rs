@@ -1061,15 +1061,7 @@ fn pane_read(project: &Project, id: &str, options: ReadOptions) -> io::Result<()
                 format!("pane '{id}' does not exist"),
             )
         })?;
-    let output = match options.source {
-        ReadSource::Visible | ReadSource::Detection => pane.screen.clone(),
-        ReadSource::Recent | ReadSource::RecentUnwrapped if pane.scrollback.is_empty() => {
-            pane.screen.clone()
-        }
-        ReadSource::Recent | ReadSource::RecentUnwrapped => {
-            String::from_utf8_lossy(&pane.scrollback).into_owned()
-        }
-    };
+    let output = pane_output(pane, options.source);
     let output = match options.format {
         ReadFormat::Text => strip_ansi(&output),
         ReadFormat::Ansi => output,
@@ -1097,6 +1089,8 @@ struct WaitOptions {
     matcher: WaitMatcher,
     timeout: Duration,
     lines: Option<usize>,
+    source: ReadSource,
+    format: ReadFormat,
 }
 
 enum WaitMatcher {
@@ -1136,13 +1130,18 @@ fn pane_wait_output(project: &Project, id: &str, args: &[String]) -> io::Result<
                     format!("pane '{id}' does not exist"),
                 )
             })?;
-        if options.matcher.matches(&pane.screen) {
+        let output = pane_output(pane, options.source);
+        let searchable = match options.format {
+            ReadFormat::Text => strip_ansi(&output),
+            ReadFormat::Ansi => output.clone(),
+        };
+        if options.matcher.matches(&searchable) {
             if let Some(lines) = options.lines {
-                let content: Vec<_> = pane.screen.lines().collect();
+                let content: Vec<_> = searchable.lines().collect();
                 let start = content.len().saturating_sub(lines);
                 println!("{}", content[start..].join("\n"));
             } else {
-                print!("{}", pane.screen);
+                print!("{searchable}");
             }
             return Ok(());
         }
@@ -1204,6 +1203,8 @@ fn parse_wait_options(args: &[String]) -> Result<WaitOptions, String> {
     let mut matcher = None;
     let mut timeout = Duration::from_secs(10);
     let mut lines = None;
+    let mut source = ReadSource::Recent;
+    let mut format = ReadFormat::Text;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -1231,6 +1232,22 @@ fn parse_wait_options(args: &[String]) -> Result<WaitOptions, String> {
                 );
                 index += 2;
             }
+            "--source" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --source".into());
+                };
+                source = match value.as_str() {
+                    "visible" => ReadSource::Visible,
+                    "recent" => ReadSource::Recent,
+                    "recent-unwrapped" => ReadSource::RecentUnwrapped,
+                    _ => return Err(format!("invalid read source: {value}")),
+                };
+                index += 2;
+            }
+            "--raw" => {
+                format = ReadFormat::Ansi;
+                index += 1;
+            }
             "--timeout" => {
                 let Some(value) = args.get(index + 1) else {
                     return Err("missing value for --timeout".into());
@@ -1256,13 +1273,27 @@ fn parse_wait_options(args: &[String]) -> Result<WaitOptions, String> {
         }
     }
     let Some(matcher) = matcher else {
-        return Err("usage: spindle pane wait-output <id> (--match TEXT | --regex PATTERN) [--timeout MS] [--lines N]".into());
+        return Err("usage: spindle pane wait-output <id> (--match TEXT | --regex PATTERN) [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--raw]".into());
     };
     Ok(WaitOptions {
         matcher,
         timeout,
         lines,
+        source,
+        format,
     })
+}
+
+fn pane_output(pane: &crate::server::session::PaneView, source: ReadSource) -> String {
+    match source {
+        ReadSource::Visible | ReadSource::Detection => pane.screen.clone(),
+        ReadSource::Recent | ReadSource::RecentUnwrapped if pane.scrollback.is_empty() => {
+            pane.screen.clone()
+        }
+        ReadSource::Recent | ReadSource::RecentUnwrapped => {
+            String::from_utf8_lossy(&pane.scrollback).into_owned()
+        }
+    }
 }
 
 fn pane_rename(project: &Project, id: &str, label: &str) -> io::Result<()> {
@@ -1621,7 +1652,7 @@ fn print_help() {
     println!(
         "  move <id> --new-tab [--label TEXT] | --tab ID [--pane ID] [--split right|down]  move a pane"
     );
-    println!("  wait-output <id> (--match TEXT | --regex PATTERN) [--timeout MS] [--lines N]  wait for output");
+    println!("  wait-output <id> (--match TEXT | --regex PATTERN) [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--raw]  wait for output");
     println!("  split <direction> [command args...] | [--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus|--no-focus]  split with a new pane");
     println!("  resize <id> <delta> | --direction left|right|up|down [--amount FLOAT] [--pane ID|--current]  resize the pane layout");
 }
@@ -1629,13 +1660,12 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-            all_pane_ids, direction_name, format_pane_list, is_split_option_form, layout_for_pane,
-            parse_current_pane,
-        parse_focus_options, parse_layout_direction, parse_list_workspace, parse_move_options,
-        parse_neighbor_options, parse_optional_pane_selector, parse_pane_input_options,
-        parse_read_options, parse_read_target, parse_swap_options, parse_zoom_options,
-        read_line_limit, rename_label, split_direction, strip_ansi, MoveOptions, ReadFormat,
-        ReadSource, SwapOptions, ZoomMode,
+        all_pane_ids, direction_name, format_pane_list, is_split_option_form, layout_for_pane,
+        parse_current_pane, parse_focus_options, parse_layout_direction, parse_list_workspace,
+        parse_move_options, parse_neighbor_options, parse_optional_pane_selector,
+        parse_pane_input_options, parse_read_options, parse_read_target, parse_swap_options,
+        parse_zoom_options, read_line_limit, rename_label, split_direction, strip_ansi,
+        MoveOptions, ReadFormat, ReadSource, SwapOptions, ZoomMode,
     };
     use crate::server::session::Session;
     use std::time::Duration;
@@ -1699,10 +1729,18 @@ mod tests {
 
     #[test]
     fn wait_output_supports_herdr_regex_matching_and_exclusivity() {
-        let options =
-            super::parse_wait_options(&["--regex".into(), "ready-[0-9]+".into()]).unwrap();
+        let options = super::parse_wait_options(&[
+            "--regex".into(),
+            "ready-[0-9]+".into(),
+            "--source".into(),
+            "recent-unwrapped".into(),
+            "--raw".into(),
+        ])
+        .unwrap();
         assert!(options.matcher.matches("ready-42"));
         assert!(!options.matcher.matches("ready-no-number"));
+        assert_eq!(options.source, ReadSource::RecentUnwrapped);
+        assert_eq!(options.format, ReadFormat::Ansi);
         assert!(super::parse_wait_options(&[
             "--match".into(),
             "ready".into(),
