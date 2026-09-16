@@ -353,3 +353,4 @@ supported.
 
 Narrow tab strips now keep a minimum usable tab width and keep the active tab
 visible; render, click, and drag geometry share the same visible-tab window.
+Edge ellipses indicate when tabs are hidden outside that window.

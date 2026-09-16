@@ -83,6 +83,8 @@ Narrow tab strips now keep a minimum tab width and center the active tab in the
 visible window, using one shared geometry calculation for rendering, clicks,
 and tab drag targets.
 
+Hidden tabs now show Herdr-style edge ellipses in narrow strips.
+
 An unset theme now defaults to Herdr's Catppuccin palette in both rendering
 and the settings overlay.
 
