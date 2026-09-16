@@ -390,8 +390,12 @@ Terminal verification is still pending.
   auto-loaded plugin under the Herdr-compatible OpenCode plugin directory.
   The plugin reports session, tool, permission, question, idle, and error
   states through Spindle's pane report CLI and protects the root session from
-  child-session updates. The optional OpenCode TUI session plugin remains
-  pending.
+  child-session updates.
+
+- [x] Add the OpenCode TUI session integration. Install/uninstall now manages
+  the session-selection plugin and registers it in `tui.jsonc` while preserving
+  JSONC comments and unrelated plugins. The plugin follows Herdr's selected
+  root-session routing and retry behavior.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
