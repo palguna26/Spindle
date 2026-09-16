@@ -425,6 +425,11 @@ Terminal verification is still pending.
 - [x] Add the Devin integration. Install/uninstall now manages the Windows
   PowerShell hook and Herdr-compatible lifecycle entries in Devin's
   `config.json`, while preserving unrelated nested hooks.
+
+- [x] Add the Droid integration. Install/uninstall now manages the Windows
+  PowerShell hook under `.factory/hooks`, registers Droid lifecycle hooks in
+  `settings.json`, and cleans legacy `hooks.json` entries without removing
+  unrelated hooks.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
