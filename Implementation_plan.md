@@ -466,7 +466,9 @@ approved design changes it.
   outer frames and shared split edges.
   `[ui] pane_scrollbars` now reserves a stable one-column gutter, keeps PTY
   width in sync, draws a scrollback indicator when history overflows, and lets
-  the user click or drag the gutter to change the scrollback offset.
+  the user click the track or drag the thumb with Herdr's centered-click and
+  grab-offset behavior. Scrollbar geometry is isolated in
+  `src/client/scrollbar.rs` and shared by rendering and mouse handling.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
