@@ -40,6 +40,9 @@ Move source IDs are resolved across all Spindle spaces, workspaces, and tabs.
 preserves the current workspace/tab by default.
 `spindle tab list --workspace ID` lists tabs in an inactive workspace without
 changing focus.
+`spindle tab move ID INSERT_INDEX` reorders tabs within their workspace without
+changing the focused tab, and emits the Herdr-compatible `tab.moved` plugin
+lifecycle event.
 Plugin lifecycle parity now also covers the Herdr `tab.closed` and
 `workspace.focused`, `workspace.created`, `workspace.renamed`, and
 `workspace.closed`, plus `pane.moved`, `layout.updated`, `pane.agent_detected`,

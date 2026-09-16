@@ -11,6 +11,19 @@ pub(super) fn run_tab_command(project: &Project, args: &[String]) -> io::Result<
         [command, id] if command == "focus" => {
             send_mutation(project, "switch_tab", serde_json::json!({ "id": id }))
         }
+        [command, id, index] if command == "move" => {
+            let insert_index = index.parse::<usize>().map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "tab move index must be a non-negative integer",
+                )
+            })?;
+            send_mutation(
+                project,
+                "move_tab",
+                serde_json::json!({ "id": id, "insert_index": insert_index }),
+            )
+        }
         [command, id, label @ ..] if command == "rename" && !label.is_empty() => send_mutation(
             project,
             "rename_tab",
@@ -25,7 +38,7 @@ pub(super) fn run_tab_command(project: &Project, args: &[String]) -> io::Result<
         }
         _ => {
             print_help();
-            Err(io::Error::new(io::ErrorKind::InvalidInput, "usage: spindle tab <list|create [label]|get <id>|focus <id>|rename <id> <label>|close <id>>"))
+            Err(io::Error::new(io::ErrorKind::InvalidInput, "usage: spindle tab <list|create [label]|get <id>|focus <id>|move <id> <insert-index>|rename <id> <label>|close <id>>"))
         }
     }
 }
@@ -317,11 +330,12 @@ fn send_mutation(project: &Project, operation: &str, payload: serde_json::Value)
 }
 
 fn print_help() {
-    println!("Usage: spindle tab <list [--workspace ID]|create [label] [--label TEXT] [--workspace ID] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]|get <id>|focus <id>|rename <id> <label>|close <id>>");
+    println!("Usage: spindle tab <list [--workspace ID]|create [label] [--label TEXT] [--workspace ID] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]|get <id>|focus <id>|move <id> <insert-index>|rename <id> <label>|close <id>>");
     println!("  list             list tabs in the active or selected workspace");
     println!("  create [label]   create a tab and start its PowerShell pane (--label, --workspace, --cwd, --env, --focus|--no-focus)");
     println!("  get <id>         show a tab");
     println!("  focus <id>       focus a tab in the active workspace");
+    println!("  move <id> <index> reorder a tab within its workspace");
     println!("  rename <id> ...  rename a tab");
     println!("  close <id>       close a tab");
 }
@@ -339,6 +353,13 @@ mod tests {
         let active = tab["tab_id"].as_str().unwrap();
         let output = format_tab_list("workspace-1", tabs, active);
         assert!(output.contains("* tab-workspace-1-1\tLogs\t[workspace-1]"));
+    }
+
+    #[test]
+    fn tab_move_usage_accepts_an_insert_index() {
+        let index = "3".parse::<usize>().unwrap();
+        assert_eq!(index, 3);
+        assert!("not-a-number".parse::<usize>().is_err());
     }
 
     #[test]

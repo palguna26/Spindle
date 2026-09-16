@@ -257,7 +257,7 @@ fn print_help() {
     println!("  worktree list/create/open/remove  manage Git worktree workspaces");
     println!("  tab list        list tabs in the active workspace");
     println!("  tab create      create a tab in the active workspace");
-    println!("  tab get/focus/rename/close  manage tabs by ID");
+    println!("  tab get/focus/move/rename/close  manage tabs by ID");
     println!("  pane list/current/get/focus/neighbor/edges/layout/process-info/input/rename/stop/restart/zoom/close/send-text/send-keys/run/read/swap/move/wait-output/split/resize  manage panes");
     println!("  agent list/get/focus/start/wait/read/send-keys/prompt/rename <target>  inspect and control agents");
     println!("Options:");

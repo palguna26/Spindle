@@ -389,7 +389,9 @@ approved design changes it.
   creation also accepts Herdr's label, workspace destination, cwd, environment, and
   focus controls while preserving the current workspace/tab by default.
   Tab listing accepts `--workspace` for inactive-workspace inspection without
-  changing focus. `spindle worktree list` now discovers Git worktrees through
+  changing focus. Tab reordering is available through `spindle tab move ID
+  INSERT_INDEX` and emits `tab.moved` for plugins. `spindle worktree list` now
+  discovers Git worktrees through
   Herdr-compatible porcelain parsing and reports linked checkout state as JSON;
   create/open/remove worktree actions remain. Worktree-backed workspaces now
   persist their linked-checkout state and the sidebar groups child checkouts
