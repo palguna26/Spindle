@@ -1,7 +1,7 @@
 //! Small manifest evaluator shared by screen-based agent detectors.
 //!
 //! The regions and rule priority follow Herdr's `src/detect/manifest.rs`.
-//! Codex, OpenCode, and Gemini are migrated first; other agents still use their
+//! Codex, OpenCode, Gemini, and Cline are migrated first; other agents still use their
 //! compatibility detectors until their rules are moved here.
 
 use super::{agents, AgentState};
@@ -180,6 +180,27 @@ const GEMINI_RULES: &[Rule] = &[
     },
 ];
 
+const CLINE_RULES: &[Rule] = &[
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::Any(&[
+            &["let cline use this tool"],
+            &["[act mode]", "execute command?", "yes"],
+            &["[act mode]", "use this tool?", "yes"],
+            &["[plan mode]", "execute command?", "yes"],
+            &["[plan mode]", "use this tool?", "yes"],
+        ]),
+    },
+    Rule {
+        priority: -10,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::Regex(r"(?s).+"),
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -190,6 +211,10 @@ pub(crate) fn detect_opencode(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_gemini(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, GEMINI_RULES)
+}
+
+pub(crate) fn detect_cline(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, CLINE_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -281,7 +306,7 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_codex, detect_gemini, detect_opencode, DetectionInput};
+    use super::{detect_cline, detect_codex, detect_gemini, detect_opencode, DetectionInput};
     use crate::detect::AgentState;
 
     fn detect(screen: &str, title: &str) -> Option<AgentState> {
@@ -302,6 +327,14 @@ mod tests {
 
     fn detect_gemini_state(screen: &str) -> Option<AgentState> {
         detect_gemini(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_cline_state(screen: &str) -> Option<AgentState> {
+        detect_cline(DetectionInput {
             screen,
             osc_title: "",
             _osc_progress: "",
@@ -370,5 +403,22 @@ mod tests {
             Some(AgentState::Working)
         );
         assert_eq!(detect_gemini_state("ordinary output"), None);
+    }
+
+    #[test]
+    fn cline_manifest_matches_tool_permissions_and_visible_output() {
+        assert_eq!(
+            detect_cline_state("[Act Mode] Execute command? Yes"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_cline_state("[Plan Mode] Use this tool? Yes"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_cline_state("ordinary visible Cline output"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_cline_state(""), None);
     }
 }
