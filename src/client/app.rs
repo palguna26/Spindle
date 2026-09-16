@@ -563,6 +563,11 @@ fn event_loop(
                                     Some(RenamePrompt::new_tab(next_tab_name(&snapshot)));
                                 Ok(())
                             }
+                            NavigatorTarget::NewWorkspace if config.prompt_new_workspace_name => {
+                                rename_prompt =
+                                    Some(RenamePrompt::new(RenameTarget::CreateWorkspace));
+                                Ok(())
+                            }
                             target => {
                                 switch_navigator_target(client, &snapshot, target, terminal_size)
                             }
@@ -767,7 +772,11 @@ fn event_loop(
             } else if key.code == KeyCode::Enter {
                 let command = Command::ALL[palette_selected];
                 palette_open = false;
-                if command.action() != Action::NewTab || config.prompt_new_tab_name {
+                if (!matches!(command.action(), Action::NewTab | Action::CreateWorkspace))
+                    || (command.action() == Action::NewTab && config.prompt_new_tab_name)
+                    || (command.action() == Action::CreateWorkspace
+                        && config.prompt_new_workspace_name)
+                {
                     if let Some(target) = rename_target(command.action()) {
                         rename_prompt = Some(prompt_for_target(target, &snapshot));
                         continue;
@@ -1438,6 +1447,10 @@ fn event_loop(
                 record_action_error(&mut action_error, "open notification target", target);
             }
             Action::CreateWorkspace => {
+                if config.prompt_new_workspace_name {
+                    rename_prompt = Some(RenamePrompt::new(RenameTarget::CreateWorkspace));
+                    continue;
+                }
                 let result = create_workspace_from_current_directory(client, terminal_size);
                 record_action_error(&mut action_error, "create workspace", result);
             }
@@ -1975,7 +1988,11 @@ fn handle_mouse(
         renderer::ClickTarget::MobileSwitcher => {}
         renderer::ClickTarget::GlobalMenu => {}
         renderer::ClickTarget::NewWorkspace => {
-            create_workspace_from_current_directory(client, terminal_size)?;
+            if crate::config::load().prompt_new_workspace_name {
+                *rename_prompt = Some(RenamePrompt::new(RenameTarget::CreateWorkspace));
+            } else {
+                create_workspace_from_current_directory(client, terminal_size)?;
+            }
         }
         renderer::ClickTarget::SidebarToggle => {
             mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;

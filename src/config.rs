@@ -32,6 +32,7 @@ struct UiConfig {
     mobile_width_threshold: u16,
     sidebar_start_collapsed: bool,
     prompt_new_tab_name: bool,
+    prompt_new_workspace_name: bool,
 }
 
 impl Default for UiConfig {
@@ -43,6 +44,7 @@ impl Default for UiConfig {
             mobile_width_threshold: 64,
             sidebar_start_collapsed: false,
             prompt_new_tab_name: true,
+            prompt_new_workspace_name: false,
         }
     }
 }
@@ -152,6 +154,7 @@ pub struct Config {
     pub(crate) mobile_width_threshold: u16,
     pub(crate) sidebar_start_collapsed: bool,
     pub(crate) prompt_new_tab_name: bool,
+    pub(crate) prompt_new_workspace_name: bool,
 }
 
 impl Default for Config {
@@ -171,6 +174,7 @@ impl Default for Config {
             mobile_width_threshold: 64,
             sidebar_start_collapsed: false,
             prompt_new_tab_name: true,
+            prompt_new_workspace_name: false,
         }
     }
 }
@@ -232,6 +236,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         mobile_width_threshold: file.ui.mobile_width_threshold,
         sidebar_start_collapsed: file.ui.sidebar_start_collapsed,
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
+        prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
     }
 }
 
@@ -283,6 +288,7 @@ sidebar_max_width = 36
 mobile_width_threshold = 64
 sidebar_start_collapsed = false
 prompt_new_tab_name = true
+prompt_new_workspace_name = false
 "#
 }
 
@@ -459,6 +465,18 @@ mod tests {
         ));
         std::fs::write(&path, "[ui]\nprompt_new_tab_name = false\n").unwrap();
         assert!(!load_from(&path).prompt_new_tab_name);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn new_workspace_name_prompt_matches_herdr_default() {
+        assert!(!Config::default().prompt_new_workspace_name);
+        let path = std::env::temp_dir().join(format!(
+            "spindle-prompt-new-workspace-name-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[ui]\nprompt_new_workspace_name = true\n").unwrap();
+        assert!(load_from(&path).prompt_new_workspace_name);
         std::fs::remove_file(path).unwrap();
     }
 
