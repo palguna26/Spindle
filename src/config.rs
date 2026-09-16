@@ -33,6 +33,7 @@ struct UiConfig {
     sidebar_start_collapsed: bool,
     prompt_new_tab_name: bool,
     prompt_new_workspace_name: bool,
+    copy_on_select: bool,
 }
 
 impl Default for UiConfig {
@@ -45,6 +46,7 @@ impl Default for UiConfig {
             sidebar_start_collapsed: false,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
+            copy_on_select: true,
         }
     }
 }
@@ -155,6 +157,7 @@ pub struct Config {
     pub(crate) sidebar_start_collapsed: bool,
     pub(crate) prompt_new_tab_name: bool,
     pub(crate) prompt_new_workspace_name: bool,
+    pub(crate) copy_on_select: bool,
 }
 
 impl Default for Config {
@@ -175,6 +178,7 @@ impl Default for Config {
             sidebar_start_collapsed: false,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
+            copy_on_select: true,
         }
     }
 }
@@ -237,6 +241,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         sidebar_start_collapsed: file.ui.sidebar_start_collapsed,
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
+        copy_on_select: file.ui.copy_on_select,
     }
 }
 
@@ -289,6 +294,7 @@ mobile_width_threshold = 64
 sidebar_start_collapsed = false
 prompt_new_tab_name = true
 prompt_new_workspace_name = false
+copy_on_select = true
 "#
 }
 
@@ -477,6 +483,18 @@ mod tests {
         ));
         std::fs::write(&path, "[ui]\nprompt_new_workspace_name = true\n").unwrap();
         assert!(load_from(&path).prompt_new_workspace_name);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn copy_on_select_matches_herdr_default() {
+        assert!(Config::default().copy_on_select);
+        let path = std::env::temp_dir().join(format!(
+            "spindle-copy-on-select-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[ui]\ncopy_on_select = false\n").unwrap();
+        assert!(!load_from(&path).copy_on_select);
         std::fs::remove_file(path).unwrap();
     }
 

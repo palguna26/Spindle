@@ -38,6 +38,7 @@ pub(super) struct TabDrag {
 pub(super) struct MouseState {
     pub(super) sidebar_collapsed: bool,
     pub(super) agent_priority_sort: bool,
+    pub(super) copy_on_select: bool,
     pub(super) sidebar_scroll: usize,
     pub(super) sidebar_scroll_drag: Option<u16>,
     pub(super) preferences_path: std::path::PathBuf,

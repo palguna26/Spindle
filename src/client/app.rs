@@ -159,6 +159,7 @@ fn event_loop(
     let mut pending_external_notifications = VecDeque::new();
     loop {
         let config = crate::config::load();
+        mouse_state.copy_on_select = config.copy_on_select;
         keymap = Keymap::from_config(&config);
         if !config.notifications_enabled {
             notifications.clear();
@@ -1954,7 +1955,7 @@ fn handle_mouse(
                     .map(|pane| pane.screen.as_str())
                     .unwrap_or_default(),
             );
-            if selection.has_range() && !text.is_empty() {
+            if mouse_state.copy_on_select && selection.has_range() && !text.is_empty() {
                 let _ = super::clipboard::copy_text(&text);
             }
         }
