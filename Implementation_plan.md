@@ -46,6 +46,11 @@ between matching Herdr entries and are not treated as selectable rows. The
 behavior is covered by renderer tests and
 the Windows release/installer gates.
 
+Latest CLI/runtime milestone: `spindle api snapshot` now matches Herdr's API
+snapshot command and is exposed in every generated shell completion. Windows
+server startup now follows Herdr's safe detached-launch path for this runtime,
+and both Windows smoke checks pass with the release binary.
+
 ## 0. Establish the parity matrix
 
 - [ ] Compare Herdr's README, quick-start, keyboard guide, CLI guide, and

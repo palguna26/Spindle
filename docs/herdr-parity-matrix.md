@@ -6,6 +6,12 @@ intentionally rejected and ignored, matching Herdr's
 
 Reference: `C:\Users\Palguna\.opensrc\repos\github.com\herdrdev\herdr\master`.
 
+API parity now includes `spindle api snapshot`, which returns the live session
+snapshot as pretty JSON; Bash, Fish, Zsh, PowerShell, and Elvish completions
+include the command. Windows server startup uses the Herdr-compatible direct
+daemon launch path and was verified by the release Windows and installer smoke
+checks.
+
 Agent lifecycle state is now isolated in `src/pane/agent_detection.rs`, following
 Herdr's `src/pane/agent_detection.rs`; process grace, idle confirmation, and
 agent-exit confirmation keep the same behavior while the manager stays focused
