@@ -138,12 +138,14 @@ fn launch_event(
         serde_json::from_str::<serde_json::Value>(&startup_context(&manifest.id, snapshot)?)
             .map_err(std::io::Error::other)?;
     context["source"] = serde_json::json!("event");
+    context["invocation_source"] = serde_json::json!("event");
     context["event"] = serde_json::json!(hook_name);
     context["event_payload"] = event.payload.clone();
     if hook_name.starts_with("worktree.") {
         context["worktree"] = event.payload.clone();
     }
     let context = context.to_string();
+    let event_json = event_json(event)?;
     let args = argv.iter().skip(1).cloned().collect::<Vec<_>>();
     let child = crate::plugin_command::command_for_argv_in_dir(program, &args, root)
         .envs(startup_environment(
@@ -155,13 +157,19 @@ fn launch_event(
             endpoint,
         ))
         .env("SPINDLE_PLUGIN_EVENT", hook_name)
+        .env("SPINDLE_PLUGIN_EVENT_JSON", &event_json)
         .env("HERDR_PLUGIN_EVENT", hook_name)
+        .env("HERDR_PLUGIN_EVENT_JSON", event_json)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()?;
     let _ = plugin::record_launch(&manifest.id, "event", hook_name, child.id());
     Ok(())
+}
+
+fn event_json(event: &Event<serde_json::Value>) -> std::io::Result<String> {
+    serde_json::to_string(event).map_err(std::io::Error::other)
 }
 
 fn launch_startup(
@@ -256,6 +264,7 @@ fn context_field(context: &str, field: &str) -> String {
 fn startup_context(plugin_id: &str, snapshot: &SessionSnapshot) -> std::io::Result<String> {
     let mut context = serde_json::json!({
         "source": "startup",
+        "invocation_source": "startup",
         "plugin_id": plugin_id,
         "cwd": std::env::current_dir()?.display().to_string(),
     });
@@ -295,7 +304,7 @@ fn startup_context(plugin_id: &str, snapshot: &SessionSnapshot) -> std::io::Resu
 
 #[cfg(test)]
 mod tests {
-    use super::{event_hook_name, startup_context, startup_environment};
+    use super::{event_hook_name, event_json, startup_context, startup_environment};
     use crate::protocol::Event;
     use std::path::Path;
 
@@ -317,6 +326,10 @@ mod tests {
         assert_eq!(env["HERDR_PLUGIN_EVENT"], "startup");
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&context).unwrap()["source"],
+            "startup"
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&context).unwrap()["invocation_source"],
             "startup"
         );
     }
@@ -402,5 +415,20 @@ mod tests {
             };
             assert_eq!(event_hook_name(&event), Some(hook));
         }
+    }
+
+    #[test]
+    fn event_hook_payload_is_serializable_for_herdr_plugins() {
+        let event = Event {
+            version: crate::protocol::PROTOCOL_VERSION,
+            sequence: 7,
+            event: "pane_focused".into(),
+            payload: serde_json::json!({ "pane_id": "pane-1" }),
+        };
+        let serialized = event_json(&event).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(value["sequence"], 7);
+        assert_eq!(value["event"], "pane_focused");
+        assert_eq!(value["payload"]["pane_id"], "pane-1");
     }
 }
