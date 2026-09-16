@@ -2217,6 +2217,7 @@ impl Session {
             &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
         tab.focused_pane_id = Some(pane_id.into());
         self.snapshot.focused_pane_id = Some(pane_id.into());
+        self.mark_active_tab_agents_seen(&[pane_id.to_owned()]);
         self.record_event("pane_focused", serde_json::json!({ "pane_id": pane_id }));
         Ok(serde_json::json!({ "pane_id": pane_id }))
     }
@@ -3401,7 +3402,25 @@ impl Session {
             .find(|tab| tab.tab_id == workspace.active_tab_id)
             .ok_or_else(|| "active tab does not exist".to_string())?;
         self.snapshot.focused_pane_id = tab.normalize_focus(current_focus.as_deref());
+        let pane_ids = tab
+            .layout
+            .as_ref()
+            .map(LayoutNode::pane_ids)
+            .unwrap_or_default()
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        self.mark_active_tab_agents_seen(&pane_ids);
         Ok(())
+    }
+
+    fn mark_active_tab_agents_seen(&mut self, pane_ids: &[String]) {
+        self.pane_manager.mark_agent_done_seen(pane_ids);
+        for pane in &mut self.snapshot.panes {
+            if pane_ids.iter().any(|pane_id| pane_id == &pane.pane_id) && pane.agent.is_some() {
+                pane.agent_done = false;
+            }
+        }
     }
 
     fn workspace_mut(&mut self, workspace_id: &str) -> Result<&mut WorkspaceView, String> {
@@ -3925,6 +3944,33 @@ mod tests {
             assert_eq!(pane.agent, Some(agent));
             assert_eq!(pane.agent_state, Some(state));
         }
+    }
+
+    #[test]
+    fn focusing_a_tab_marks_completed_agent_panes_seen() {
+        let mut session = Session::default();
+        session.snapshot.panes.push(
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "pane-1",
+                "command": "powershell.exe",
+                "args": [],
+                "cwd": "C:/",
+                "status": "Running",
+                "agent": "codex",
+                "agent_state": "idle",
+                "agent_done": true,
+                "scrollback_bytes": 0
+            }))
+            .unwrap(),
+        );
+        let tab = &mut session.snapshot.spaces[0].workspaces[0].tabs[0];
+        tab.layout = Some(LayoutNode::pane("pane-1"));
+        tab.focused_pane_id = Some("pane-1".into());
+        session.snapshot.focused_pane_id = Some("pane-1".into());
+
+        session.sync_focus_to_active_tab().unwrap();
+
+        assert!(!session.snapshot.panes[0].agent_done);
     }
 
     #[test]

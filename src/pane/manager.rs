@@ -81,6 +81,16 @@ impl PaneManager {
         }
     }
 
+    pub fn mark_agent_done_seen(&mut self, pane_ids: &[String]) {
+        for pane_id in pane_ids {
+            if let Some(pane) = self.panes.get_mut(pane_id) {
+                if pane.agent.is_some() && pane.agent_done {
+                    pane.agent_done = false;
+                }
+            }
+        }
+    }
+
     pub fn spawn(
         &mut self,
         id: impl Into<String>,
