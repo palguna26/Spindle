@@ -10,6 +10,8 @@ const CODEX_HOOK_ASSET: &str = include_str!("integration/assets/codex-agent-stat
 const CODEX_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const COPILOT_HOOK_ASSET: &str = include_str!("integration/assets/copilot-agent-state.ps1");
 const COPILOT_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const CURSOR_HOOK_ASSET: &str = include_str!("integration/assets/cursor-agent-state.ps1");
+const CURSOR_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -30,16 +32,18 @@ pub(crate) enum Target {
     Codex,
     Opencode,
     Copilot,
+    Cursor,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 6] = [
+    pub(crate) const ALL: [Self; 7] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
         Self::Codex,
         Self::Opencode,
         Self::Copilot,
+        Self::Cursor,
     ];
 
     fn label(self) -> &'static str {
@@ -50,6 +54,7 @@ impl Target {
             Self::Codex => "codex",
             Self::Opencode => "opencode",
             Self::Copilot => "copilot",
+            Self::Cursor => "cursor",
         }
     }
 
@@ -69,6 +74,7 @@ impl Target {
                 .join("plugins")
                 .join(OPENCODE_PLUGIN_NAME),
             Self::Copilot => copilot_dir().join("hooks").join(COPILOT_HOOK_NAME),
+            Self::Cursor => cursor_dir().join(CURSOR_HOOK_NAME),
         }
     }
 
@@ -256,6 +262,56 @@ pub(crate) fn uninstall_copilot() -> std::io::Result<Vec<String>> {
     }
     Ok(vec![format!(
         "{} copilot integration hook {}",
+        if removed_hook || changed {
+            "removed"
+        } else {
+            "did not find"
+        },
+        hook_path.display()
+    )])
+}
+
+pub(crate) fn install_cursor() -> std::io::Result<Vec<String>> {
+    let dir = cursor_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "cursor config directory not found at {}. install cursor agent cli first",
+            dir.display()
+        )));
+    }
+    let hook_path = dir.join(CURSOR_HOOK_NAME);
+    std::fs::write(&hook_path, CURSOR_HOOK_ASSET)?;
+    let hooks_path = dir.join("hooks.json");
+    let mut config = read_json_object(&hooks_path, "cursor hooks file")?;
+    if config.get("version").is_none() {
+        config["version"] = json!(1);
+    }
+    ensure_cursor_hooks(&mut config, &hooks_path, &hook_path)?;
+    std::fs::write(&hooks_path, serde_json::to_string_pretty(&config)?)?;
+    Ok(vec![
+        format!(
+            "installed cursor integration hook to {}",
+            hook_path.display()
+        ),
+        format!("updated cursor hooks at {}", hooks_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_cursor() -> std::io::Result<Vec<String>> {
+    let dir = cursor_dir();
+    let hook_path = dir.join(CURSOR_HOOK_NAME);
+    let hooks_path = dir.join("hooks.json");
+    let removed_hook = remove_file_if_exists(&hook_path)?;
+    let mut changed = false;
+    if hooks_path.is_file() {
+        let mut config = read_json_object(&hooks_path, "cursor hooks file")?;
+        changed = remove_cursor_hooks(&mut config, &hook_path)?;
+        if changed {
+            std::fs::write(&hooks_path, serde_json::to_string_pretty(&config)?)?;
+        }
+    }
+    Ok(vec![format!(
+        "{} cursor integration hook {}",
         if removed_hook || changed {
             "removed"
         } else {
@@ -696,6 +752,82 @@ fn copilot_dir() -> PathBuf {
         .unwrap_or_else(|| home_dir().join(".copilot"))
 }
 
+fn cursor_dir() -> PathBuf {
+    env::var_os("CURSOR_CONFIG_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".cursor"))
+}
+
+fn cursor_events() -> [&'static str; 6] {
+    [
+        "sessionStart",
+        "beforeSubmitPrompt",
+        "beforeShellExecution",
+        "beforeMCPExecution",
+        "stop",
+        "sessionEnd",
+    ]
+}
+
+fn cursor_hook_command(path: &std::path::Path) -> String {
+    format!("{} session", direct_hook_command(path))
+}
+
+fn ensure_cursor_hooks(
+    config: &mut Value,
+    path: &std::path::Path,
+    hook_path: &std::path::Path,
+) -> std::io::Result<()> {
+    let root = config.as_object_mut().ok_or_else(|| {
+        std::io::Error::other(format!(
+            "cursor hooks file at {} must be a JSON object",
+            path.display()
+        ))
+    })?;
+    let hooks = root
+        .entry("hooks")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or_else(|| std::io::Error::other("cursor hooks must be a JSON object"))?;
+    let command = cursor_hook_command(hook_path);
+    for event in cursor_events() {
+        remove_simple_cursor_hook(hooks, event, &command)?;
+    }
+    hooks
+        .entry("sessionStart")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .ok_or_else(|| std::io::Error::other("cursor sessionStart hooks must be an array"))?
+        .push(json!({"command": command}));
+    Ok(())
+}
+
+fn remove_cursor_hooks(config: &mut Value, hook_path: &std::path::Path) -> std::io::Result<bool> {
+    let Some(hooks) = config.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return Ok(false);
+    };
+    let command = cursor_hook_command(hook_path);
+    let mut changed = false;
+    for event in cursor_events() {
+        changed |= remove_simple_cursor_hook(hooks, event, &command)?;
+    }
+    Ok(changed)
+}
+
+fn remove_simple_cursor_hook(
+    hooks: &mut serde_json::Map<String, Value>,
+    event: &str,
+    command: &str,
+) -> std::io::Result<bool> {
+    let Some(entries) = hooks.get_mut(event).and_then(Value::as_array_mut) else {
+        return Ok(false);
+    };
+    let before = entries.len();
+    entries.retain(|entry| entry.get("command").and_then(Value::as_str) != Some(command));
+    Ok(before != entries.len())
+}
+
 fn read_json_object(path: &std::path::Path, label: &str) -> std::io::Result<Value> {
     if !path.is_file() {
         return Ok(json!({}));
@@ -917,6 +1049,7 @@ mod tests {
         assert_eq!(Target::Codex.label(), "codex");
         assert_eq!(Target::Opencode.label(), "opencode");
         assert_eq!(Target::Copilot.label(), "copilot");
+        assert_eq!(Target::Cursor.label(), "cursor");
     }
 
     #[test]
@@ -926,6 +1059,7 @@ mod tests {
         assert!(Target::Codex.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Opencode.path().ends_with(OPENCODE_PLUGIN_NAME));
         assert!(Target::Copilot.path().ends_with("spindle-agent-state.ps1"));
+        assert!(Target::Cursor.path().ends_with("spindle-agent-state.ps1"));
     }
 
     #[test]
