@@ -1,3 +1,4 @@
+mod agent_detection;
 mod events;
 mod manager;
 
