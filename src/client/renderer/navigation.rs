@@ -1318,7 +1318,7 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
                 .alignment(Alignment::Center)
                 .style(if selected {
                     Style::default()
-                        .fg(Color::Black)
+                        .fg(super::ThemePalette::panel_contrast_fg(&config))
                         .bg(palette.accent)
                         .add_modifier(Modifier::BOLD)
                 } else {

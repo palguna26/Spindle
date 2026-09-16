@@ -220,6 +220,43 @@ impl ThemePalette {
             _ => Self::panel_bg(config),
         }
     }
+
+    pub(super) fn panel_contrast_fg(config: &crate::config::Config) -> Color {
+        match Self::panel_bg(config) {
+            Color::Reset => Self::surface_dim(config),
+            color => color,
+        }
+    }
+
+    fn surface_dim(config: &crate::config::Config) -> Color {
+        match config
+            .theme_name
+            .as_deref()
+            .unwrap_or("catppuccin")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "catppuccin" => Color::Rgb(30, 30, 46),
+            "catppuccin-latte" => Color::Rgb(230, 233, 239),
+            "terminal" => Color::DarkGray,
+            "tokyo-night" | "tokyonight" => Color::Rgb(26, 27, 38),
+            "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => Color::Rgb(210, 211, 218),
+            "dracula" => Color::Rgb(40, 42, 54),
+            "nord" => Color::Rgb(46, 52, 64),
+            "gruvbox" => Color::Rgb(40, 40, 40),
+            "gruvbox-light" => Color::Rgb(242, 229, 188),
+            "one-dark" => Color::Rgb(40, 44, 52),
+            "one-light" => Color::Rgb(245, 245, 246),
+            "solarized" => Color::Rgb(0, 43, 54),
+            "solarized-light" => Color::Rgb(238, 232, 213),
+            "kanagawa" => Color::Rgb(31, 31, 40),
+            "kanagawa-lotus" => Color::Rgb(213, 206, 163),
+            "rose-pine" => Color::Rgb(38, 35, 58),
+            "rose-pine-dawn" => Color::Rgb(242, 233, 225),
+            "vesper" => Color::Rgb(16, 16, 16),
+            _ => Color::DarkGray,
+        }
+    }
 }
 
 fn parse_theme_color(value: &str) -> Option<Color> {
@@ -1498,6 +1535,23 @@ mod tests {
         assert_eq!(
             super::ThemePalette::surface0(&config),
             Color::Rgb(68, 71, 90)
+        );
+    }
+
+    #[test]
+    fn panel_contrast_foreground_matches_herdr_surface_rule() {
+        let config = crate::config::Config::default();
+        assert_eq!(
+            super::ThemePalette::panel_contrast_fg(&config),
+            Color::Rgb(24, 24, 37)
+        );
+        let config = crate::config::Config {
+            theme_custom_panel_bg: Some("reset".into()),
+            ..config
+        };
+        assert_eq!(
+            super::ThemePalette::panel_contrast_fg(&config),
+            Color::Rgb(30, 30, 46)
         );
     }
 
