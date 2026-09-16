@@ -75,6 +75,10 @@ supported.
 Tab label contrast now follows Herdr's `overlay0`/`overlay1` tokens, including
 `[theme.custom] overlay0` and `[theme.custom] overlay1` overrides.
 
+Sidebar active and selected row backgrounds now use Herdr's per-theme
+`active_row_bg` and `selection_bg` defaults, while preserving custom token
+overrides and terminal reset behavior.
+
 An unset theme now defaults to Herdr's Catppuccin palette in both rendering
 and the settings overlay.
 

@@ -346,3 +346,7 @@ Tab-strip rendering now follows Herdr's surface treatment: inactive tabs use
 Tab labels and the new-tab control now use Herdr's `overlay0`/`overlay1`
 contrast tokens, with matching `[theme.custom] overlay0` and `overlay1`
 overrides.
+
+Sidebar active and selected rows now use Herdr's per-theme `active_row_bg` and
+`selection_bg` values; custom overrides and terminal reset selection are
+supported.
