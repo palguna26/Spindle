@@ -14,6 +14,60 @@ pub(crate) struct MetadataTokens {
 
 pub(crate) const MAX_KEYS: usize = 32;
 pub(crate) const MAX_TTL_MS: u64 = 86_400_000;
+const MAX_KEYS_PER_REQUEST: usize = 16;
+const MAX_SOURCE_CHARS: usize = 80;
+const MAX_KEY_CHARS: usize = 32;
+const MAX_VALUE_CHARS: usize = 80;
+
+pub(crate) fn normalize_source(source: String) -> Result<String, String> {
+    let source = source.trim();
+    if source.is_empty() {
+        return Err("metadata source must not be empty".into());
+    }
+    if source.chars().count() > MAX_SOURCE_CHARS {
+        return Err("metadata source must be 80 characters or fewer".into());
+    }
+    if !source
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, ':' | '.' | '_' | '-'))
+    {
+        return Err("metadata source contains unsupported characters".into());
+    }
+    Ok(source.into())
+}
+
+pub(crate) fn normalize_patch(
+    patch: HashMap<String, Option<String>>,
+) -> Result<HashMap<String, Option<String>>, String> {
+    if patch.len() > MAX_KEYS_PER_REQUEST {
+        return Err(format!(
+            "a metadata report may update at most {MAX_KEYS_PER_REQUEST} tokens"
+        ));
+    }
+    patch
+        .into_iter()
+        .map(|(key, value)| {
+            if key.is_empty()
+                || key.chars().count() > MAX_KEY_CHARS
+                || !key
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
+            {
+                return Err(format!("invalid metadata token key: {key}"));
+            }
+            let value = value.and_then(|value| {
+                let value = value
+                    .trim()
+                    .chars()
+                    .filter(|ch| !ch.is_control())
+                    .take(MAX_VALUE_CHARS)
+                    .collect::<String>();
+                (!value.trim().is_empty()).then(|| value.trim().to_owned())
+            });
+            Ok((key, value))
+        })
+        .collect()
+}
 
 impl MetadataTokens {
     pub(crate) fn patch(
@@ -73,6 +127,21 @@ impl MetadataTokens {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalizes_herdr_metadata_source_and_patch() {
+        assert_eq!(
+            normalize_source("  herdr:agent  ".into()).unwrap(),
+            "herdr:agent"
+        );
+        assert!(normalize_source("bad source".into()).is_err());
+        let patch = normalize_patch(HashMap::from([(
+            "summary".into(),
+            Some("  indexing\n".into()),
+        )]))
+        .unwrap();
+        assert_eq!(patch["summary"].as_deref(), Some("indexing"));
+    }
 
     #[test]
     fn patches_and_expires_tokens_like_herdr() {

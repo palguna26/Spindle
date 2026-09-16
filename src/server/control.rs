@@ -637,6 +637,18 @@ pub(crate) fn response_for_with_interactive(
                     "missing metadata field to set or clear".into(),
                 );
             }
+            let source = match crate::metadata_tokens::normalize_source(payload.source) {
+                Ok(source) => source,
+                Err(message) => {
+                    return request_error(request.request_id, "invalid_metadata_source", message)
+                }
+            };
+            let tokens = match crate::metadata_tokens::normalize_patch(payload.tokens) {
+                Ok(tokens) => tokens,
+                Err(message) => {
+                    return request_error(request.request_id, "invalid_metadata_tokens", message)
+                }
+            };
             if payload
                 .ttl_ms
                 .is_some_and(|ttl| ttl == 0 || ttl > crate::metadata_tokens::MAX_TTL_MS)
@@ -654,8 +666,8 @@ pub(crate) fn response_for_with_interactive(
             save_after(&mut session, |session| {
                 session.report_workspace_metadata(
                     &payload.workspace_id,
-                    payload.source,
-                    payload.tokens,
+                    source,
+                    tokens,
                     payload.ttl_ms.map(std::time::Duration::from_millis),
                     payload.seq,
                 )
