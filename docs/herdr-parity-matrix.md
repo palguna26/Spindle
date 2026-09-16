@@ -1,5 +1,9 @@
 # Herdr behavior parity matrix
 
+Plugin hook note: high-volume `pane.updated` and `layout.updated` hooks are
+intentionally rejected and ignored, matching Herdr's
+`PLUGIN_HOOK_EVENT_KINDS` in `src/api/schema/events.rs`.
+
 Reference: `C:\Users\Palguna\.opensrc\repos\github.com\herdrdev\herdr\master`.
 
 CLI parity now includes Herdr's `pane current --pane ID` and `--current`
