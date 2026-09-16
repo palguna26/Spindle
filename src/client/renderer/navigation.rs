@@ -70,6 +70,26 @@ pub fn hit_test_with_sidebar_scroll_and_sort(
     sidebar_scroll: usize,
     agent_priority_sort: bool,
 ) -> Option<ClickTarget> {
+    hit_test_with_sidebar_scroll_and_sort_and_groups(
+        snapshot,
+        area,
+        mouse,
+        sidebar_collapsed,
+        sidebar_scroll,
+        agent_priority_sort,
+        &HashSet::new(),
+    )
+}
+
+pub fn hit_test_with_sidebar_scroll_and_sort_and_groups(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    mouse: MouseEvent,
+    sidebar_collapsed: bool,
+    sidebar_scroll: usize,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+) -> Option<ClickTarget> {
     if !matches!(
         mouse.kind,
         MouseEventKind::Down(MouseButton::Left | MouseButton::Right)
@@ -101,7 +121,7 @@ pub fn hit_test_with_sidebar_scroll_and_sort(
         if !contains(body, x, y) {
             return None;
         }
-        let rows = sidebar_rows(snapshot, agent_priority_sort);
+        let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
         let max_scroll = rows.len().saturating_sub(usize::from(body.height));
         if max_scroll > 0 && body.width > 1 && x == body.right().saturating_sub(1) {
             return Some(ClickTarget::SidebarScroll(sidebar_scroll_for_track_row(
@@ -176,12 +196,35 @@ pub fn workspace_drop_target(
     x: u16,
     y: u16,
 ) -> Option<(String, String, usize)> {
+    workspace_drop_target_with_groups(
+        snapshot,
+        area,
+        sidebar_scroll,
+        agent_priority_sort,
+        source_workspace_id,
+        x,
+        y,
+        &HashSet::new(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn workspace_drop_target_with_groups(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    sidebar_scroll: usize,
+    agent_priority_sort: bool,
+    source_workspace_id: &str,
+    x: u16,
+    y: u16,
+    collapsed_groups: &HashSet<String>,
+) -> Option<(String, String, usize)> {
     let sidebar = super::layout::main_areas_with_sidebar(area, false).sidebar;
     let body = sidebar_body(sidebar);
     if !contains(body, x, y) {
         return None;
     }
-    let rows = sidebar_rows(snapshot, agent_priority_sort);
+    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
     let max_scroll = rows.len().saturating_sub(usize::from(body.height));
     let row = usize::from(y.saturating_sub(body.y)).saturating_add(sidebar_scroll.min(max_scroll));
     let SidebarRow::Workspace {
@@ -281,9 +324,25 @@ pub fn sidebar_scroll_max_with_sort(
     collapsed: bool,
     agent_priority_sort: bool,
 ) -> usize {
+    sidebar_scroll_max_with_sort_and_groups(
+        snapshot,
+        area,
+        collapsed,
+        agent_priority_sort,
+        &HashSet::new(),
+    )
+}
+
+pub fn sidebar_scroll_max_with_sort_and_groups(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+) -> usize {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    sidebar_rows(snapshot, agent_priority_sort)
+    sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups)
         .len()
         .saturating_sub(usize::from(body.height))
 }
@@ -313,9 +372,38 @@ pub fn sidebar_scroll_thumb_grab_offset_with_sort(
     y: u16,
     agent_priority_sort: bool,
 ) -> Option<u16> {
+    sidebar_scroll_thumb_grab_offset_with_sort_and_groups(
+        snapshot,
+        area,
+        collapsed,
+        scroll,
+        x,
+        y,
+        agent_priority_sort,
+        &HashSet::new(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn sidebar_scroll_thumb_grab_offset_with_sort_and_groups(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    scroll: usize,
+    x: u16,
+    y: u16,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+) -> Option<u16> {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    let max_scroll = sidebar_scroll_max_with_sort(snapshot, area, collapsed, agent_priority_sort);
+    let max_scroll = sidebar_scroll_max_with_sort_and_groups(
+        snapshot,
+        area,
+        collapsed,
+        agent_priority_sort,
+        collapsed_groups,
+    );
     if max_scroll == 0
         || body.width <= 1
         || x != body.right().saturating_sub(1)
@@ -327,7 +415,7 @@ pub fn sidebar_scroll_thumb_grab_offset_with_sort(
         body,
         scroll,
         max_scroll,
-        sidebar_rows(snapshot, agent_priority_sort).len(),
+        sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups).len(),
     )?;
     let row = y.saturating_sub(body.y);
     (row >= thumb_top && row < thumb_top.saturating_add(thumb_height)).then_some(row - thumb_top)
@@ -358,10 +446,36 @@ pub fn sidebar_scroll_offset_from_drag_row_with_sort(
     grab_row_offset: u16,
     agent_priority_sort: bool,
 ) -> usize {
+    sidebar_scroll_offset_from_drag_row_with_sort_and_groups(
+        snapshot,
+        area,
+        collapsed,
+        row,
+        grab_row_offset,
+        agent_priority_sort,
+        &HashSet::new(),
+    )
+}
+
+pub fn sidebar_scroll_offset_from_drag_row_with_sort_and_groups(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    row: u16,
+    grab_row_offset: u16,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+) -> usize {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    let max_scroll = sidebar_scroll_max_with_sort(snapshot, area, collapsed, agent_priority_sort);
-    let rows = sidebar_rows(snapshot, agent_priority_sort).len();
+    let max_scroll = sidebar_scroll_max_with_sort_and_groups(
+        snapshot,
+        area,
+        collapsed,
+        agent_priority_sort,
+        collapsed_groups,
+    );
+    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups).len();
     let Some((_, thumb_height)) = sidebar_scrollbar_thumb(body, 0, max_scroll, rows) else {
         return 0;
     };
@@ -455,7 +569,11 @@ enum SidebarRow<'a> {
     AgentHeader,
 }
 
-fn sidebar_rows(snapshot: &SessionSnapshot, agent_priority_sort: bool) -> Vec<SidebarRow<'_>> {
+fn sidebar_rows_with_collapsed<'a>(
+    snapshot: &'a SessionSnapshot,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+) -> Vec<SidebarRow<'a>> {
     let mut rows = Vec::new();
     let mut priority_agents = Vec::new();
     for space in &snapshot.spaces {
@@ -490,6 +608,9 @@ fn sidebar_rows(snapshot: &SessionSnapshot, agent_priority_sort: bool) -> Vec<Si
                 continue;
             }
             ordered_workspaces.push((*parent, false, false));
+            if collapsed_groups.contains(group) {
+                continue;
+            }
             let children: Vec<_> = members
                 .iter()
                 .filter(|candidate| candidate.workspace_id != parent.workspace_id)
@@ -605,6 +726,7 @@ pub(super) fn render_sidebar_with_scroll_and_sort(
     );
 }
 
+#[cfg(test)]
 pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
     frame: &mut Frame<'_>,
     snapshot: &SessionSnapshot,
@@ -614,7 +736,30 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
     agent_priority_sort: bool,
     navigation_workspace: Option<(&str, &str)>,
 ) {
-    let rows = sidebar_rows(snapshot, agent_priority_sort);
+    render_sidebar_with_scroll_sort_and_navigation_and_groups(
+        frame,
+        snapshot,
+        area,
+        collapsed,
+        scroll,
+        agent_priority_sort,
+        navigation_workspace,
+        &HashSet::new(),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    scroll: usize,
+    agent_priority_sort: bool,
+    navigation_workspace: Option<(&str, &str)>,
+    collapsed_groups: &HashSet<String>,
+) {
+    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
     let body = sidebar_body(area);
     let max_scroll = rows.len().saturating_sub(usize::from(body.height));
     let start = scroll.min(max_scroll);
@@ -1003,9 +1148,9 @@ mod tests {
     use super::super::layout::{pane_rectangles, pane_sizes, split_areas, split_handles};
     use super::{
         agent_state_priority, hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
-        hit_test_with_sidebar_scroll_and_sort, render_sidebar, render_sidebar_with_collapsed,
-        render_sidebar_with_scroll, render_tabs, tab_drop_target, workspace_drop_target,
-        ClickTarget,
+        hit_test_with_sidebar_scroll_and_sort, hit_test_with_sidebar_scroll_and_sort_and_groups,
+        render_sidebar, render_sidebar_with_collapsed, render_sidebar_with_scroll, render_tabs,
+        sidebar_rows_with_collapsed, tab_drop_target, workspace_drop_target, ClickTarget,
     };
     use crate::model::layout::{Direction as SplitDirection, LayoutNode};
     use crate::server::session::{SessionSnapshot, SpaceView, TabView, WorkspaceView};
@@ -1013,6 +1158,7 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
     use ratatui::Terminal;
+    use std::collections::HashSet;
 
     #[test]
     fn narrow_sidebar_uses_a_compact_title_like_herdr() {
@@ -1021,6 +1167,50 @@ mod tests {
             "Spaces"
         );
         assert!(super::sidebar_title(Rect::new(0, 0, 40, 30), true, true).contains("priority"));
+    }
+
+    #[test]
+    fn collapsed_worktree_groups_hide_children_from_render_and_hit_testing() {
+        let mut snapshot = sample_snapshot();
+        snapshot.spaces[0].workspaces[0].worktree_group = Some("repo".into());
+        snapshot.spaces[0].workspaces[1].is_linked_worktree = true;
+        snapshot.spaces[0].workspaces[1].worktree_group = Some("repo".into());
+        let full = sidebar_rows_with_collapsed(&snapshot, false, &HashSet::new());
+        let collapsed =
+            sidebar_rows_with_collapsed(&snapshot, false, &HashSet::from(["repo".to_owned()]));
+        assert_eq!(
+            full.iter()
+                .filter_map(|row| match row {
+                    super::SidebarRow::Workspace { workspace_id, .. } => Some(*workspace_id),
+                    _ => None,
+                })
+                .count(),
+            2
+        );
+        assert_eq!(
+            collapsed
+                .iter()
+                .filter_map(|row| match row {
+                    super::SidebarRow::Workspace { workspace_id, .. } => Some(*workspace_id),
+                    _ => None,
+                })
+                .count(),
+            1
+        );
+        let area = Rect::new(0, 0, 100, 30);
+        let body = super::sidebar_body(main_areas(area).sidebar);
+        assert_eq!(
+            hit_test_with_sidebar_scroll_and_sort_and_groups(
+                &snapshot,
+                area,
+                click(body.x + 3, body.y + 2),
+                false,
+                0,
+                false,
+                &HashSet::from(["repo".to_owned()]),
+            ),
+            None
+        );
     }
 
     #[test]

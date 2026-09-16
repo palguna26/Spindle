@@ -5,6 +5,7 @@ use crate::server::session::SessionSnapshot;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 pub(super) struct SplitDrag {
@@ -50,6 +51,7 @@ pub(super) struct MouseState {
     pub(super) scrollback_views: HashMap<String, CachedScrollbackView>,
     pub(super) copy_mode: Option<CopyMode>,
     pub(super) navigation_workspace: Option<(String, String)>,
+    pub(super) collapsed_worktree_groups: HashSet<String>,
 }
 
 pub(super) struct PaneClick {

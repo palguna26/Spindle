@@ -17,12 +17,14 @@ pub(crate) use layout::{
 use navigation::render_tabs;
 pub use navigation::{
     hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
-    hit_test_with_sidebar_scroll_and_sort, render_tab_drop_indicator,
-    render_workspace_drop_indicator, sidebar_scroll_max, sidebar_scroll_max_with_sort,
+    hit_test_with_sidebar_scroll_and_sort, hit_test_with_sidebar_scroll_and_sort_and_groups,
+    render_tab_drop_indicator, render_workspace_drop_indicator, sidebar_scroll_max,
+    sidebar_scroll_max_with_sort, sidebar_scroll_max_with_sort_and_groups,
     sidebar_scroll_offset_from_drag_row, sidebar_scroll_offset_from_drag_row_with_sort,
-    sidebar_scroll_region, sidebar_scroll_thumb_grab_offset,
-    sidebar_scroll_thumb_grab_offset_with_sort, tab_drop_target, workspace_drop_target,
-    ClickTarget,
+    sidebar_scroll_offset_from_drag_row_with_sort_and_groups, sidebar_scroll_region,
+    sidebar_scroll_thumb_grab_offset, sidebar_scroll_thumb_grab_offset_with_sort,
+    sidebar_scroll_thumb_grab_offset_with_sort_and_groups, tab_drop_target, workspace_drop_target,
+    workspace_drop_target_with_groups, ClickTarget,
 };
 pub use navigator::{hit_test_navigator, render_navigator, Hit as NavigatorHit};
 use ratatui::layout::Rect;
@@ -30,6 +32,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy)]
 struct ThemePalette {
@@ -153,9 +156,34 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
     agent_priority_sort: bool,
     navigation_workspace: Option<(&str, &str)>,
 ) {
+    render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_groups(
+        frame,
+        snapshot,
+        connected,
+        sidebar_collapsed,
+        sidebar_scroll,
+        show_host_cursor,
+        agent_priority_sort,
+        navigation_workspace,
+        &HashSet::new(),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_groups(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    connected: bool,
+    sidebar_collapsed: bool,
+    sidebar_scroll: usize,
+    show_host_cursor: bool,
+    agent_priority_sort: bool,
+    navigation_workspace: Option<(&str, &str)>,
+    collapsed_groups: &HashSet<String>,
+) {
     let theme = ThemePalette::from_name(crate::config::load().theme_name.as_deref());
     let main = layout::main_areas_with_sidebar(frame.area(), sidebar_collapsed);
-    navigation::render_sidebar_with_scroll_sort_and_navigation(
+    navigation::render_sidebar_with_scroll_sort_and_navigation_and_groups(
         frame,
         snapshot,
         main.sidebar,
@@ -163,6 +191,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
         sidebar_scroll,
         agent_priority_sort,
         navigation_workspace,
+        collapsed_groups,
     );
     render_tabs(frame, snapshot, main.tabs);
     let panes = pane_rectangles(snapshot, main.panes);

@@ -17,6 +17,7 @@ pub(crate) enum ContextMenuAction {
     NewWorktree,
     OpenWorktree,
     RemoveWorktree,
+    ToggleWorktreeGroup,
     Focus,
     SplitRight,
     SplitDown,
@@ -99,6 +100,9 @@ impl ContextMenu {
                 } else if self.is_git {
                     items.push(("New worktree", A::NewWorktree));
                     items.push(("Open worktree", A::OpenWorktree));
+                }
+                if self.has_worktree_children {
+                    items.push(("Toggle worktree group", A::ToggleWorktreeGroup));
                 }
                 items
             }
@@ -257,6 +261,12 @@ mod tests {
         assert!(git_workspace.items().contains(&(
             "Remove worktree checkout",
             ContextMenuAction::RemoveWorktree
+        )));
+        git_workspace.is_linked_worktree = false;
+        git_workspace.has_worktree_children = true;
+        assert!(git_workspace.items().contains(&(
+            "Toggle worktree group",
+            ContextMenuAction::ToggleWorktreeGroup
         )));
     }
 

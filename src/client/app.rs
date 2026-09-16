@@ -278,11 +278,12 @@ fn event_loop(
         mouse_state.sidebar_scroll =
             mouse_state
                 .sidebar_scroll
-                .min(renderer::sidebar_scroll_max_with_sort(
+                .min(renderer::sidebar_scroll_max_with_sort_and_groups(
                     &snapshot,
                     area,
                     mouse_state.sidebar_collapsed,
                     mouse_state.agent_priority_sort,
+                    &mouse_state.collapsed_worktree_groups,
                 ));
         let pane_sizes = renderer::pane_sizes(
             &snapshot,
@@ -309,7 +310,7 @@ fn event_loop(
             && startup_error.is_none();
         terminal
             .draw(|frame| {
-                renderer::render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation(
+                renderer::render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_groups(
                     frame,
                     &snapshot,
                     connected,
@@ -321,6 +322,7 @@ fn event_loop(
                         .navigation_workspace
                         .as_ref()
                         .map(|(space, workspace)| (space.as_str(), workspace.as_str())),
+                    &mouse_state.collapsed_worktree_groups,
                 );
                 if let Some(insert_index) = mouse_state
                     .tab_drag
@@ -671,8 +673,14 @@ fn event_loop(
                     let selected = menu.selected;
                     if let Some(action) = menu.items().get(selected).map(|(_, action)| *action) {
                         let menu = context_menu.take().expect("menu exists");
-                        match activate_context_menu(client, &snapshot, menu, action, terminal_size)
-                        {
+                        match activate_context_menu(
+                            client,
+                            &snapshot,
+                            menu,
+                            action,
+                            terminal_size,
+                            &mut mouse_state,
+                        ) {
                             Ok(prompt) => rename_prompt = prompt.map(RenamePrompt::new),
                             Err(error) => record_action_error(
                                 &mut action_error,
@@ -1374,11 +1382,12 @@ fn handle_mouse(
             mouse.column,
             mouse.row,
         ) {
-            let max_scroll = renderer::sidebar_scroll_max_with_sort(
+            let max_scroll = renderer::sidebar_scroll_max_with_sort_and_groups(
                 snapshot,
                 area,
                 mouse_state.sidebar_collapsed,
                 mouse_state.agent_priority_sort,
+                &mouse_state.collapsed_worktree_groups,
             );
             mouse_state.sidebar_scroll = if mouse.kind == MouseEventKind::ScrollUp {
                 mouse_state.sidebar_scroll.saturating_sub(1)
@@ -1430,13 +1439,14 @@ fn handle_mouse(
         )? {
             return Ok(());
         } else {
-            let target = renderer::hit_test_with_sidebar_scroll_and_sort(
+            let target = renderer::hit_test_with_sidebar_scroll_and_sort_and_groups(
                 snapshot,
                 area,
                 mouse,
                 mouse_state.sidebar_collapsed,
                 mouse_state.sidebar_scroll,
                 mouse_state.agent_priority_sort,
+                &mouse_state.collapsed_worktree_groups,
             );
             let agent_pane = if let Some(renderer::ClickTarget::Agent {
                 space_id,
@@ -1500,9 +1510,15 @@ fn handle_mouse(
             let action = menu.action_at(area, mouse.column, mouse.row);
             if let Some(action) = action {
                 let menu = context_menu.take().expect("menu exists");
-                *rename_prompt =
-                    activate_context_menu(client, snapshot, menu, action, terminal_size)?
-                        .map(RenamePrompt::new);
+                *rename_prompt = activate_context_menu(
+                    client,
+                    snapshot,
+                    menu,
+                    action,
+                    terminal_size,
+                    mouse_state,
+                )?
+                .map(RenamePrompt::new);
             } else {
                 *context_menu = None;
             }
@@ -1541,28 +1557,32 @@ fn handle_mouse(
     }
     if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
         mouse_state.sidebar_scroll_drag = None;
-        if let Some(grab_row_offset) = renderer::sidebar_scroll_thumb_grab_offset_with_sort(
-            snapshot,
-            area,
-            mouse_state.sidebar_collapsed,
-            mouse_state.sidebar_scroll,
-            mouse.column,
-            mouse.row,
-            mouse_state.agent_priority_sort,
-        ) {
+        if let Some(grab_row_offset) =
+            renderer::sidebar_scroll_thumb_grab_offset_with_sort_and_groups(
+                snapshot,
+                area,
+                mouse_state.sidebar_collapsed,
+                mouse_state.sidebar_scroll,
+                mouse.column,
+                mouse.row,
+                mouse_state.agent_priority_sort,
+                &mouse_state.collapsed_worktree_groups,
+            )
+        {
             mouse_state.sidebar_scroll_drag = Some(grab_row_offset);
             return Ok(());
         }
         if let Some(renderer::ClickTarget::Workspace {
             space_id,
             workspace_id,
-        }) = renderer::hit_test_with_sidebar_scroll_and_sort(
+        }) = renderer::hit_test_with_sidebar_scroll_and_sort_and_groups(
             snapshot,
             area,
             mouse,
             mouse_state.sidebar_collapsed,
             mouse_state.sidebar_scroll,
             mouse_state.agent_priority_sort,
+            &mouse_state.collapsed_worktree_groups,
         ) {
             mouse_state.workspace_drag = Some(WorkspaceDrag {
                 space_id,
@@ -1572,13 +1592,14 @@ fn handle_mouse(
             return Ok(());
         }
         if let Some(renderer::ClickTarget::Tab(tab_id)) =
-            renderer::hit_test_with_sidebar_scroll_and_sort(
+            renderer::hit_test_with_sidebar_scroll_and_sort_and_groups(
                 snapshot,
                 area,
                 mouse,
                 mouse_state.sidebar_collapsed,
                 mouse_state.sidebar_scroll,
                 mouse_state.agent_priority_sort,
+                &mouse_state.collapsed_worktree_groups,
             )
         {
             if let Some(workspace) = active_workspace(snapshot) {
@@ -1635,14 +1656,16 @@ fn handle_mouse(
         MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
     ) && mouse_state.sidebar_scroll_drag.is_some()
     {
-        mouse_state.sidebar_scroll = renderer::sidebar_scroll_offset_from_drag_row_with_sort(
-            snapshot,
-            area,
-            mouse_state.sidebar_collapsed,
-            mouse.row,
-            mouse_state.sidebar_scroll_drag.unwrap_or_default(),
-            mouse_state.agent_priority_sort,
-        );
+        mouse_state.sidebar_scroll =
+            renderer::sidebar_scroll_offset_from_drag_row_with_sort_and_groups(
+                snapshot,
+                area,
+                mouse_state.sidebar_collapsed,
+                mouse.row,
+                mouse_state.sidebar_scroll_drag.unwrap_or_default(),
+                mouse_state.agent_priority_sort,
+                &mouse_state.collapsed_worktree_groups,
+            );
         if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
             mouse_state.sidebar_scroll_drag = None;
         }
@@ -1655,7 +1678,7 @@ fn handle_mouse(
     {
         if mouse.kind == MouseEventKind::Drag(MouseButton::Left) {
             if let Some(drag) = mouse_state.workspace_drag.as_mut() {
-                drag.drop_row = renderer::workspace_drop_target(
+                drag.drop_row = renderer::workspace_drop_target_with_groups(
                     snapshot,
                     area,
                     mouse_state.sidebar_scroll,
@@ -1663,6 +1686,7 @@ fn handle_mouse(
                     &drag.workspace_id,
                     mouse.column,
                     mouse.row,
+                    &mouse_state.collapsed_worktree_groups,
                 )
                 .map(|(_, _, _)| mouse.row);
             }
@@ -1674,7 +1698,7 @@ fn handle_mouse(
             .expect("workspace drag exists");
         if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
             if let Some((space_id, target_workspace_id, insert_index)) =
-                renderer::workspace_drop_target(
+                renderer::workspace_drop_target_with_groups(
                     snapshot,
                     area,
                     mouse_state.sidebar_scroll,
@@ -1682,6 +1706,7 @@ fn handle_mouse(
                     &drag.workspace_id,
                     mouse.column,
                     mouse.row,
+                    &mouse_state.collapsed_worktree_groups,
                 )
             {
                 if space_id == drag.space_id && target_workspace_id != drag.workspace_id {
@@ -1832,13 +1857,14 @@ fn handle_mouse(
     if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
         return Ok(());
     }
-    let Some(target) = renderer::hit_test_with_sidebar_scroll_and_sort(
+    let Some(target) = renderer::hit_test_with_sidebar_scroll_and_sort_and_groups(
         snapshot,
         area,
         mouse,
         mouse_state.sidebar_collapsed,
         mouse_state.sidebar_scroll,
         mouse_state.agent_priority_sort,
+        &mouse_state.collapsed_worktree_groups,
     ) else {
         return Ok(());
     };
@@ -2196,6 +2222,7 @@ fn activate_context_menu(
     menu: ContextMenu,
     action: ContextMenuAction,
     terminal_size: (u16, u16),
+    mouse_state: &mut MouseState,
 ) -> Result<Option<RenameTarget>, ClientError> {
     let source_pane_id = menu.source_pane_id.clone();
     match menu.target {
@@ -2231,6 +2258,14 @@ fn activate_context_menu(
                 ContextMenuAction::NewWorktree => Ok(Some(RenameTarget::CreateWorktree)),
                 ContextMenuAction::OpenWorktree => Ok(Some(RenameTarget::OpenWorktree)),
                 ContextMenuAction::RemoveWorktree => Ok(Some(RenameTarget::RemoveWorktree)),
+                ContextMenuAction::ToggleWorktreeGroup => {
+                    if let Some(group) = workspace_group_key(snapshot, &space_id, &id) {
+                        if !mouse_state.collapsed_worktree_groups.remove(&group) {
+                            mouse_state.collapsed_worktree_groups.insert(group);
+                        }
+                    }
+                    Ok(None)
+                }
                 _ => Ok(None),
             }
         }
@@ -2389,6 +2424,7 @@ fn activate_context_menu(
                 | ContextMenuAction::NewWorktree
                 | ContextMenuAction::OpenWorktree
                 | ContextMenuAction::RemoveWorktree => Ok(None),
+                ContextMenuAction::ToggleWorktreeGroup => Ok(None),
             }
         }
     }
@@ -2740,6 +2776,24 @@ fn workspace_has_linked_children(
                 && candidate.is_linked_worktree
                 && candidate.worktree_group.as_deref() == Some(group)
         })
+}
+
+fn workspace_group_key(
+    snapshot: &SessionSnapshot,
+    space_id: &str,
+    workspace_id: &str,
+) -> Option<String> {
+    snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == space_id)
+        .and_then(|space| {
+            space
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.workspace_id == workspace_id)
+        })
+        .and_then(|workspace| workspace.worktree_group.clone())
 }
 
 fn focus_direction_name(action: Action) -> &'static str {
