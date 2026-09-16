@@ -18,6 +18,7 @@ pub mod renderer;
 mod scrollbar;
 mod selection;
 mod settings;
+mod sidebar;
 mod startup;
 mod workspace_navigation;
 mod worktree_actions;

@@ -605,11 +605,25 @@ fn rounded_ratio(value: usize, numerator: usize, denominator: usize) -> usize {
 }
 
 fn sidebar_body(area: Rect) -> Rect {
+    let sidebar_sections = crate::client::sidebar::sections(area, 0.5);
+    let content = if sidebar_sections.workspaces.is_empty() && sidebar_sections.agents.is_empty() {
+        crate::client::sidebar::content_area(area)
+    } else {
+        Rect::new(
+            sidebar_sections.workspaces.x,
+            sidebar_sections.workspaces.y,
+            sidebar_sections.workspaces.width,
+            sidebar_sections
+                .workspaces
+                .height
+                .saturating_add(sidebar_sections.agents.height),
+        )
+    };
     Rect::new(
-        area.x.saturating_add(1),
-        area.y.saturating_add(1),
-        area.width.saturating_sub(2),
-        area.height.saturating_sub(2),
+        content.x.saturating_add(1),
+        content.y.saturating_add(1),
+        content.width.saturating_sub(1),
+        content.height.saturating_sub(2),
     )
 }
 
