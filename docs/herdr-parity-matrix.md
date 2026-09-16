@@ -18,6 +18,9 @@ structured metadata; the default text output remains backward compatible.
 Plugin pane descriptions are preserved and exported in the pane invocation
 context, matching Herdr's manifest metadata contract.
 
+Plugin popup borders now display the pane label/title with a command fallback,
+matching Herdr's declared popup title behavior.
+
 Numeric manifest popup dimensions are honored for plugin panes; CLI dimensions
 override manifest defaults. Width and height also accept Herdr's percentage
 forms, such as `80%`, retained in session state and recomputed on terminal
