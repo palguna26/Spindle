@@ -424,8 +424,8 @@ approved design changes it.
   `sidebar_min_width`, and `sidebar_max_width` values with safe bound fallback.
   `[ui] sidebar_start_collapsed` now matches Herdr and is applied only when a
   saved client preference has not already selected the sidebar state.
-  Narrow terminals now use a Herdr-style single-column mobile header; its
-  `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
+  Narrow terminals now use Herdr's compact workspace/tab single-column mobile
+  header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
   detected agents appear first and focus their pane directly, while the header
   also summarizes local agent attention and activity.
