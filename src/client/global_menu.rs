@@ -52,6 +52,16 @@ impl GlobalMenu {
     }
 
     pub(super) fn rect(sidebar: Rect, screen: Rect) -> Rect {
+        if sidebar.is_empty() {
+            let width = screen.width.clamp(1, 44);
+            let height = (ITEMS.len() as u16 + 2).min(screen.height.max(1));
+            return Rect::new(
+                screen.x + screen.width.saturating_sub(width) / 2,
+                screen.y + screen.height.saturating_sub(height) / 2,
+                width,
+                height,
+            );
+        }
         let width = 18.min(sidebar.width.max(1));
         let height = (ITEMS.len() as u16 + 2).min(screen.height.max(1));
         Rect::new(
@@ -132,5 +142,14 @@ mod tests {
             menu.select_at(sidebar, screen, mouse),
             Outcome::Activate(Action::CommandPalette)
         );
+    }
+
+    #[test]
+    fn menu_centers_when_mobile_has_no_sidebar() {
+        let screen = Rect::new(0, 0, 44, 20);
+        let rect = GlobalMenu::rect(Rect::default(), screen);
+        assert_eq!(rect.width, 44);
+        assert_eq!(rect.height, 7);
+        assert_eq!(rect.y, 6);
     }
 }

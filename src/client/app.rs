@@ -525,6 +525,7 @@ fn event_loop(
                                 mouse.row,
                             ) {
                                 renderer::NavigatorHit::Search => open_navigator.focus_search(),
+                                renderer::NavigatorHit::Close => close = true,
                                 renderer::NavigatorHit::Row { target, expand } => {
                                     open_navigator.select(target.clone());
                                     if expand {
@@ -541,8 +542,15 @@ fn event_loop(
                     }
                     // Mouse events are owned by the modal navigator, never the pane beneath it.
                     if let Some(target) = activate {
-                        let result =
-                            switch_navigator_target(client, &snapshot, target, terminal_size);
+                        let result = match target {
+                            NavigatorTarget::Menu(index) => {
+                                global_menu = Some(GlobalMenu { selected: index });
+                                Ok(())
+                            }
+                            target => {
+                                switch_navigator_target(client, &snapshot, target, terminal_size)
+                            }
+                        };
                         if result.is_ok() {
                             navigator = None;
                         }
@@ -588,7 +596,7 @@ fn event_loop(
                         Some(renderer::ClickTarget::MobileSwitcher)
                     )
                 {
-                    navigator = Some(Navigator::new(&snapshot));
+                    navigator = Some(Navigator::new_mobile(&snapshot));
                     continue;
                 }
                 if let Some(mode) = mouse_state.copy_mode.take() {
@@ -763,8 +771,15 @@ fn event_loop(
                 NavigatorOutcome::Activate => {
                     let target = open_navigator.selected(&snapshot);
                     if let Some(target) = target {
-                        let result =
-                            switch_navigator_target(client, &snapshot, target, terminal_size);
+                        let result = match target {
+                            NavigatorTarget::Menu(index) => {
+                                global_menu = Some(GlobalMenu { selected: index });
+                                Ok(())
+                            }
+                            target => {
+                                switch_navigator_target(client, &snapshot, target, terminal_size)
+                            }
+                        };
                         if result.is_ok() {
                             navigator = None;
                         }
@@ -942,7 +957,7 @@ fn event_loop(
         }
         if pressed == Action::ToggleSidebar {
             if uses_mobile_navigation(terminal_size.0, config.mobile_width_threshold) {
-                navigator = Some(Navigator::new(&snapshot));
+                navigator = Some(Navigator::new_mobile(&snapshot));
                 prefix_active = false;
                 continue;
             }
@@ -954,7 +969,13 @@ fn event_loop(
             continue;
         }
         if pressed == Action::SessionNavigator {
-            navigator = Some(Navigator::new(&snapshot));
+            navigator = Some(
+                if uses_mobile_navigation(terminal_size.0, config.mobile_width_threshold) {
+                    Navigator::new_mobile(&snapshot)
+                } else {
+                    Navigator::new(&snapshot)
+                },
+            );
             prefix_active = false;
             continue;
         }
@@ -1129,7 +1150,7 @@ fn event_loop(
             }
             Action::WorkspacePicker => {
                 if uses_mobile_navigation(terminal_size.0, config.mobile_width_threshold) {
-                    navigator = Some(Navigator::new(&snapshot));
+                    navigator = Some(Navigator::new_mobile(&snapshot));
                     prefix_active = false;
                     continue;
                 }
@@ -3251,6 +3272,17 @@ fn switch_navigator_target(
     terminal_size: (u16, u16),
 ) -> Result<(), ClientError> {
     let (space_id, workspace_id, tab_id, pane_id) = match target {
+        NavigatorTarget::NewWorkspace => {
+            return create_workspace_from_current_directory(client, terminal_size);
+        }
+        NavigatorTarget::NewTab => {
+            return execute_action(Action::NewTab, client, snapshot, terminal_size).map(|_| ());
+        }
+        NavigatorTarget::Menu(_) => {
+            return Err(ClientError::Server(
+                "menu target requires the client UI".into(),
+            ));
+        }
         NavigatorTarget::Space(space_id) => (space_id, None, None, None),
         NavigatorTarget::Workspace { space_id, id } => (space_id, Some(id), None, None),
         NavigatorTarget::Tab {

@@ -4,6 +4,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Target {
+    NewWorkspace,
+    NewTab,
+    Menu(usize),
     Space(String),
     Workspace {
         space_id: String,
@@ -49,6 +52,7 @@ enum Filter {
 
 #[derive(Debug, Clone, Default)]
 pub struct Navigator {
+    mobile: bool,
     query: String,
     search_focused: bool,
     filter: Option<Filter>,
@@ -60,6 +64,7 @@ pub struct Navigator {
 impl Navigator {
     pub fn new(snapshot: &SessionSnapshot) -> Self {
         let mut this = Self {
+            mobile: false,
             expanded_spaces: snapshot
                 .spaces
                 .iter()
@@ -97,6 +102,16 @@ impl Navigator {
             })
         });
         this
+    }
+
+    pub fn new_mobile(snapshot: &SessionSnapshot) -> Self {
+        let mut navigator = Self::new(snapshot);
+        navigator.mobile = true;
+        navigator
+    }
+
+    pub fn is_mobile(&self) -> bool {
+        self.mobile
     }
 
     pub fn rows(&self, snapshot: &SessionSnapshot) -> Vec<Row> {
@@ -243,7 +258,48 @@ impl Navigator {
                 }
             }
         }
-        rows
+        if self.mobile {
+            let mut mobile_rows = Vec::with_capacity(rows.len() + 8);
+            mobile_rows.push(Row {
+                target: Target::NewWorkspace,
+                depth: 0,
+                label: "+ new workspace".to_owned(),
+                detail: "create workspace".to_owned(),
+                current: false,
+                expanded: false,
+            });
+            mobile_rows.extend(rows);
+            if snapshot
+                .spaces
+                .iter()
+                .any(|space| space.active_workspace_id.is_some())
+            {
+                mobile_rows.push(Row {
+                    target: Target::NewTab,
+                    depth: 0,
+                    label: "+ new tab".to_owned(),
+                    detail: "create tab".to_owned(),
+                    current: false,
+                    expanded: false,
+                });
+            }
+            for (index, (label, _)) in crate::client::global_menu::GlobalMenu::items()
+                .iter()
+                .enumerate()
+            {
+                mobile_rows.push(Row {
+                    target: Target::Menu(index),
+                    depth: 0,
+                    label: (*label).to_owned(),
+                    detail: "menu".to_owned(),
+                    current: false,
+                    expanded: false,
+                });
+            }
+            mobile_rows
+        } else {
+            rows
+        }
     }
 
     pub fn selected(&self, snapshot: &SessionSnapshot) -> Option<Target> {
@@ -493,6 +549,20 @@ mod tests {
             navigator.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), &snapshot),
             Outcome::Close
         );
+    }
+
+    #[test]
+    fn mobile_rows_include_herdr_switcher_actions() {
+        let snapshot = snapshot();
+        let navigator = Navigator::new_mobile(&snapshot);
+        let rows = navigator.rows(&snapshot);
+        assert!(navigator.is_mobile());
+        assert!(matches!(
+            rows.first().map(|row| &row.target),
+            Some(Target::NewWorkspace)
+        ));
+        assert!(rows.iter().any(|row| matches!(row.target, Target::NewTab)));
+        assert!(rows.iter().any(|row| matches!(row.target, Target::Menu(0))));
     }
 
     #[test]
