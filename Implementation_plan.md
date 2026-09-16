@@ -663,6 +663,8 @@ approved design changes it.
 - [x] Add project-scoped named sessions with `spindle --session <name>` and
   `spindle session list|attach|stop|delete`, keeping the default session path
   unchanged, validating names, and stopping a live server before deletion.
+- [x] Expose named-session commands and `--session` in Bash, Elvish, Fish,
+  PowerShell, and Zsh completion scripts.
 - [ ] Port each behavior that fits Spindle's Windows-first/local-first purpose
   in a separately tested commit. Pane movement now supports Herdr's
   existing-tab destination as well as a new tab, with optional target-pane
