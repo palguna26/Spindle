@@ -163,10 +163,19 @@ pub(crate) fn pane_rectangles(snapshot: &SessionSnapshot, area: Rect) -> Vec<Pan
 }
 
 pub(crate) fn pane_sizes(snapshot: &SessionSnapshot, area: Rect) -> Vec<PaneSize> {
-    pane_rectangles(snapshot, area)
+    let panes = pane_rectangles(snapshot, area);
+    let config = crate::config::load();
+    panes
         .into_iter()
         .map(|pane| {
-            let (cols, rows) = pane_inner_size(pane.rect);
+            let borders = pane_borders_for_rect(
+                pane.rect,
+                &pane_rectangles(snapshot, area),
+                config.pane_borders,
+                config.pane_outer_borders,
+                config.pane_gaps,
+            );
+            let (cols, rows) = pane_inner_size_with_borders(pane.rect, borders);
             PaneSize {
                 pane_id: pane.pane_id,
                 cols,
@@ -187,9 +196,58 @@ pub(crate) fn split_handles(snapshot: &SessionSnapshot, area: Rect) -> Vec<Split
     handles
 }
 
-pub(crate) fn pane_inner_size(area: Rect) -> (u16, u16) {
-    let inner = Block::default().borders(Borders::ALL).inner(area);
+pub(crate) fn pane_inner_size_with_borders(area: Rect, borders: Borders) -> (u16, u16) {
+    let inner = Block::default().borders(borders).inner(area);
     (inner.width.max(1), inner.height.max(1))
+}
+
+pub(crate) fn pane_borders_for_rect(
+    rect: Rect,
+    panes: &[PaneRect],
+    mode: crate::config::PaneBorders,
+    outer: bool,
+    gaps: bool,
+) -> Borders {
+    let mut borders = if mode.shows_borders(panes.len() > 1) {
+        Borders::ALL
+    } else {
+        Borders::NONE
+    };
+    if !borders.is_empty() && !outer {
+        let left = panes.iter().all(|pane| pane.rect.x >= rect.x);
+        let top = panes.iter().all(|pane| pane.rect.y >= rect.y);
+        let right = panes.iter().all(|pane| pane.rect.right() <= rect.right());
+        let bottom = panes.iter().all(|pane| pane.rect.bottom() <= rect.bottom());
+        if left {
+            borders.remove(Borders::LEFT);
+        }
+        if top {
+            borders.remove(Borders::TOP);
+        }
+        if right {
+            borders.remove(Borders::RIGHT);
+        }
+        if bottom {
+            borders.remove(Borders::BOTTOM);
+        }
+    }
+    if !gaps {
+        let right_neighbor = panes.iter().any(|pane| {
+            pane.rect.x == rect.right()
+                && pane.rect.y < rect.bottom()
+                && pane.rect.bottom() > rect.y
+        });
+        let below_neighbor = panes.iter().any(|pane| {
+            pane.rect.y == rect.bottom() && pane.rect.x < rect.right() && pane.rect.right() > rect.x
+        });
+        if right_neighbor {
+            borders.remove(Borders::RIGHT);
+        }
+        if below_neighbor {
+            borders.remove(Borders::BOTTOM);
+        }
+    }
+    borders
 }
 
 fn active_tab(snapshot: &SessionSnapshot) -> Option<&crate::server::session::TabView> {

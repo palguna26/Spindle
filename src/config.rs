@@ -1,5 +1,5 @@
 use crossterm::event::KeyModifiers;
-use serde::Deserialize;
+use serde::{de, Deserialize, Deserializer};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -34,6 +34,9 @@ struct UiConfig {
     sidebar_start_collapsed: bool,
     sidebar_collapsed_mode: SidebarCollapsedMode,
     tab_bar_position: TabBarPosition,
+    pane_borders: PaneBorders,
+    pane_outer_borders: bool,
+    pane_gaps: bool,
     prompt_new_tab_name: bool,
     prompt_new_workspace_name: bool,
     copy_on_select: bool,
@@ -62,6 +65,54 @@ pub(crate) enum TabBarPosition {
     Bottom,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum PaneBorders {
+    #[default]
+    Auto,
+    Always,
+    Off,
+}
+
+impl PaneBorders {
+    pub(crate) fn shows_borders(self, multi_pane: bool) -> bool {
+        !matches!(self, Self::Off) && (multi_pane || matches!(self, Self::Always))
+    }
+}
+
+impl<'de> Deserialize<'de> for PaneBorders {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct PaneBordersVisitor;
+        impl<'de> de::Visitor<'de> for PaneBordersVisitor {
+            type Value = PaneBorders;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("\"auto\", \"always\", \"off\", or a boolean")
+            }
+
+            fn visit_bool<E: de::Error>(self, value: bool) -> Result<Self::Value, E> {
+                Ok(if value {
+                    PaneBorders::Auto
+                } else {
+                    PaneBorders::Off
+                })
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                match value {
+                    "auto" => Ok(PaneBorders::Auto),
+                    "always" => Ok(PaneBorders::Always),
+                    "off" => Ok(PaneBorders::Off),
+                    other => Err(E::invalid_value(de::Unexpected::Str(other), &self)),
+                }
+            }
+        }
+        deserializer.deserialize_any(PaneBordersVisitor)
+    }
+}
+
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum HostCursorMode {
@@ -81,6 +132,9 @@ impl Default for UiConfig {
             sidebar_start_collapsed: false,
             sidebar_collapsed_mode: SidebarCollapsedMode::Compact,
             tab_bar_position: TabBarPosition::Top,
+            pane_borders: PaneBorders::Auto,
+            pane_outer_borders: true,
+            pane_gaps: true,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -201,6 +255,9 @@ pub struct Config {
     pub(crate) sidebar_start_collapsed: bool,
     pub(crate) sidebar_collapsed_mode: SidebarCollapsedMode,
     pub(crate) tab_bar_position: TabBarPosition,
+    pub(crate) pane_borders: PaneBorders,
+    pub(crate) pane_outer_borders: bool,
+    pub(crate) pane_gaps: bool,
     pub(crate) prompt_new_tab_name: bool,
     pub(crate) prompt_new_workspace_name: bool,
     pub(crate) copy_on_select: bool,
@@ -231,6 +288,9 @@ impl Default for Config {
             sidebar_start_collapsed: false,
             sidebar_collapsed_mode: SidebarCollapsedMode::Compact,
             tab_bar_position: TabBarPosition::Top,
+            pane_borders: PaneBorders::Auto,
+            pane_outer_borders: true,
+            pane_gaps: true,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -303,6 +363,9 @@ pub fn load_from(path: &std::path::Path) -> Config {
         sidebar_start_collapsed: file.ui.sidebar_start_collapsed,
         sidebar_collapsed_mode: file.ui.sidebar_collapsed_mode,
         tab_bar_position: file.ui.tab_bar_position,
+        pane_borders: file.ui.pane_borders,
+        pane_outer_borders: file.ui.pane_outer_borders,
+        pane_gaps: file.ui.pane_gaps,
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
         copy_on_select: file.ui.copy_on_select,
@@ -390,6 +453,9 @@ mobile_width_threshold = 64
 sidebar_start_collapsed = false
 sidebar_collapsed_mode = "compact"
 tab_bar_position = "top"
+pane_borders = "auto"
+pane_outer_borders = true
+pane_gaps = true
 prompt_new_tab_name = true
 prompt_new_workspace_name = false
 copy_on_select = true
@@ -480,7 +546,7 @@ fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> S
 #[cfg(test)]
 mod tests {
     use super::{
-        load_from, upsert_section_key, Config, HostCursorMode, NotificationDelivery,
+        load_from, upsert_section_key, Config, HostCursorMode, NotificationDelivery, PaneBorders,
         SidebarCollapsedMode, TabBarPosition,
     };
     use crossterm::event::KeyModifiers;
@@ -724,6 +790,28 @@ mod tests {
         ));
         std::fs::write(&path, "[ui]\ntab_bar_position = \"bottom\"\n").unwrap();
         assert_eq!(load_from(&path).tab_bar_position, TabBarPosition::Bottom);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn pane_border_settings_match_herdr_defaults_and_values() {
+        let config = Config::default();
+        assert_eq!(config.pane_borders, PaneBorders::Auto);
+        assert!(config.pane_outer_borders);
+        assert!(config.pane_gaps);
+        let path = std::env::temp_dir().join(format!(
+            "spindle-pane-border-settings-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "[ui]\npane_borders = \"always\"\npane_outer_borders = false\npane_gaps = false\n",
+        )
+        .unwrap();
+        let config = load_from(&path);
+        assert_eq!(config.pane_borders, PaneBorders::Always);
+        assert!(!config.pane_outer_borders);
+        assert!(!config.pane_gaps);
         std::fs::remove_file(path).unwrap();
     }
 

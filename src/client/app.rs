@@ -3561,7 +3561,13 @@ fn resize_panes(
 
 fn pane_size(terminal_size: (u16, u16)) -> (u16, u16) {
     let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
-    renderer::pane_inner_size(renderer::pane_content_area(area))
+    let config = crate::config::load();
+    let borders = if config.pane_borders.shows_borders(false) && config.pane_outer_borders {
+        ratatui::widgets::Borders::ALL
+    } else {
+        ratatui::widgets::Borders::NONE
+    };
+    renderer::pane_inner_size_with_borders(renderer::pane_content_area(area), borders)
 }
 
 fn pane_request(terminal_size: (u16, u16)) -> serde_json::Value {
@@ -4138,7 +4144,7 @@ mod tests {
         );
         assert_eq!(page_key_bytes(KeyCode::PageUp), Some(b"\x1b[5~".to_vec()));
         assert_eq!(page_key_bytes(KeyCode::PageDown), Some(b"\x1b[6~".to_vec()));
-        assert_eq!(pane_size((120, 40)), (92, 36));
+        assert_eq!(pane_size((120, 40)), (94, 38));
         assert_eq!(pane_size((0, 0)), (1, 1));
     }
 

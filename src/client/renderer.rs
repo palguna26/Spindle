@@ -12,8 +12,9 @@ use super::settings::Settings;
 use crate::model::status::PaneStatus;
 use crate::server::session::{SessionSnapshot, WorkspaceView};
 pub(crate) use layout::{
-    pane_content_area, pane_content_area_for_snapshot, pane_inner_size, pane_rectangles,
-    pane_sizes, sidebar_area, split_handles, PaneSize,
+    pane_borders_for_rect, pane_content_area, pane_content_area_for_snapshot,
+    pane_inner_size_with_borders, pane_rectangles, pane_sizes, sidebar_area, split_handles,
+    PaneSize,
 };
 use navigation::render_tabs;
 pub use navigation::{
@@ -197,6 +198,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
     );
     render_tabs(frame, snapshot, main.tabs);
     let panes = pane_rectangles(snapshot, main.panes);
+    let config = crate::config::load();
     if panes.is_empty() {
         let message = if active_workspace(snapshot).is_some() {
             format!(
@@ -212,7 +214,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
         );
     } else {
         let mut host_cursor = None;
-        for pane_rect in panes {
+        for pane_rect in &panes {
             let Some(pane) = snapshot
                 .panes
                 .iter()
@@ -227,10 +229,17 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
             } else {
                 status_color(&pane.status)
             };
+            let borders = pane_borders_for_rect(
+                pane_rect.rect,
+                &panes,
+                config.pane_borders,
+                config.pane_outer_borders,
+                config.pane_gaps,
+            );
             frame.render_widget(
                 Paragraph::new(lines).block(
                     Block::default()
-                        .borders(Borders::ALL)
+                        .borders(borders)
                         .title(title)
                         .border_style(Style::default().fg(border_color)),
                 ),
@@ -240,7 +249,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
                 && pane.cursor_visible
                 && snapshot.focused_pane_id.as_deref() == Some(&pane_rect.pane_id)
             {
-                let inner = Block::default().borders(Borders::ALL).inner(pane_rect.rect);
+                let inner = Block::default().borders(borders).inner(pane_rect.rect);
                 let (col, row) = pane.cursor;
                 if col < inner.width && row < inner.height {
                     host_cursor = Some((inner.x + col, inner.y + row));
@@ -332,15 +341,29 @@ pub(crate) fn render_selection_with_sidebar(
     if !selection.has_range() {
         return;
     }
-    let Some(pane) = pane_rectangles(
+    let panes = pane_rectangles(
         snapshot,
         layout::pane_content_area_for_snapshot(snapshot, frame.area(), sidebar_collapsed),
-    )
-    .into_iter()
-    .find(|pane| pane.pane_id == selection.pane_id) else {
+    );
+    let Some(pane) = panes
+        .into_iter()
+        .find(|pane| pane.pane_id == selection.pane_id)
+    else {
         return;
     };
-    let inner = Block::default().borders(Borders::ALL).inner(pane.rect);
+    let all_panes = pane_rectangles(
+        snapshot,
+        layout::pane_content_area_for_snapshot(snapshot, frame.area(), sidebar_collapsed),
+    );
+    let config = crate::config::load();
+    let borders = layout::pane_borders_for_rect(
+        pane.rect,
+        &all_panes,
+        config.pane_borders,
+        config.pane_outer_borders,
+        config.pane_gaps,
+    );
+    let inner = Block::default().borders(borders).inner(pane.rect);
     let ((start_row, start_col), (end_row, end_col)) = selection.ordered();
     for row in start_row..=end_row {
         if row >= inner.height {
@@ -369,15 +392,22 @@ pub(crate) fn render_copy_mode(
     mode: &CopyMode,
     sidebar_collapsed: bool,
 ) {
-    let Some(pane) = pane_rectangles(
+    let panes = pane_rectangles(
         snapshot,
         layout::pane_content_area_for_snapshot(snapshot, frame.area(), sidebar_collapsed),
-    )
-    .into_iter()
-    .find(|pane| pane.pane_id == mode.pane_id) else {
+    );
+    let Some(pane) = panes.iter().find(|pane| pane.pane_id == mode.pane_id) else {
         return;
     };
-    let inner = Block::default().borders(Borders::ALL).inner(pane.rect);
+    let config = crate::config::load();
+    let borders = layout::pane_borders_for_rect(
+        pane.rect,
+        &panes,
+        config.pane_borders,
+        config.pane_outer_borders,
+        config.pane_gaps,
+    );
+    let inner = Block::default().borders(borders).inner(pane.rect);
     let selected = mode.selection.map(|selection| {
         if selection.anchor <= mode.cursor {
             (selection.anchor, mode.cursor, selection.kind)
@@ -947,7 +977,6 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
     use ratatui::style::Color;
-    use ratatui::widgets::{Block, Borders};
     use ratatui::Terminal;
 
     #[test]
@@ -1200,7 +1229,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         let area = Rect::new(0, 0, 80, 24);
         let pane_rect = pane_rectangles(&snapshot, pane_content_area(area))[0].rect;
-        let inner = Block::default().borders(Borders::ALL).inner(pane_rect);
+        let inner = pane_rect;
         let mut selection = TextSelection::new("pane-1".into(), inner, inner.x, inner.y);
         selection.drag(inner.x + 2, inner.y);
 
