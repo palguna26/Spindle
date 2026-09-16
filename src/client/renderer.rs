@@ -985,6 +985,11 @@ fn pane_title_text(pane: &crate::server::session::PaneView) -> String {
         .label
         .as_deref()
         .filter(|label| !label.is_empty())
+        .or_else(|| {
+            pane.display_title
+                .as_deref()
+                .filter(|title| !title.is_empty())
+        })
         .or_else(|| (!pane.title.is_empty()).then_some(pane.title.as_str()))
         .unwrap_or(pane.command.as_str());
     let alternate = if pane.alternate_screen { " [alt]" } else { "" };
@@ -1265,6 +1270,7 @@ mod tests {
                 agent_state: None,
                 agent_done: false,
                 display_agent: None,
+                display_title: None,
                 agent_session: None,
                 status: PaneStatus::Running,
                 scrollback_bytes: 0,
@@ -1362,6 +1368,7 @@ mod tests {
             agent_state: Some(crate::detect::AgentState::Working),
             agent_done: false,
             display_agent: None,
+            display_title: None,
             agent_session: None,
             status: PaneStatus::Running,
             scrollback_bytes: 0,
@@ -1388,6 +1395,8 @@ mod tests {
         assert!(pane_title_text(&pane).contains("[alt]"));
         pane.display_agent = Some("Codex Review".into());
         assert!(pane_title_text(&pane).contains("[Codex Review working]"));
+        pane.display_title = Some("Review shell".into());
+        assert!(pane_title_text(&pane).contains("Review shell"));
         assert_eq!(
             pane_title(&pane).spans[0].style.fg,
             Some(Color::Rgb(255, 165, 0))
@@ -1414,6 +1423,7 @@ mod tests {
             agent_state: None,
             agent_done: false,
             display_agent: None,
+            display_title: None,
             agent_session: None,
             status: PaneStatus::Completed { exit_code: 0 },
             scrollback_bytes: 0,

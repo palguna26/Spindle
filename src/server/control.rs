@@ -45,7 +45,11 @@ struct ReportMetadataRequest {
     #[serde(default)]
     display_agent: Option<String>,
     #[serde(default)]
+    display_title: Option<String>,
+    #[serde(default)]
     clear_display_agent: bool,
+    #[serde(default)]
+    clear_title: bool,
     #[serde(default)]
     seq: Option<u64>,
 }
@@ -525,21 +529,41 @@ pub(crate) fn response_for_with_interactive(
                     return request_error(request.request_id, "invalid_payload", error.to_string())
                 }
             };
-            if payload.display_agent.is_none() && !payload.clear_display_agent {
+            if payload.display_agent.is_none()
+                && !payload.clear_display_agent
+                && payload.display_title.is_none()
+                && !payload.clear_title
+            {
                 return request_error(
                     request.request_id,
                     "invalid_metadata_request",
-                    "provide display_agent or clear_display_agent".into(),
+                    "provide display metadata to set or clear".into(),
+                );
+            }
+            if payload.display_agent.is_some() && payload.clear_display_agent
+                || payload.display_title.is_some() && payload.clear_title
+            {
+                return request_error(
+                    request.request_id,
+                    "invalid_metadata_request",
+                    "cannot set and clear the same metadata field".into(),
                 );
             }
             let mut session = session.lock().expect("session lock poisoned");
+            let source = payload.source.clone();
             save_after(&mut session, |session| {
-                session.report_display_agent(
+                session.report_metadata(
                     &payload.pane_id,
                     crate::server::session::DisplayAgentReportRequest {
-                        source: payload.source,
+                        source,
                         display_agent: payload.display_agent,
                         clear: payload.clear_display_agent,
+                        seq: payload.seq,
+                    },
+                    crate::server::session::DisplayTitleReportRequest {
+                        source: payload.source,
+                        display_title: payload.display_title,
+                        clear: payload.clear_title,
                         seq: payload.seq,
                     },
                 )

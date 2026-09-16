@@ -72,6 +72,8 @@
           "source": { "type": "string" },
           "display_agent": { "type": ["string", "null"] },
           "clear_display_agent": { "type": "boolean", "default": false },
+          "display_title": { "type": ["string", "null"] },
+          "clear_title": { "type": "boolean", "default": false },
           "seq": { "type": ["integer", "null"], "minimum": 0 }
         },
         "anyOf": [

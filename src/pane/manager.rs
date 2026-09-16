@@ -32,6 +32,8 @@ pub struct Pane {
     agent_authority: Option<AgentAuthority>,
     display_agent_authority: Option<AgentAuthority>,
     pub display_agent: Option<String>,
+    display_title_authority: Option<AgentAuthority>,
+    pub display_title: Option<String>,
     pub agent_session: Option<AgentSessionInfo>,
     agent_session_seq: Option<(String, u64)>,
     pub scrollback: VecDeque<u8>,
@@ -103,6 +105,8 @@ impl PaneManager {
                 agent_authority: None,
                 display_agent_authority: None,
                 display_agent: None,
+                display_title_authority: None,
+                display_title: None,
                 agent_session: None,
                 agent_session_seq: None,
                 scrollback: VecDeque::with_capacity(self.scrollback_limit),
@@ -399,6 +403,35 @@ impl PaneManager {
         Ok(changed)
     }
 
+    pub(crate) fn report_display_title(
+        &mut self,
+        id: &str,
+        source: String,
+        display_title: Option<String>,
+        clear: bool,
+        seq: Option<u64>,
+    ) -> Result<bool, PaneManagerError> {
+        let pane = self
+            .panes
+            .get_mut(id)
+            .ok_or_else(|| PaneManagerError::MissingPane(id.into()))?;
+        if pane
+            .display_title_authority
+            .as_ref()
+            .is_some_and(|authority| !authority.accepts(&source, seq))
+        {
+            return Ok(false);
+        }
+        if clear == display_title.is_some() {
+            return Ok(false);
+        }
+        let next = display_title.filter(|value| !value.trim().is_empty());
+        let changed = pane.display_title != next;
+        pane.display_title = next;
+        pane.display_title_authority = Some(AgentAuthority { source, seq });
+        Ok(changed)
+    }
+
     pub(crate) fn report_agent_session(
         &mut self,
         id: &str,
@@ -464,6 +497,8 @@ impl PaneManager {
         pane.agent_authority = None;
         pane.display_agent_authority = None;
         pane.display_agent = None;
+        pane.display_title_authority = None;
+        pane.display_title = None;
         pane.agent_session = None;
         pane.agent_session_seq = None;
         pane.pending_idle.clear();
