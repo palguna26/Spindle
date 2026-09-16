@@ -41,8 +41,9 @@ the live Spindle sidebar. Workspace and agent rows resolve state, names,
 branches, terminal titles, pane IDs, machine identity, and custom metadata;
 agent-specific `rows_by_agent` overrides select the matching layout by
 canonical agent name, and scrolling/hit testing use the same configured row
-heights. Configured row gaps are included in the same visual geometry and are
-not treated as selectable rows. The behavior is covered by renderer tests and
+heights. Configured row gaps are included in the same visual geometry only
+between matching Herdr entries and are not treated as selectable rows. The
+behavior is covered by renderer tests and
 the Windows release/installer gates.
 
 ## 0. Establish the parity matrix
