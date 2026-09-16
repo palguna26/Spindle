@@ -36,6 +36,12 @@ The release binary was verified on Windows with a live pane: a newer report
 was applied, an older report was ignored, and release returned the pane to
 detector control.
 
+Latest sidebar milestone: nested Herdr-style sidebar row tokens now render in
+the live Spindle sidebar. Workspace and agent rows resolve state, names,
+branches, terminal titles, pane IDs, machine identity, and custom metadata;
+scrolling and hit testing use the same configured row heights. The behavior is
+covered by renderer tests and the Windows release/installer gates.
+
 ## 0. Establish the parity matrix
 
 - [ ] Compare Herdr's README, quick-start, keyboard guide, CLI guide, and

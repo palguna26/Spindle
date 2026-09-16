@@ -85,7 +85,9 @@ row-token layouts now drive the rendered sidebar, scrolling, scrollbar mapping,
 hit testing, and workspace drop targets. The default two-line workspace and
 agent rows follow Herdr's `src/config/sidebar.rs` and
 `src/client/shell/sidebar.rs`; focused agent styling is retained across both
-lines. Rust tests, release build, Windows smoke, and installer smoke pass.
+lines. Configured state, workspace, branch, agent, machine, tab, pane, title,
+and custom metadata tokens are resolved in the renderer, while missing values
+are omitted. Rust tests, release build, Windows smoke, and installer smoke pass.
 
 | User behavior | Spindle status | Herdr reference | Evidence / next verification |
 | --- | --- | --- | --- |
