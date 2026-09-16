@@ -16,6 +16,10 @@ const DEVIN_HOOK_ASSET: &str = include_str!("integration/assets/devin-agent-stat
 const DEVIN_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const DROID_HOOK_ASSET: &str = include_str!("integration/assets/droid-agent-state.ps1");
 const DROID_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const KIMI_HOOK_ASSET: &str = include_str!("integration/assets/kimi-agent-state.ps1");
+const KIMI_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const KIMI_BEGIN: &str = "# >>> spindle kimi integration";
+const KIMI_END: &str = "# <<< spindle kimi integration";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -39,10 +43,11 @@ pub(crate) enum Target {
     Cursor,
     Devin,
     Droid,
+    Kimi,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 9] = [
+    pub(crate) const ALL: [Self; 10] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
@@ -52,6 +57,7 @@ impl Target {
         Self::Cursor,
         Self::Devin,
         Self::Droid,
+        Self::Kimi,
     ];
 
     fn label(self) -> &'static str {
@@ -65,6 +71,7 @@ impl Target {
             Self::Cursor => "cursor",
             Self::Devin => "devin",
             Self::Droid => "droid",
+            Self::Kimi => "kimi",
         }
     }
 
@@ -87,6 +94,7 @@ impl Target {
             Self::Cursor => cursor_dir().join(CURSOR_HOOK_NAME),
             Self::Devin => devin_dir().join(DEVIN_HOOK_NAME),
             Self::Droid => droid_dir().join("hooks").join(DROID_HOOK_NAME),
+            Self::Kimi => kimi_dir().join("hooks").join(KIMI_HOOK_NAME),
         }
     }
 
@@ -435,6 +443,59 @@ pub(crate) fn uninstall_droid() -> std::io::Result<Vec<String>> {
     }
     Ok(vec![format!(
         "{} droid integration hook {}",
+        if removed_hook || changed {
+            "removed"
+        } else {
+            "did not find"
+        },
+        hook_path.display()
+    )])
+}
+
+pub(crate) fn install_kimi() -> std::io::Result<Vec<String>> {
+    let dir = kimi_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "kimi code config directory not found at {}. install kimi code first",
+            dir.display()
+        )));
+    }
+    let hooks_dir = dir.join("hooks");
+    std::fs::create_dir_all(&hooks_dir)?;
+    let hook_path = hooks_dir.join(KIMI_HOOK_NAME);
+    std::fs::write(&hook_path, KIMI_HOOK_ASSET)?;
+    let config_path = dir.join("config.toml");
+    let existing = if config_path.is_file() {
+        std::fs::read_to_string(&config_path)?
+    } else {
+        String::new()
+    };
+    let updated = build_kimi_config(&existing, &hook_path);
+    if updated != existing {
+        std::fs::write(&config_path, updated)?;
+    }
+    Ok(vec![
+        format!("installed kimi integration hook to {}", hook_path.display()),
+        format!("updated kimi config at {}", config_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_kimi() -> std::io::Result<Vec<String>> {
+    let dir = kimi_dir();
+    let hook_path = dir.join("hooks").join(KIMI_HOOK_NAME);
+    let config_path = dir.join("config.toml");
+    let removed_hook = remove_file_if_exists(&hook_path)?;
+    let mut changed = false;
+    if config_path.is_file() {
+        let existing = std::fs::read_to_string(&config_path)?;
+        let updated = remove_kimi_config(&existing);
+        changed = updated != existing;
+        if changed {
+            std::fs::write(&config_path, updated)?;
+        }
+    }
+    Ok(vec![format!(
+        "{} kimi integration hook {}",
         if removed_hook || changed {
             "removed"
         } else {
@@ -896,6 +957,90 @@ fn droid_dir() -> PathBuf {
     home_dir().join(".factory")
 }
 
+fn kimi_dir() -> PathBuf {
+    env::var_os("KIMI_CODE_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".kimi-code"))
+}
+
+fn kimi_events() -> [(&'static str, Option<&'static str>, &'static str); 12] {
+    [
+        ("SessionStart", None, "session"),
+        ("UserPromptSubmit", None, "working"),
+        ("PreToolUse", Some("^(?!AskUserQuestion$).*$"), "working"),
+        ("PreToolUse", Some("^AskUserQuestion$"), "blocked"),
+        ("PostToolUse", Some("^AskUserQuestion$"), "working"),
+        ("PostToolUseFailure", Some("^AskUserQuestion$"), "working"),
+        ("SubagentStart", None, "working"),
+        ("PreCompact", None, "working"),
+        ("PermissionRequest", None, "blocked"),
+        ("PermissionResult", None, "working"),
+        ("Stop", None, "idle"),
+        ("SessionEnd", None, "release"),
+    ]
+}
+
+fn toml_quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn build_kimi_config(content: &str, hook_path: &std::path::Path) -> String {
+    let mut result = remove_kimi_config(content);
+    while result.ends_with('\n') {
+        result.pop();
+    }
+    if !result.is_empty() {
+        result.push_str("\n\n");
+    }
+    result.push_str(KIMI_BEGIN);
+    result.push('\n');
+    for (event, matcher, action) in kimi_events() {
+        result.push_str("[[hooks]]\nevent = ");
+        result.push_str(&toml_quote(event));
+        result.push('\n');
+        if let Some(matcher) = matcher {
+            result.push_str("matcher = ");
+            result.push_str(&toml_quote(matcher));
+            result.push('\n');
+        }
+        result.push_str("command = ");
+        result.push_str(&toml_quote(&format!(
+            "{} {}",
+            direct_hook_command(hook_path),
+            action
+        )));
+        result.push_str("\ntimeout = 10\n\n");
+    }
+    result.push_str(KIMI_END);
+    result.push('\n');
+    result
+}
+
+fn remove_kimi_config(content: &str) -> String {
+    let mut lines = Vec::new();
+    let mut inside = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == KIMI_BEGIN || trimmed == "# >>> herdr kimi integration" {
+            inside = true;
+            continue;
+        }
+        if inside {
+            if trimmed == KIMI_END || trimmed == "# <<< herdr kimi integration" {
+                inside = false;
+            }
+            continue;
+        }
+        lines.push(line);
+    }
+    let mut result = lines.join("\n");
+    if content.ends_with('\n') && !result.is_empty() {
+        result.push('\n');
+    }
+    result
+}
+
 fn droid_events() -> [(&'static str, &'static str); 1] {
     [("SessionStart", "session")]
 }
@@ -1350,6 +1495,7 @@ mod tests {
         assert_eq!(Target::Cursor.label(), "cursor");
         assert_eq!(Target::Devin.label(), "devin");
         assert_eq!(Target::Droid.label(), "droid");
+        assert_eq!(Target::Kimi.label(), "kimi");
     }
 
     #[test]
@@ -1362,6 +1508,7 @@ mod tests {
         assert!(Target::Cursor.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Devin.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Droid.path().ends_with("spindle-agent-state.ps1"));
+        assert!(Target::Kimi.path().ends_with("spindle-agent-state.ps1"));
     }
 
     #[test]
