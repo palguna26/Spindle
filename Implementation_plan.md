@@ -132,7 +132,9 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
 - [x] Close a workspace with linked worktree children as a Herdr-style grouped
   close from the context menu, with explicit type-name confirmation.
 - [x] Toggle linked worktree group visibility from the context menu, keeping
-  sidebar rendering, scrolling, hit-testing, and drag targets in sync.
+  sidebar rendering, scrolling, hit-testing, and drag targets in sync. The
+  collapsed group keys are persisted in the local client preferences, matching
+  Herdr's chrome-preference behavior across client restarts.
 - [x] Support pane split, close, rename, zoom/focus actions from menus where
   the matching Herdr action exists, including swapping a clicked pane with the
   previously focused pane.
