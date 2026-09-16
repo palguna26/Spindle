@@ -409,7 +409,11 @@ pub(crate) fn complete_onboarding() -> Result<(), String> {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create config directory: {error}"))?;
     }
-    let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("failed to read config before saving: {error}")),
+    };
     std::fs::write(
         &config_path,
         upsert_top_level_bool(&content, "onboarding", false),
@@ -421,10 +425,15 @@ pub(crate) fn upsert_top_level_bool(content: &str, key: &str, value: bool) -> St
     let replacement = format!("{key} = {value}");
     let mut lines: Vec<String> = content.lines().map(str::to_owned).collect();
     let mut replaced = false;
+    let mut in_section = false;
     for line in &mut lines {
-        if line
-            .split_once('=')
-            .is_some_and(|(name, _)| name.trim() == key)
+        if line.trim_start().starts_with('[') {
+            in_section = true;
+        }
+        if !in_section
+            && line
+                .split_once('=')
+                .is_some_and(|(name, _)| name.trim() == key)
         {
             *line = replacement.clone();
             replaced = true;
@@ -991,6 +1000,14 @@ mod tests {
         assert!(updated.starts_with("onboarding = false\n"));
         assert!(updated.contains("[theme]\nname = \"nord\""));
         assert!(updated.contains("[ui]\nmouse_capture = true"));
+    }
+
+    #[test]
+    fn onboarding_update_only_replaces_the_top_level_key() {
+        let content = "[ui]\nonboarding = true\n";
+        let updated = upsert_top_level_bool(content, "onboarding", false);
+        assert!(updated.starts_with("onboarding = false\n"));
+        assert!(updated.contains("[ui]\nonboarding = true"));
     }
 
     #[test]
