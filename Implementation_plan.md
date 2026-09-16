@@ -181,7 +181,8 @@ place.
 The interactive default pane now honors Herdr's `[terminal].default_shell` and
 `[terminal].shell_mode` settings. PowerShell receives mode-aware startup flags;
 other configured shells avoid PowerShell-specific arguments and can request a
-login shell on Unix.
+login shell on Unix. CLI-created workspace, tab, and worktree panes use the
+same shell selection and mode rules.
 
 ## 0. Establish the parity matrix
 
