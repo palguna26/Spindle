@@ -52,6 +52,9 @@ enum Matcher {
     DevinReading,
     DevinWelcomeIdle,
     DevinLiveIdle,
+    CursorWriteFile,
+    CursorApproval,
+    CursorSpinner,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -338,6 +341,39 @@ const DEVIN_RULES: &[Rule] = &[
     },
 ];
 
+const CURSOR_RULES: &[Rule] = &[
+    Rule {
+        priority: 320,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::CursorWriteFile,
+    },
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::CursorApproval,
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(6),
+        matcher: Matcher::Contains(&["ctrl+c to stop"]),
+    },
+    Rule {
+        priority: 95,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(5),
+        matcher: Matcher::LineRegex(r"(?i)\b[1-9][0-9]*\s+background\s+tasks?\b"),
+    },
+    Rule {
+        priority: 90,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::CursorSpinner,
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -372,6 +408,10 @@ pub(crate) fn detect_droid(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_devin(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, DEVIN_RULES)
+}
+
+pub(crate) fn detect_cursor(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, CURSOR_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -517,6 +557,71 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                 && text.lines().any(|line| line.trim_start().starts_with('❭'))
                 && !devin_blocked_or_working(text)
         }
+        Matcher::CursorWriteFile => {
+            text.contains("write to this file?")
+                && text.contains("proceed (y)")
+                && ["reject & propose changes", "esc or n or p", "add write("]
+                    .iter()
+                    .any(|signal| text.contains(signal))
+        }
+        Matcher::CursorApproval => {
+            (text.contains("waiting for approval")
+                && text.contains("run this command?")
+                && ["run (once) (y)", "skip (esc or n)"]
+                    .iter()
+                    .any(|signal| text.contains(signal)))
+                || text.contains("(y) (enter)")
+                || text.lines().any(|line| {
+                    let line = line.trim_start();
+                    line.starts_with("allow ") && line.contains("(y)")
+                })
+                || text.contains("keep (n)")
+                || text.contains("skip (esc or n)")
+                || text.lines().any(|line| {
+                    let line = line
+                        .trim_start()
+                        .strip_prefix('→')
+                        .unwrap_or(line)
+                        .trim_start();
+                    line.starts_with("run ") && line.contains("(y)")
+                })
+        }
+        Matcher::CursorSpinner => text.lines().any(cursor_spinner_line),
+    }
+}
+
+fn cursor_spinner_line(line: &str) -> bool {
+    let line = line.trim_start();
+    let mut chars = line.chars();
+    match chars.next() {
+        Some('⬡' | '⬢') => {
+            let activity = chars.as_str().trim_start();
+            activity
+                .chars()
+                .take_while(|character| character.is_alphabetic())
+                .collect::<String>()
+                .to_ascii_lowercase()
+                .ends_with("ing")
+        }
+        Some(first) if ('\u{2800}'..='\u{28ff}').contains(&first) => {
+            let spinner = line
+                .chars()
+                .take_while(|character| ('\u{2800}'..='\u{28ff}').contains(character))
+                .count();
+            let activity = line
+                .chars()
+                .skip(spinner)
+                .collect::<String>()
+                .trim_start()
+                .to_owned();
+            activity
+                .chars()
+                .take_while(|character| character.is_alphabetic())
+                .collect::<String>()
+                .to_ascii_lowercase()
+                .ends_with("ing")
+        }
+        _ => false,
     }
 }
 
@@ -555,8 +660,8 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_cline, detect_codex, detect_copilot, detect_devin, detect_droid, detect_gemini,
-        detect_opencode, detect_pi, detect_qoder, DetectionInput,
+        detect_cline, detect_codex, detect_copilot, detect_cursor, detect_devin, detect_droid,
+        detect_gemini, detect_opencode, detect_pi, detect_qoder, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -626,6 +731,14 @@ mod tests {
 
     fn detect_devin_state(screen: &str) -> Option<AgentState> {
         detect_devin(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_cursor_state(screen: &str) -> Option<AgentState> {
+        detect_cursor(DetectionInput {
             screen,
             osc_title: "",
             _osc_progress: "",
@@ -791,5 +904,27 @@ mod tests {
             Some(AgentState::Idle)
         );
         assert_eq!(detect_devin_state("ordinary terminal output"), None);
+    }
+
+    #[test]
+    fn cursor_manifest_matches_herdr_rules() {
+        assert_eq!(
+            detect_cursor_state("Write to this file?\nProceed (Y)\nReject & propose changes"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_cursor_state("Waiting for approval\nRun this command?\nRun (once) (Y)"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_cursor_state("Ctrl+C to stop"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_cursor_state("1 background task"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_cursor_state("⬡ Thinking"), Some(AgentState::Working));
+        assert_eq!(detect_cursor_state("ordinary Cursor output"), None);
     }
 }
