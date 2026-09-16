@@ -11,6 +11,10 @@ Herdr-compatible `--body`, `--position`, and `--sound` arguments. Delivery
 uses the existing Windows platform notification and sound adapters and works
 without a session server.
 
+Plugin action parity now preserves Herdr action descriptions and context tags
+from `herdr-plugin.toml`. `spindle plugin action list --json` exposes the
+structured metadata; the default text output remains backward compatible.
+
 API parity now includes `spindle api snapshot`, which returns the live session
 snapshot as pretty JSON; Bash, Fish, Zsh, PowerShell, and Elvish completions
 include the command. Windows server startup uses the Herdr-compatible direct

@@ -55,6 +55,11 @@ Latest notification milestone: `spindle notification show` accepts Herdr's
 title, body, position, and sound arguments and delivers through Spindle's
 Windows notification platform; the command does not require a running server.
 
+Latest plugin milestone: plugin action manifests now retain Herdr's optional
+descriptions and `global`/`workspace`/`tab`/`pane`/`selection` context tags.
+`spindle plugin action list --json` exposes that metadata while keeping the
+existing tab-separated text form stable.
+
 ## 0. Establish the parity matrix
 
 - [ ] Compare Herdr's README, quick-start, keyboard guide, CLI guide, and
