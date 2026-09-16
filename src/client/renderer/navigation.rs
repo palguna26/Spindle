@@ -155,7 +155,8 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
             return Some(ClickTarget::ToggleAgentSort);
         }
         if !sidebar_collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
-            let sections = crate::client::sidebar::sections(sidebar_body(main.sidebar), 0.5);
+            let sections =
+                crate::client::sidebar::sections(sidebar_body(main.sidebar), sidebar_section_split);
             let workspace_footer = sections.workspaces.bottom().saturating_sub(1);
             if y == workspace_footer {
                 if x > main.sidebar.x && x < main.sidebar.x.saturating_add(6) {
