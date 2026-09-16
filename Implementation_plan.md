@@ -382,8 +382,9 @@ approved design changes it.
   changing focus. `spindle worktree list` now discovers Git worktrees through
   Herdr-compatible porcelain parsing and reports linked checkout state as JSON;
   create/open/remove worktree actions remain. Worktree-backed workspaces now
-  persist their linked-checkout state and the sidebar marks child checkouts
-  with a compact branch cue.
+  persist their linked-checkout state and the sidebar groups child checkouts
+  under the main checkout, shows normal checkout branches, and uses a compact
+  branch cue for children.
 - [ ] For behavior not included, record the concrete reason and an equivalent
   Spindle workflow; do not silently omit it.
 - [ ] Improve Windows-specific process launch, terminal input/output, resizing,
