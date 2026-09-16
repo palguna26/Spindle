@@ -78,6 +78,13 @@ enum Matcher {
     MakiStatusSpinner,
     MakiStatusIdle,
     MakiPromptIdle,
+    MuseTrust,
+    MusePickRequest,
+    MuseMenuOverlay,
+    MuseWorking,
+    MuseApproval,
+    MuseIdlePrompt,
+    MuseIdleFallback,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -638,6 +645,51 @@ const MAKI_RULES: &[Rule] = &[
     },
 ];
 
+const MUSE_RULES: &[Rule] = &[
+    Rule {
+        priority: 970,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(12),
+        matcher: Matcher::MuseTrust,
+    },
+    Rule {
+        priority: 950,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::MusePickRequest,
+    },
+    Rule {
+        priority: 940,
+        state: AgentState::Unknown,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::MuseMenuOverlay,
+    },
+    Rule {
+        priority: 900,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::MuseWorking,
+    },
+    Rule {
+        priority: 850,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::MuseApproval,
+    },
+    Rule {
+        priority: 700,
+        state: AgentState::Idle,
+        region: Region::BottomNonEmpty(5),
+        matcher: Matcher::MuseIdlePrompt,
+    },
+    Rule {
+        priority: 500,
+        state: AgentState::Idle,
+        region: Region::BottomNonEmpty(3),
+        matcher: Matcher::MuseIdleFallback,
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -704,6 +756,10 @@ pub(crate) fn detect_kimi(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_maki(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, MAKI_RULES)
+}
+
+pub(crate) fn detect_muse(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, MUSE_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -1117,7 +1173,60 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                 )
                     .is_ok_and(|regex| text.lines().any(|line| regex.is_match(line)))
         }
+        Matcher::MuseTrust => {
+            text.contains("do you trust this workspace?")
+                && (text.contains("trust and continue") || text.contains("use up/down"))
+        }
+        Matcher::MusePickRequest => {
+            (text.contains("enter to select") && text.contains("tab for an optional note"))
+                || (text.contains("enter to toggle") && text.contains("esc to interrupt"))
+        }
+        Matcher::MuseMenuOverlay => {
+            (text.contains("enter confirm") && text.contains("esc go back"))
+                || (text.contains("enter save") && text.contains("esc go back"))
+                || (text.contains("space toggle")
+                    && text.contains("esc close")
+                    && text.contains("type filter"))
+        }
+        Matcher::MuseWorking => {
+            text.contains("esc to interrupt") && !muse_pick_or_menu(text)
+        }
+        Matcher::MuseApproval => {
+            (text.contains("allow this stage once")
+                && text.contains("always allow in this workspace"))
+                || (text.contains("allow once") && text.contains("allow for this session"))
+                || (text.contains("yes, proceed")
+                    && text.contains("yes, don't ask again this session"))
+        }
+        Matcher::MuseIdlePrompt => {
+            muse_prompt_line(text)
+                && !text.contains("esc to interrupt")
+                && !muse_pick_or_menu(text)
+        }
+        Matcher::MuseIdleFallback => {
+            text.lines().any(|line| {
+                Regex::new(
+                    r"(?i)^\s*\S+ (?:·|\u{00c2}\u{00b7}) (none|minimal|low|medium|high|xhigh|ultra) (?:·|\u{00c2}\u{00b7}) ",
+                )
+                .is_ok_and(|regex| regex.is_match(line))
+            }) && !text.contains("esc to interrupt")
+        }
     }
+}
+
+fn muse_pick_or_menu(text: &str) -> bool {
+    (text.contains("enter to select") && text.contains("tab for an optional note"))
+        || (text.contains("enter to toggle") && text.contains("esc to interrupt"))
+        || (text.contains("enter confirm") && text.contains("esc go back"))
+        || (text.contains("enter save") && text.contains("esc go back"))
+        || (text.contains("space toggle")
+            && text.contains("esc close")
+            && text.contains("type filter"))
+}
+
+fn muse_prompt_line(text: &str) -> bool {
+    text.lines()
+        .any(|line| line.starts_with("⟩ ") || line.starts_with("âŸ© "))
 }
 
 fn cursor_spinner_line(line: &str) -> bool {
@@ -1192,7 +1301,8 @@ mod tests {
     use super::{
         detect_amp, detect_antigravity, detect_cline, detect_codex, detect_copilot, detect_cursor,
         detect_devin, detect_droid, detect_gemini, detect_hermes, detect_kilo, detect_kimi,
-        detect_kiro, detect_maki, detect_opencode, detect_pi, detect_qoder, DetectionInput,
+        detect_kiro, detect_maki, detect_muse, detect_opencode, detect_pi, detect_qoder,
+        DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -1330,6 +1440,43 @@ mod tests {
             osc_title: "",
             _osc_progress: "",
         })
+    }
+
+    fn detect_muse_state(screen: &str) -> Option<AgentState> {
+        detect_muse(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    #[test]
+    fn muse_manifest_matches_herdr_rules() {
+        assert_eq!(
+            detect_muse_state("Do you trust this workspace?\nTrust and continue"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_muse_state("Enter to select\nTab for an optional note"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_muse_state("Enter confirm\nEsc go back"),
+            Some(AgentState::Unknown)
+        );
+        assert_eq!(
+            detect_muse_state("Searching\nEsc to interrupt"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_muse_state("Allow this stage once\nAlways allow in this workspace"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_muse_state("⟩ Explain this code"),
+            Some(AgentState::Idle)
+        );
+        assert_eq!(detect_muse_state("ordinary output"), None);
     }
 
     #[test]

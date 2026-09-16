@@ -332,6 +332,13 @@ pub(crate) fn detect_state_with_osc(
         }
     }
     if agent == AgentKind::Muse {
+        if let Some(state) = manifest::detect_muse(manifest::DetectionInput {
+            screen,
+            osc_title: title,
+            _osc_progress: osc_progress,
+        }) {
+            return state;
+        }
         return muse_state(screen);
     }
     let blocked = match agent {
