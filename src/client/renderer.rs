@@ -436,6 +436,13 @@ impl ThemePalette {
     }
 
     fn surface_dim(config: &crate::config::Config) -> Color {
+        if let Some(color) = config
+            .theme_custom_surface_dim
+            .as_deref()
+            .and_then(parse_theme_color)
+        {
+            return color;
+        }
         match config
             .theme_name
             .as_deref()
@@ -1969,9 +1976,14 @@ mod tests {
         );
         let config = crate::config::Config {
             theme_custom_surface0: Some("#070809".into()),
+            theme_custom_surface_dim: Some("#0a0b0c".into()),
             ..config
         };
         assert_eq!(super::ThemePalette::surface0(&config), Color::Rgb(7, 8, 9));
+        assert_eq!(
+            super::ThemePalette::surface_dim(&config),
+            Color::Rgb(10, 11, 12)
+        );
     }
 
     #[test]

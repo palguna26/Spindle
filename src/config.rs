@@ -199,6 +199,7 @@ struct ThemeCustomConfig {
     active_row_bg: Option<String>,
     selection_bg: Option<String>,
     surface0: Option<String>,
+    surface_dim: Option<String>,
     overlay0: Option<String>,
     overlay1: Option<String>,
     text: Option<String>,
@@ -306,6 +307,7 @@ pub struct Config {
     pub(crate) theme_custom_active_row_bg: Option<String>,
     pub(crate) theme_custom_selection_bg: Option<String>,
     pub(crate) theme_custom_surface0: Option<String>,
+    pub(crate) theme_custom_surface_dim: Option<String>,
     pub(crate) theme_custom_overlay0: Option<String>,
     pub(crate) theme_custom_overlay1: Option<String>,
     pub(crate) theme_custom_text: Option<String>,
@@ -357,6 +359,7 @@ impl Default for Config {
             theme_custom_active_row_bg: None,
             theme_custom_selection_bg: None,
             theme_custom_surface0: None,
+            theme_custom_surface_dim: None,
             theme_custom_overlay0: None,
             theme_custom_overlay1: None,
             theme_custom_text: None,
@@ -452,6 +455,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         theme_custom_active_row_bg: file.theme.custom.active_row_bg,
         theme_custom_selection_bg: file.theme.custom.selection_bg,
         theme_custom_surface0: file.theme.custom.surface0,
+        theme_custom_surface_dim: file.theme.custom.surface_dim,
         theme_custom_overlay0: file.theme.custom.overlay0,
         theme_custom_overlay1: file.theme.custom.overlay1,
         theme_custom_text: file.theme.custom.text,
@@ -832,7 +836,7 @@ mod tests {
         ));
         std::fs::write(
             &path,
-            "[theme.custom]\nsidebar_bg = \"#101112\"\nactive_row_bg = \"rgb(4, 5, 6)\"\nselection_bg = \"#070809\"\nsurface0 = \"#0a0b0c\"\noverlay0 = \"#0d0e0f\"\noverlay1 = \"#101112\"\ntext = \"#131415\"\nsubtext0 = \"#161718\"\ngreen = \"#192021\"\nyellow = \"#222324\"\nred = \"#252627\"\nteal = \"#28292a\"\n",
+            "[theme.custom]\nsidebar_bg = \"#101112\"\nactive_row_bg = \"rgb(4, 5, 6)\"\nselection_bg = \"#070809\"\nsurface0 = \"#0a0b0c\"\nsurface_dim = \"#0c0d0e\"\noverlay0 = \"#0d0e0f\"\noverlay1 = \"#101112\"\ntext = \"#131415\"\nsubtext0 = \"#161718\"\ngreen = \"#192021\"\nyellow = \"#222324\"\nred = \"#252627\"\nteal = \"#28292a\"\n",
         )
         .unwrap();
         let config = load_from(&path);
@@ -843,6 +847,7 @@ mod tests {
         );
         assert_eq!(config.theme_custom_selection_bg.as_deref(), Some("#070809"));
         assert_eq!(config.theme_custom_surface0.as_deref(), Some("#0a0b0c"));
+        assert_eq!(config.theme_custom_surface_dim.as_deref(), Some("#0c0d0e"));
         assert_eq!(config.theme_custom_overlay0.as_deref(), Some("#0d0e0f"));
         assert_eq!(config.theme_custom_overlay1.as_deref(), Some("#101112"));
         assert_eq!(config.theme_custom_text.as_deref(), Some("#131415"));
