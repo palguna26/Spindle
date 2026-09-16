@@ -29,6 +29,7 @@ mod api;
 mod completion;
 mod pane;
 mod plugin;
+mod status;
 mod tab;
 mod workspace;
 mod worktree;
@@ -109,6 +110,7 @@ pub fn run() -> io::Result<()> {
                 Err(_) => println!("last server identity: unavailable"),
             }
         }
+        "status" => status::run(&project, &env::args().skip(2).collect::<Vec<_>>())?,
         "stop" => {
             let response = send_command(&project, "stop_server")?;
             if !response.ok {
@@ -238,7 +240,7 @@ fn print_help() {
     println!("Spindle - persistent parallel coding-agent sessions");
     println!();
     println!(
-        "Usage: spindle [start|attach|stop|list|doctor|workspace|worktree|tab|pane|agent|help]"
+        "Usage: spindle [start|attach|stop|list|status|doctor|workspace|worktree|tab|pane|agent|help]"
     );
     println!();
     println!("Commands:");
@@ -246,6 +248,7 @@ fn print_help() {
     println!("  attach   attach to the current project's server (default)");
     println!("  stop     stop the current project's server");
     println!("  list     show the current project identity and state path");
+    println!("  status   show Herdr-style client and server status");
     println!("  doctor   check local Spindle state");
     println!("  config path     show the user config path");
     println!("  config default  print a starter config");
