@@ -441,6 +441,8 @@ approved design changes it.
   and the navigator, defaulting to Herdr's three lines.
   `[ui] confirm_close` now controls workspace-close prompts and defaults to
   true; when disabled, workspace actions close directly like Herdr.
+  `[ui] hide_tab_bar_when_single_tab` defaults to false like Herdr; when enabled,
+  the desktop tab row is removed for single-tab workspaces.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
