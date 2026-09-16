@@ -11,6 +11,8 @@ pub enum Action {
     CloseTab,
     NextTab,
     PreviousTab,
+    MoveTabPrevious,
+    MoveTabNext,
     SwitchTab(usize),
     EnterCopyMode,
     NextSpace,
@@ -40,6 +42,10 @@ pub enum Action {
     FocusRight,
     FocusUp,
     FocusDown,
+    ResizePaneLeft,
+    ResizePaneDown,
+    ResizePaneUp,
+    ResizePaneRight,
     SwapLeft,
     SwapRight,
     SwapUp,
@@ -353,6 +359,8 @@ fn action_name(name: &str) -> Option<Action> {
         "close_tab" => Action::CloseTab,
         "next_tab" => Action::NextTab,
         "previous_tab" => Action::PreviousTab,
+        "move_tab_previous" => Action::MoveTabPrevious,
+        "move_tab_next" => Action::MoveTabNext,
         "rename_tab" => Action::RenameActiveTab,
         "rename_pane" => Action::RenameFocusedPane,
         "clear_pane_name" => Action::ClearPaneName,
@@ -374,6 +382,10 @@ fn action_name(name: &str) -> Option<Action> {
         "focus_down" | "focus_pane_down" => Action::FocusDown,
         "focus_up" | "focus_pane_up" => Action::FocusUp,
         "focus_right" | "focus_pane_right" => Action::FocusRight,
+        "resize_pane_left" => Action::ResizePaneLeft,
+        "resize_pane_down" => Action::ResizePaneDown,
+        "resize_pane_up" => Action::ResizePaneUp,
+        "resize_pane_right" => Action::ResizePaneRight,
         "swap_left" | "swap_pane_left" => Action::SwapLeft,
         "swap_down" | "swap_pane_down" => Action::SwapDown,
         "swap_up" | "swap_pane_up" => Action::SwapUp,
@@ -675,6 +687,14 @@ mod tests {
                     String::from("close_workspace"),
                     vec![String::from("prefix+shift+d")],
                 ),
+                (
+                    String::from("move_tab_previous"),
+                    vec![String::from("prefix+alt+left")],
+                ),
+                (
+                    String::from("resize_pane_right"),
+                    vec![String::from("prefix+ctrl+alt+right")],
+                ),
             ]),
             ..Config::default()
         };
@@ -706,6 +726,17 @@ mod tests {
         assert_eq!(
             keymap.action(true, KeyEvent::new(KeyCode::Char('D'), KeyModifiers::SHIFT)),
             Action::DeleteActiveWorkspace
+        );
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Left, KeyModifiers::ALT)),
+            Action::MoveTabPrevious
+        );
+        assert_eq!(
+            keymap.action(
+                true,
+                KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL | KeyModifiers::ALT),
+            ),
+            Action::ResizePaneRight
         );
     }
 

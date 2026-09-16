@@ -1181,6 +1181,26 @@ fn event_loop(
                     record_action_error(&mut action_error, "switch tab", result);
                 }
             }
+            Action::MoveTabPrevious | Action::MoveTabNext => {
+                if let Some((tab_id, index, tab_count)) = active_tab_position(&snapshot) {
+                    let insert_index = if matches!(pressed, Action::MoveTabPrevious) {
+                        index.saturating_sub(1)
+                    } else {
+                        (index + 2).min(tab_count)
+                    };
+                    record_action_error(
+                        &mut action_error,
+                        "move tab",
+                        request_action(
+                            client,
+                            "move-tab-keyboard",
+                            "move_tab",
+                            json!({ "id": tab_id, "insert_index": insert_index }),
+                            "move tab",
+                        ),
+                    );
+                }
+            }
             Action::SwitchTab(index) => {
                 if let Some(tab_id) = indexed_tab_id(&snapshot, index) {
                     let result = request_action(
@@ -1346,6 +1366,25 @@ fn event_loop(
                         "focus_direction",
                         json!({ "direction": focus_direction_name(pressed) }),
                         "focus pane",
+                    ),
+                );
+            }
+            Action::ResizePaneLeft
+            | Action::ResizePaneDown
+            | Action::ResizePaneUp
+            | Action::ResizePaneRight => {
+                record_action_error(
+                    &mut action_error,
+                    "resize pane",
+                    request_action(
+                        client,
+                        "resize-pane-direction",
+                        "resize_pane_direction",
+                        json!({
+                            "direction": resize_direction_name(pressed),
+                            "amount": 0.05,
+                        }),
+                        "resize pane",
                     ),
                 );
             }
@@ -3067,6 +3106,16 @@ fn swap_direction_name(action: Action) -> &'static str {
     }
 }
 
+fn resize_direction_name(action: Action) -> &'static str {
+    match action {
+        Action::ResizePaneLeft => "left",
+        Action::ResizePaneDown => "down",
+        Action::ResizePaneUp => "up",
+        Action::ResizePaneRight => "right",
+        _ => unreachable!("not a directional resize action"),
+    }
+}
+
 fn directional_pane_id<'a>(
     snapshot: &'a SessionSnapshot,
     source_pane_id: &str,
@@ -3163,6 +3212,23 @@ fn execute_action(
                     "switch tab",
                 )?;
                 ensure_active_default_pane(client, terminal_size)?;
+            }
+            Ok(false)
+        }
+        Action::MoveTabPrevious | Action::MoveTabNext => {
+            if let Some((tab_id, index, tab_count)) = active_tab_position(snapshot) {
+                let insert_index = if matches!(pressed, Action::MoveTabPrevious) {
+                    index.saturating_sub(1)
+                } else {
+                    (index + 2).min(tab_count)
+                };
+                request_action(
+                    client,
+                    "palette-move-tab",
+                    "move_tab",
+                    json!({ "id": tab_id, "insert_index": insert_index }),
+                    "move tab",
+                )?;
             }
             Ok(false)
         }
@@ -3268,6 +3334,22 @@ fn execute_action(
                 "focus_direction",
                 json!({ "direction": focus_direction_name(pressed) }),
                 "focus pane",
+            )?;
+            Ok(false)
+        }
+        Action::ResizePaneLeft
+        | Action::ResizePaneDown
+        | Action::ResizePaneUp
+        | Action::ResizePaneRight => {
+            request_action(
+                client,
+                "palette-resize-pane-direction",
+                "resize_pane_direction",
+                json!({
+                    "direction": resize_direction_name(pressed),
+                    "amount": 0.05,
+                }),
+                "resize pane",
             )?;
             Ok(false)
         }
@@ -3840,6 +3922,15 @@ fn indexed_tab_id(snapshot: &SessionSnapshot, index: usize) -> Option<String> {
     active_workspace(snapshot)
         .and_then(|workspace| workspace.tabs.get(index))
         .map(|tab| tab.tab_id.clone())
+}
+
+fn active_tab_position(snapshot: &SessionSnapshot) -> Option<(String, usize, usize)> {
+    let workspace = active_workspace(snapshot)?;
+    let index = workspace
+        .tabs
+        .iter()
+        .position(|tab| tab.tab_id == workspace.active_tab_id)?;
+    Some((workspace.active_tab_id.clone(), index, workspace.tabs.len()))
 }
 
 fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
