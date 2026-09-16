@@ -261,7 +261,7 @@ fn print_help() {
     println!("  list     show the current project identity and state path");
     println!("  status   show Herdr-style client and server status");
     println!("  doctor   check local Spindle state");
-    println!("  integration status  show Codex and OpenCode integration status");
+    println!("  integration status  show agent integration status");
     println!("  config path     show the user config path");
     println!("  config default  print a starter config");
     println!(
