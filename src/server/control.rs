@@ -586,8 +586,19 @@ pub(crate) fn response_for_with_interactive(
                     ),
                 );
             }
+            let source = match crate::metadata_tokens::normalize_source(payload.source) {
+                Ok(source) => source,
+                Err(message) => {
+                    return request_error(request.request_id, "invalid_metadata_source", message)
+                }
+            };
+            let tokens = match crate::metadata_tokens::normalize_patch(payload.tokens) {
+                Ok(tokens) => tokens,
+                Err(message) => {
+                    return request_error(request.request_id, "invalid_metadata_tokens", message)
+                }
+            };
             let mut session = session.lock().expect("session lock poisoned");
-            let source = payload.source.clone();
             save_after(&mut session, |session| {
                 session.report_metadata(
                     &payload.pane_id,
@@ -611,7 +622,7 @@ pub(crate) fn response_for_with_interactive(
                     },
                     crate::server::session::MetadataTokensReportRequest {
                         source,
-                        tokens: payload.tokens,
+                        tokens,
                         ttl: payload.ttl_ms.map(std::time::Duration::from_millis),
                         seq: payload.seq,
                     },
