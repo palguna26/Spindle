@@ -690,6 +690,11 @@ integrations before reinstalling them.
 Antigravity CLI availability now follows Herdr's installed command name (`agy`)
 while keeping Spindle's clearer `antigravity-cli` target label.
 
+Mastracode is now a first-class integration target. Its Windows and Unix hook
+assets report session and lifecycle state through Spindle, and installation
+updates only the managed flat hook entries in `~/.mastracode/hooks.json`,
+matching Herdr's `src/integration/targets.rs` behavior.
+
 ## Verification gates
 
 For every code commit:
