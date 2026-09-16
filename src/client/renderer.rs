@@ -600,6 +600,28 @@ fn footer_area(area: Rect) -> Rect {
     Rect::new(area.x, area.bottom().saturating_sub(1), area.width, 1)
 }
 
+pub(crate) fn render_prefix_mode(frame: &mut Frame<'_>, keymap: &Keymap) {
+    let key_style = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(ratatui::style::Modifier::BOLD);
+    let base_style = Style::default().fg(Color::White);
+    let line = Line::from(vec![
+        Span::styled(
+            " PREFIX ",
+            Style::default().fg(Color::Black).bg(Color::Yellow),
+        ),
+        Span::styled("esc", key_style),
+        Span::styled(" cancel  ", base_style),
+        Span::styled(keymap.prefix_label(), key_style),
+        Span::styled(" send prefix  ", base_style),
+        Span::styled(keymap.binding_label(Action::WorkspacePicker), key_style),
+        Span::styled(" workspace nav  ", base_style),
+        Span::styled(keymap.binding_label(Action::Help), key_style),
+        Span::styled(" keybinds", base_style),
+    ]);
+    frame.render_widget(Paragraph::new(line), footer_area(frame.area()));
+}
+
 pub fn render_palette(frame: &mut Frame<'_>, selected: usize) {
     let area = centered_rect(60, 70, frame.area());
     let commands = crate::client::palette::Command::ALL;
@@ -1094,7 +1116,8 @@ mod tests {
     use super::{
         active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, popup_title,
         render, render_action_error, render_help, render_onboarding, render_palette,
-        render_selection, render_startup_error, render_with_connection, status_color,
+        render_prefix_mode, render_selection, render_startup_error, render_with_connection,
+        status_color,
     };
     use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
@@ -1248,6 +1271,26 @@ mod tests {
         assert!(content.contains("Ctrl-b"));
         assert!(content.contains("controls"));
         assert!(content.contains("Press Enter to continue"));
+    }
+
+    #[test]
+    fn prefix_mode_shows_herdr_style_transient_chrome() {
+        let backend = TestBackend::new(160, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_prefix_mode(frame, &Keymap::default()))
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("PREFIX"));
+        assert!(content.contains("cancel"));
+        assert!(content.contains("workspace nav"));
+        assert!(content.contains("keybinds"));
     }
 
     #[test]

@@ -428,6 +428,9 @@ fn event_loop(
                 if resize_mode {
                     renderer::render_resize_mode(frame);
                 }
+                if prefix_active {
+                    renderer::render_prefix_mode(frame, &keymap);
+                }
                 if let Some(selection) = &mouse_state.selection {
                     renderer::render_selection_with_sidebar(
                         frame,

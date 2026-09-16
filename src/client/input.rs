@@ -213,6 +213,15 @@ impl Keymap {
             })
             .unwrap_or_else(|| "unbound".into())
     }
+
+    pub fn prefix_label(&self) -> String {
+        let key = key_label(self.prefix.0, self.prefix.1);
+        if key.is_empty() {
+            "prefix".into()
+        } else {
+            key
+        }
+    }
 }
 
 pub fn action(prefix_active: bool, key: KeyEvent) -> Action {
