@@ -1,7 +1,7 @@
 //! Small manifest evaluator shared by screen-based agent detectors.
 //!
 //! The regions and rule priority follow Herdr's `src/detect/manifest.rs`.
-//! Codex, OpenCode, Gemini, and Cline are migrated first; other agents still use their
+//! Codex, OpenCode, Gemini, Cline, Copilot, and Pi are migrated first; other agents still use their
 //! compatibility detectors until their rules are moved here.
 
 use super::{agents, AgentState};
@@ -228,6 +228,13 @@ const COPILOT_RULES: &[Rule] = &[
     },
 ];
 
+const PI_RULES: &[Rule] = &[Rule {
+    priority: 100,
+    state: AgentState::Working,
+    region: Region::WholeRecent,
+    matcher: Matcher::Contains(&["working..."]),
+}];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -246,6 +253,10 @@ pub(crate) fn detect_cline(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_copilot(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, COPILOT_RULES)
+}
+
+pub(crate) fn detect_pi(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, PI_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -345,7 +356,8 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_cline, detect_codex, detect_copilot, detect_gemini, detect_opencode, DetectionInput,
+        detect_cline, detect_codex, detect_copilot, detect_gemini, detect_opencode, detect_pi,
+        DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -383,6 +395,14 @@ mod tests {
 
     fn detect_copilot_state(screen: &str) -> Option<AgentState> {
         detect_copilot(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_pi_state(screen: &str) -> Option<AgentState> {
+        detect_pi(DetectionInput {
             screen,
             osc_title: "",
             _osc_progress: "",
@@ -485,5 +505,11 @@ mod tests {
             Some(AgentState::Working)
         );
         assert_eq!(detect_copilot_state("Enter to select"), None);
+    }
+
+    #[test]
+    fn pi_manifest_requires_the_complete_working_literal() {
+        assert_eq!(detect_pi_state("Working..."), Some(AgentState::Working));
+        assert_eq!(detect_pi_state("working"), None);
     }
 }
