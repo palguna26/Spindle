@@ -87,6 +87,10 @@ Shared integration JSON and file operations now live in
 boundary. The installer registry is now limited to dispatch and agent-specific
 behavior.
 
+Hook command construction now lives in `src/integration/command.rs`, matching
+Herdr's command helper boundary and keeping Windows PowerShell quoting in one
+place.
+
 ## 0. Establish the parity matrix
 
 - [ ] Compare Herdr's README, quick-start, keyboard guide, CLI guide, and
