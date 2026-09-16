@@ -33,6 +33,7 @@ pub(crate) struct ContextMenu {
     pub(crate) selected: usize,
     pub(crate) has_manual_label: bool,
     pub(crate) source_pane_id: Option<String>,
+    pub(crate) close_group: bool,
 }
 
 impl ContextMenu {
@@ -63,6 +64,7 @@ impl ContextMenu {
             selected: 0,
             has_manual_label: false,
             source_pane_id: None,
+            close_group: false,
         })
     }
 
@@ -73,7 +75,14 @@ impl ContextMenu {
                 ("Open workspace", A::Activate),
                 ("New tab", A::NewTab),
                 ("Rename workspace", A::Rename),
-                ("Close workspace", A::Close),
+                (
+                    if self.close_group {
+                        "Close workspace group"
+                    } else {
+                        "Close workspace"
+                    },
+                    A::Close,
+                ),
             ],
             ContextMenuTarget::Tab(_) => vec![
                 ("Open tab", A::Activate),
@@ -207,6 +216,17 @@ mod tests {
                 id: "workspace-1".into(),
             }
         );
+        assert!(workspace
+            .items()
+            .contains(&("Close workspace", ContextMenuAction::Close)));
+        let mut workspace_group = workspace;
+        workspace_group.close_group = true;
+        assert!(workspace_group
+            .items()
+            .contains(&("Close workspace group", ContextMenuAction::Close)));
+        assert!(!workspace_group
+            .items()
+            .contains(&("Close workspace", ContextMenuAction::Close)));
     }
 
     #[test]

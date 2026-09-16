@@ -381,6 +381,9 @@ fn event_loop(
                         RenameTarget::Space => "Rename space",
                         RenameTarget::CreateSpace => "Create space",
                         RenameTarget::DeleteWorkspace => "Delete workspace: type its name",
+                        RenameTarget::DeleteWorkspaceGroup => {
+                            "Delete workspace group: type its name"
+                        }
                         RenameTarget::DeleteSpace => "Delete space: type its name",
                         RenameTarget::SwitchWorkspace => "Switch workspace: type its name",
                         RenameTarget::PluginAction => "Run plugin action: type its ID",
@@ -1460,6 +1463,9 @@ fn handle_mouse(
                 };
                 ContextMenu::from_target(target, mouse.column, mouse.row).map(|mut menu| {
                     menu.has_manual_label = has_manual_label;
+                    if let ContextMenuTarget::Workspace { space_id, id } = &menu.target {
+                        menu.close_group = workspace_has_linked_children(snapshot, space_id, id);
+                    }
                     menu.source_pane_id = agent_pane
                         .clone()
                         .or_else(|| snapshot.focused_pane_id.clone());
@@ -2174,6 +2180,7 @@ fn activate_context_menu(
     let source_pane_id = menu.source_pane_id.clone();
     match menu.target {
         ContextMenuTarget::Workspace { space_id, id } => {
+            let close_group = menu.close_group;
             request_action(
                 client,
                 "context-switch-space",
@@ -2196,7 +2203,11 @@ fn activate_context_menu(
                     Ok(None)
                 }
                 ContextMenuAction::Rename => Ok(Some(RenameTarget::Workspace)),
-                ContextMenuAction::Close => Ok(Some(RenameTarget::DeleteWorkspace)),
+                ContextMenuAction::Close => Ok(Some(if close_group {
+                    RenameTarget::DeleteWorkspaceGroup
+                } else {
+                    RenameTarget::DeleteWorkspace
+                })),
                 _ => Ok(None),
             }
         }
@@ -2435,10 +2446,12 @@ fn submit_rename(
 ) -> Result<(), ClientError> {
     if matches!(
         target,
-        RenameTarget::DeleteWorkspace | RenameTarget::DeleteSpace
+        RenameTarget::DeleteWorkspace
+            | RenameTarget::DeleteWorkspaceGroup
+            | RenameTarget::DeleteSpace
     ) {
         let (operation, id, expected_name) = match target {
-            RenameTarget::DeleteWorkspace => {
+            RenameTarget::DeleteWorkspace | RenameTarget::DeleteWorkspaceGroup => {
                 let workspace = active_workspace(snapshot);
                 (
                     "delete_workspace",
@@ -2466,11 +2479,16 @@ fn submit_rename(
                 } else {
                     "delete space"
                 };
+                let payload = if matches!(target, RenameTarget::DeleteWorkspaceGroup) {
+                    json!({ "id": id, "close_group": true })
+                } else {
+                    json!({ "id": id })
+                };
                 request_action(
                     client,
                     &format!("confirm-{operation}"),
                     operation,
-                    json!({ "id": id }),
+                    payload,
                     action_name,
                 )?;
                 ensure_active_default_pane(client, terminal_size)?;
@@ -2509,7 +2527,9 @@ fn submit_rename(
             ensure_active_default_pane(client, terminal_size)?;
             return Ok(());
         }
-        RenameTarget::DeleteWorkspace | RenameTarget::DeleteSpace => unreachable!(),
+        RenameTarget::DeleteWorkspace
+        | RenameTarget::DeleteWorkspaceGroup
+        | RenameTarget::DeleteSpace => unreachable!(),
         RenameTarget::SwitchWorkspace => {
             if let Some(id) = workspace_id_by_name(snapshot, &name) {
                 request_action(
@@ -2627,6 +2647,36 @@ fn switch_to_workspace(
             )
         })
         .and_then(|()| ensure_active_default_pane(client, terminal_size))
+}
+
+fn workspace_has_linked_children(
+    snapshot: &SessionSnapshot,
+    space_id: &str,
+    workspace_id: &str,
+) -> bool {
+    let Some(workspaces) = snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == space_id)
+        .map(|space| &space.workspaces)
+    else {
+        return false;
+    };
+    let Some(workspace) = workspaces
+        .iter()
+        .find(|workspace| workspace.workspace_id == workspace_id)
+    else {
+        return false;
+    };
+    let Some(group) = workspace.worktree_group.as_deref() else {
+        return false;
+    };
+    !workspace.is_linked_worktree
+        && workspaces.iter().any(|candidate| {
+            candidate.workspace_id != workspace_id
+                && candidate.is_linked_worktree
+                && candidate.worktree_group.as_deref() == Some(group)
+        })
 }
 
 fn focus_direction_name(action: Action) -> &'static str {
@@ -3404,9 +3454,9 @@ mod tests {
         move_workspace_selection, page_key_bytes, pane_mouse_target, pane_size,
         reconnect_requires_reattach, record_action_error, renderer, require_server_success,
         should_forward_pane_mouse, snapshot_has_focused_pane, startup_error_action,
-        visible_web_url_at_point, workspace_id_by_name, workspace_picker_key, CachedScrollbackView,
-        ControlClient, PaneClick, PaneMouseCapture, SplitDirection, SplitDrag, StartupErrorAction,
-        WorkspacePickerKey,
+        visible_web_url_at_point, workspace_has_linked_children, workspace_id_by_name,
+        workspace_picker_key, CachedScrollbackView, ControlClient, PaneClick, PaneMouseCapture,
+        SplitDirection, SplitDrag, StartupErrorAction, WorkspacePickerKey,
     };
     use crate::client::input::Keymap;
     use crate::config::Config;
@@ -3887,6 +3937,28 @@ mod tests {
             Some(id)
         );
         assert_eq!(workspace_id_by_name(session.snapshot(), "Missing"), None);
+    }
+
+    #[test]
+    fn workspace_context_close_detects_linked_worktree_group() {
+        let mut session = Session::default();
+        let linked_id = session.create_workspace("Linked".into()).unwrap()["workspace_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut snapshot = session.snapshot().clone();
+        snapshot.spaces[0].workspaces[0].worktree_group = Some("repo-group".into());
+        snapshot.spaces[0].workspaces[1].is_linked_worktree = true;
+        snapshot.spaces[0].workspaces[1].worktree_group = Some("repo-group".into());
+
+        assert!(workspace_has_linked_children(
+            &snapshot,
+            "space-1",
+            "workspace-1"
+        ));
+        assert!(!workspace_has_linked_children(
+            &snapshot, "space-1", &linked_id
+        ));
     }
 
     #[test]

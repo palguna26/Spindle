@@ -9,6 +9,7 @@ pub enum RenameTarget {
     Space,
     CreateSpace,
     DeleteWorkspace,
+    DeleteWorkspaceGroup,
     DeleteSpace,
     SwitchWorkspace,
     PluginAction,
