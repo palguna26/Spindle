@@ -43,6 +43,9 @@ The first custom palette slice is now supported: `[theme.custom] accent`
 accepts `#rgb` and `#rrggbb` overrides on top of the selected base theme,
 with config and renderer coverage.
 
+Spindle now uses Herdr's Catppuccin palette when no theme is configured, and
+the settings overlay selects that same default.
+
 Notification parity now includes `spindle notification show <title>` with
 Herdr-compatible `--body`, `--position`, and `--sound` arguments. Delivery
 uses the existing Windows platform notification and sound adapters and works
