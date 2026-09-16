@@ -14,7 +14,8 @@ use agents::{
     hermes_is_idle, hermes_is_priority_working, hermes_is_working, hermes_permission_required,
     hermes_title_blocked, kilo_permission_required, kimi_is_working, kimi_permission_required,
     kiro_is_idle, maki_state, muse_should_skip_state_update, muse_state,
-    opencode_permission_required, qodercli_is_working, qodercli_permission_required, qwen_state,
+    opencode_permission_required, pi_is_working, qodercli_is_working, qodercli_permission_required,
+    qwen_state,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -218,7 +219,7 @@ pub(crate) fn detect_state_with_osc(
     }
 
     let working = match agent {
-        AgentKind::Pi => recent.contains("working..."),
+        AgentKind::Pi => pi_is_working(&recent),
         AgentKind::QoderCli => qodercli_is_working(&recent),
         AgentKind::Droid => recent.contains("esc to stop"),
         AgentKind::Kiro => kiro_is_working(&recent),
