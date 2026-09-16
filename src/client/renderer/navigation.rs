@@ -581,6 +581,150 @@ fn sidebar_visual_rows(
         .collect()
 }
 
+fn sidebar_token_spans(
+    tokens: &[String],
+    values: impl Fn(&str) -> Option<(String, Style)>,
+    prefix: &str,
+) -> Vec<Span<'static>> {
+    let mut spans = vec![Span::raw(prefix.to_owned())];
+    let mut visible = 0;
+    let mut previous = "";
+    for token in tokens {
+        let Some((value, style)) = values(token) else {
+            continue;
+        };
+        if visible > 0 {
+            spans.push(Span::styled(
+                if token == "git_status" || previous == "state_icon" {
+                    " ".to_owned()
+                } else {
+                    " · ".to_owned()
+                },
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+        spans.push(Span::styled(value, style));
+        visible += 1;
+        previous = token;
+    }
+    spans
+}
+
+fn render_space_token_row(
+    tokens: &[String],
+    name: &str,
+    branch: Option<&str>,
+    state: Option<crate::detect::AgentDisplayState>,
+    metadata: &std::collections::HashMap<String, String>,
+    active: bool,
+    indent: &str,
+) -> Line<'static> {
+    let state_icon = state
+        .map(|state| state.sidebar_marker().to_owned())
+        .unwrap_or_else(|| if active { "●" } else { "○" }.to_owned());
+    let state_text = state
+        .map(|state| state.label().to_owned())
+        .unwrap_or_else(|| if active { "active" } else { "idle" }.to_owned());
+    let workspace_style = Style::default().fg(if active { Color::White } else { Color::Gray });
+    Line::from(sidebar_token_spans(
+        tokens,
+        |token| match token.strip_prefix('$').unwrap_or(token) {
+            "state_icon" => Some((
+                state_icon.clone(),
+                Style::default().fg(state.map_or(Color::DarkGray, agent_state_color)),
+            )),
+            "state_text" => Some((state_text.clone(), Style::default().fg(Color::DarkGray))),
+            "workspace" => Some((name.to_owned(), workspace_style)),
+            "branch" => branch
+                .filter(|branch| !branch.is_empty())
+                .map(|branch| (branch.to_owned(), Style::default().fg(Color::DarkGray))),
+            "git_status" => None,
+            custom => metadata
+                .get(custom)
+                .cloned()
+                .map(|value| (value, Style::default().fg(Color::DarkGray))),
+        },
+        indent,
+    ))
+}
+
+fn render_agent_token_row(
+    tokens: &[String],
+    pane: &crate::server::session::PaneView,
+    tab_name: &str,
+    workspace_name: &str,
+    focused: bool,
+) -> Line<'static> {
+    let state = pane.agent_display_state();
+    let state_icon = state.sidebar_marker().to_owned();
+    let state_text = pane.agent_display_state_label().to_owned();
+    let agent = pane.agent_display_name().unwrap_or("Agent").to_owned();
+    let title = pane
+        .display_title
+        .as_deref()
+        .filter(|title| !title.is_empty())
+        .unwrap_or(&pane.title)
+        .to_owned();
+    let machine = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_owned());
+    let label = pane.label.clone().filter(|label| !label.is_empty());
+    let focused_style = |style: Style| {
+        if focused {
+            style.bg(Color::DarkGray)
+        } else {
+            style
+        }
+    };
+    Line::from(sidebar_token_spans(
+        tokens,
+        |token| match token.strip_prefix('$').unwrap_or(token) {
+            "state_icon" => Some((
+                state_icon.clone(),
+                focused_style(Style::default().fg(match state {
+                    crate::detect::AgentDisplayState::Unknown => Color::DarkGray,
+                    crate::detect::AgentDisplayState::Idle => Color::Green,
+                    crate::detect::AgentDisplayState::Working => Color::Yellow,
+                    crate::detect::AgentDisplayState::Blocked => Color::Red,
+                    crate::detect::AgentDisplayState::Done => Color::Cyan,
+                })),
+            )),
+            "state_text" => Some((
+                state_text.clone(),
+                focused_style(Style::default().fg(Color::Gray)),
+            )),
+            "machine" => Some((
+                machine.clone(),
+                focused_style(Style::default().fg(Color::DarkGray)),
+            )),
+            "workspace" => Some((
+                workspace_name.to_owned(),
+                focused_style(Style::default().fg(Color::Gray)),
+            )),
+            "tab" => Some((
+                tab_name.to_owned(),
+                focused_style(Style::default().fg(Color::DarkGray)),
+            )),
+            "pane" => Some((
+                pane.pane_id.clone(),
+                focused_style(Style::default().fg(Color::DarkGray)),
+            )),
+            "agent" => Some((
+                label.clone().unwrap_or_else(|| agent.clone()),
+                focused_style(Style::default().fg(Color::Gray)),
+            )),
+            "terminal_title" | "terminal_title_stripped" => Some((
+                title.clone(),
+                focused_style(Style::default().fg(Color::DarkGray)),
+            )),
+            custom => pane
+                .tokens
+                .get(custom)
+                .cloned()
+                .map(|value| (value, focused_style(Style::default().fg(Color::DarkGray)))),
+        },
+        "    ",
+    ))
+}
+
 enum SidebarRow<'a> {
     Space {
         space_id: &'a str,
@@ -851,13 +995,6 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
     let body = sidebar_body(area);
     let sidebar_config = crate::config::load().sidebar;
     let visual_rows = sidebar_visual_rows(&rows, collapsed, &sidebar_config);
-    let metadata_width = usize::from(body.width);
-    let show_branch = sidebar_config
-        .spaces
-        .rows
-        .iter()
-        .flatten()
-        .any(|token| token == "branch");
     let max_scroll = visual_rows.len().saturating_sub(usize::from(body.height));
     let start = scroll.min(max_scroll);
     let lines = visual_rows
@@ -893,13 +1030,6 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                 indented,
                 last_child,
             } => {
-                if *line_index > 0 {
-                    let detail = branch
-                        .filter(|branch| !branch.is_empty())
-                        .map(|branch| format!("    · {branch}"))
-                        .unwrap_or_default();
-                    return Line::from(detail);
-                }
                 let previewed =
                     navigation_workspace.is_some_and(|(selected_space, selected_workspace)| {
                         selected_space == *space_id && selected_workspace == *workspace_id
@@ -920,7 +1050,6 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                         Line::from(line)
                     };
                 }
-                let preview_style = Style::default().fg(Color::White).bg(Color::DarkGray);
                 let indent = if *indented {
                     if *last_child {
                         "  └─ "
@@ -930,35 +1059,6 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                 } else {
                     "  "
                 };
-                let (marker, marker_color) = match agent_state {
-                    Some(state) => (state.sidebar_marker().to_owned(), agent_state_color(*state)),
-                    None => (
-                        if active { "●" } else { "○" }.to_owned(),
-                        if active {
-                            Color::Green
-                        } else {
-                            Color::DarkGray
-                        },
-                    ),
-                };
-                let mut spans = vec![
-                    Span::styled(
-                        indent,
-                        if previewed {
-                            preview_style
-                        } else {
-                            Style::default()
-                        },
-                    ),
-                    Span::styled(
-                        format!("{marker} "),
-                        Style::default().fg(marker_color).bg(if previewed {
-                            Color::DarkGray
-                        } else {
-                            Color::Reset
-                        }),
-                    ),
-                ];
                 let display_name = if *is_linked_worktree {
                     format!(
                         "↳ {}",
@@ -970,40 +1070,27 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                 } else {
                     (*name).to_owned()
                 };
-                spans.push(Span::styled(
-                    display_name,
-                    if previewed {
-                        preview_style.add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default().fg(if active { Color::White } else { Color::Gray })
-                    },
-                ));
-                if show_branch && !*is_linked_worktree {
-                    if let Some(branch) = branch.filter(|branch| !branch.is_empty()) {
-                        spans.push(Span::styled(
-                            format!(" · {branch}"),
-                            if previewed {
-                                preview_style
-                            } else {
-                                Style::default().fg(Color::DarkGray)
-                            },
-                        ));
-                    }
+                let row = sidebar_config
+                    .spaces
+                    .rows
+                    .get(*line_index)
+                    .cloned()
+                    .unwrap_or_default();
+                let line = render_space_token_row(
+                    &row,
+                    &display_name,
+                    branch.filter(|_| !*is_linked_worktree),
+                    *agent_state,
+                    tokens,
+                    active,
+                    indent,
+                );
+                let line = append_summary(line, tokens);
+                if previewed {
+                    line.style(Style::default().bg(Color::DarkGray))
+                } else {
+                    line
                 }
-                for (key, value) in visible_metadata_tokens(tokens)
-                    .into_iter()
-                    .filter(|(key, _)| *key == "summary" || metadata_width >= 36)
-                {
-                    spans.push(Span::styled(
-                        if key == "summary" {
-                            format!(" · {value}")
-                        } else {
-                            format!(" · {key}={value}")
-                        },
-                        Style::default().fg(Color::DarkGray),
-                    ));
-                }
-                Line::from(spans)
             }
             SidebarRow::Agent {
                 pane,
@@ -1012,77 +1099,19 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                 ..
             } => {
                 let focused = snapshot.focused_pane_id.as_deref() == Some(&pane.pane_id);
-                if *line_index > 0 {
-                    let kind = pane.agent_display_name().unwrap_or("Agent");
-                    let label = pane
-                        .label
-                        .as_deref()
-                        .filter(|label| !label.is_empty())
-                        .map(|label| format!("{kind} · {label}"))
-                        .unwrap_or_else(|| kind.to_owned());
-                    let style = Style::default().fg(Color::Gray).bg(if focused {
-                        Color::DarkGray
-                    } else {
-                        Color::Reset
-                    });
-                    return Line::styled(format!("      {label}"), style);
-                }
-                let state = pane.agent_display_state();
-                let mut state_style = Style::default().fg(match state {
-                    crate::detect::AgentDisplayState::Unknown => Color::DarkGray,
-                    crate::detect::AgentDisplayState::Idle => Color::Green,
-                    crate::detect::AgentDisplayState::Working => Color::Yellow,
-                    crate::detect::AgentDisplayState::Blocked => Color::Red,
-                    crate::detect::AgentDisplayState::Done => Color::Cyan,
-                });
-                let mut label_style = Style::default().fg(Color::Gray);
-                let mut tab_style = Style::default().fg(Color::DarkGray);
-                if focused {
-                    state_style = state_style.bg(Color::DarkGray);
-                    label_style = label_style.bg(Color::DarkGray).add_modifier(Modifier::BOLD);
-                    tab_style = tab_style.bg(Color::DarkGray);
-                }
                 if collapsed {
                     return Line::from("A ");
                 }
-                let kind = pane.agent_display_name().unwrap_or("Agent");
-                let summary = pane.tokens.get("summary").map(String::as_str);
-                let label = pane
-                    .label
-                    .as_deref()
-                    .filter(|label| !label.is_empty())
-                    .map(|label| format!("{kind} · {label}"))
-                    .unwrap_or_else(|| kind.to_owned());
-                let label = match summary {
-                    Some(summary) => format!("{label} · {summary}"),
-                    None => label,
-                };
-                let state_label = pane.agent_display_state_label();
-                let context = if agent_priority_sort {
-                    format!("{workspace_name}/{tab_name}")
-                } else {
-                    tab_name.to_string()
-                };
-                let mut spans = vec![
-                    Span::raw("    "),
-                    Span::styled(format!("{} ", state.sidebar_marker()), state_style),
-                    Span::styled(label, label_style),
-                    Span::styled(format!(" · {state_label}"), state_style),
-                ];
-                spans.push(Span::styled(format!(" · {context}"), tab_style));
-                for (key, value) in visible_metadata_tokens(&pane.tokens)
-                    .into_iter()
-                    .filter(|(key, _)| *key == "summary" || metadata_width >= 36)
-                {
-                    if key == "summary" {
-                        continue;
-                    }
-                    spans.push(Span::styled(
-                        format!(" · {key}={value}"),
-                        Style::default().fg(Color::DarkGray),
-                    ));
-                }
-                Line::from(spans)
+                let row = sidebar_config
+                    .agents
+                    .rows
+                    .get(*line_index)
+                    .cloned()
+                    .unwrap_or_default();
+                append_summary(
+                    render_agent_token_row(&row, pane, tab_name, workspace_name, focused),
+                    &pane.tokens,
+                )
             }
             SidebarRow::AgentHeader => Line::from(vec![
                 Span::styled("  Agents", Style::default().add_modifier(Modifier::BOLD)),
@@ -1147,6 +1176,21 @@ fn visible_metadata_tokens(
     entries.sort_by(|left, right| left.0.cmp(right.0).then_with(|| left.1.cmp(right.1)));
     entries.sort_by_key(|(key, _)| *key != "summary");
     entries
+}
+
+fn append_summary(
+    mut line: Line<'static>,
+    tokens: &std::collections::HashMap<String, String>,
+) -> Line<'static> {
+    for (key, value) in visible_metadata_tokens(tokens) {
+        if key == "summary" {
+            line.spans.push(Span::styled(
+                format!(" · {value}"),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+    }
+    line
 }
 
 fn agent_state_color(state: crate::detect::AgentDisplayState) -> Color {
@@ -1900,7 +1944,7 @@ mod tests {
             .collect::<String>();
         assert!(content.contains("Default"));
         assert!(content.contains("Current project"));
-        assert!(content.contains("Current project · m"));
+        assert!(content.contains("main"));
         assert!(content.contains("Docs"));
         assert!(content.contains("Activity"));
         assert!(content.contains("+"));
@@ -2134,6 +2178,29 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(content.contains("12 files"));
+    }
+
+    #[test]
+    fn configured_sidebar_tokens_render_selected_values() {
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("model".into(), "gpt-5".into());
+        let line = super::render_space_token_row(
+            &["workspace".into(), "$model".into(), "branch".into()],
+            "Current project",
+            Some("main"),
+            None,
+            &metadata,
+            true,
+            "  ",
+        );
+        let content = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        assert!(content.contains("Current project"));
+        assert!(content.contains("gpt-5"));
+        assert!(content.contains("main"));
     }
 
     #[test]
