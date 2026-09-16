@@ -1148,6 +1148,21 @@ fn event_loop(
                     record_action_error(&mut action_error, "switch workspace", result);
                 }
             }
+            Action::PreviousAgent | Action::NextAgent => {
+                if let Some(pane_id) =
+                    adjacent_agent_pane_id(&snapshot, matches!(pressed, Action::NextAgent))
+                {
+                    let result = request_action(
+                        client,
+                        "switch-agent",
+                        "focus_pane",
+                        json!({ "pane_id": pane_id }),
+                        "focus agent",
+                    )
+                    .and_then(|()| ensure_active_default_pane(client, terminal_size));
+                    record_action_error(&mut action_error, "focus agent", result);
+                }
+            }
             Action::WorkspacePicker => {
                 if uses_mobile_navigation(terminal_size.0, config.mobile_width_threshold) {
                     navigator = Some(Navigator::new_mobile(&snapshot));
@@ -3163,6 +3178,29 @@ fn current_snapshot(client: &ControlClient) -> Result<SessionSnapshot, ClientErr
     serde_json::from_value(response.payload.unwrap_or_default()).map_err(ClientError::Json)
 }
 
+fn adjacent_agent_pane_id(snapshot: &SessionSnapshot, forward: bool) -> Option<String> {
+    let agents = snapshot
+        .panes
+        .iter()
+        .filter(|pane| pane.agent.is_some())
+        .map(|pane| pane.pane_id.clone())
+        .collect::<Vec<_>>();
+    if agents.is_empty() {
+        return None;
+    }
+    let current = snapshot
+        .focused_pane_id
+        .as_deref()
+        .and_then(|focused| agents.iter().position(|pane_id| pane_id == focused));
+    let index = match (current, forward) {
+        (Some(index), true) => (index + 1) % agents.len(),
+        (Some(index), false) => (index + agents.len() - 1) % agents.len(),
+        (None, true) => 0,
+        (None, false) => agents.len() - 1,
+    };
+    agents.get(index).cloned()
+}
+
 fn resize_panes(
     client: &ControlClient,
     pane_sizes: &[renderer::PaneSize],
@@ -3634,10 +3672,10 @@ fn uses_mobile_navigation(terminal_width: u16, threshold: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_tab_id, active_workspace, adjacent_space_id, adjacent_tab_id, adjacent_workspace_id,
-        adjust_scrollback_offset, apply_scrollback_views, current_snapshot,
-        ensure_active_default_pane, indexed_workspace_selection, input_pane_id, key_code_bytes,
-        move_workspace_selection, page_key_bytes, pane_mouse_target, pane_size,
+        active_tab_id, active_workspace, adjacent_agent_pane_id, adjacent_space_id,
+        adjacent_tab_id, adjacent_workspace_id, adjust_scrollback_offset, apply_scrollback_views,
+        current_snapshot, ensure_active_default_pane, indexed_workspace_selection, input_pane_id,
+        key_code_bytes, move_workspace_selection, page_key_bytes, pane_mouse_target, pane_size,
         reconnect_requires_reattach, record_action_error, renderer, require_server_success,
         should_forward_pane_mouse, snapshot_has_focused_pane, startup_error_action,
         uses_mobile_navigation, visible_web_url_at_point, workspace_has_linked_children,
@@ -3748,6 +3786,40 @@ mod tests {
     fn mobile_navigation_replaces_hidden_sidebar_controls() {
         assert!(uses_mobile_navigation(64, 64));
         assert!(!uses_mobile_navigation(65, 64));
+    }
+
+    #[test]
+    fn agent_navigation_wraps_like_herdr() {
+        let mut snapshot = Session::default().snapshot().clone();
+        snapshot.panes = vec![
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "agent-1", "command": "codex", "args": [], "cwd": "C:/one",
+                "status": "Running", "scrollback_bytes": 0, "agent": "codex"
+            }))
+            .unwrap(),
+            serde_json::from_value(serde_json::json!({
+                "pane_id": "agent-2", "command": "opencode", "args": [], "cwd": "C:/two",
+                "status": "Running", "scrollback_bytes": 0, "agent": "open_code"
+            }))
+            .unwrap(),
+        ];
+        assert_eq!(
+            adjacent_agent_pane_id(&snapshot, true).as_deref(),
+            Some("agent-1")
+        );
+        assert_eq!(
+            adjacent_agent_pane_id(&snapshot, false).as_deref(),
+            Some("agent-2")
+        );
+        snapshot.focused_pane_id = Some("agent-1".into());
+        assert_eq!(
+            adjacent_agent_pane_id(&snapshot, true).as_deref(),
+            Some("agent-2")
+        );
+        assert_eq!(
+            adjacent_agent_pane_id(&snapshot, false).as_deref(),
+            Some("agent-2")
+        );
     }
 
     #[test]

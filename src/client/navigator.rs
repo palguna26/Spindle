@@ -226,9 +226,12 @@ impl Navigator {
                         });
                         if !self.mobile
                             && (filtering
-                            || self.expanded_workspaces.iter().any(|item| {
-                                item == &(space.space_id.clone(), workspace.workspace_id.clone())
-                            }))
+                                || self.expanded_workspaces.iter().any(|item| {
+                                    item == &(
+                                        space.space_id.clone(),
+                                        workspace.workspace_id.clone(),
+                                    )
+                                }))
                         {
                             workspace_rows.extend(tab_rows);
                         }
