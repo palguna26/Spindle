@@ -445,6 +445,8 @@ approved design changes it.
   the desktop tab row is removed for single-tab workspaces.
   `[ui] tab_bar_position = "top"|"bottom"` now moves the desktop tab row and
   pane surface together, matching Herdr's default and alternate placement.
+  The desktop tab strip now includes a clickable `+` control that uses the
+  existing named-tab prompt and creation path.
   Configured `move_tab_previous`, `move_tab_next`, and directional
   `resize_pane_*` actions now execute through the existing tab-move and layout
   resize control operations; like Herdr, all are unset by default.
