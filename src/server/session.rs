@@ -700,6 +700,24 @@ impl Session {
             .iter()
             .map(|pane| pane.pane_id.clone())
             .collect::<std::collections::HashSet<_>>();
+        let workspace = self.active_workspace_mut()?;
+        if workspace.tabs.is_empty() {
+            let tab_id = format!("tab-{}-1", workspace.workspace_id);
+            workspace.tabs.push(TabView {
+                tab_id: tab_id.clone(),
+                name: "Main".into(),
+                layout: None,
+                focused_pane_id: None,
+                zoomed: false,
+            });
+            workspace.active_tab_id = tab_id;
+        } else if !workspace
+            .tabs
+            .iter()
+            .any(|tab| tab.tab_id == workspace.active_tab_id)
+        {
+            workspace.active_tab_id = workspace.tabs[0].tab_id.clone();
+        }
         let tab = self.active_tab_mut()?;
         let Some(layout) = tab.layout.take() else {
             tab.focused_pane_id = None;
@@ -4300,6 +4318,40 @@ mod tests {
         assert!(session.snapshot.spaces[0].workspaces[0].tabs[0]
             .layout
             .is_none());
+    }
+
+    #[test]
+    fn ensure_active_pane_repairs_a_workspace_without_an_active_tab() {
+        let mut session = Session::default();
+        let workspace = &mut session.snapshot.spaces[0].workspaces[0];
+        workspace.tabs.clear();
+        workspace.active_tab_id.clear();
+
+        let result = session.ensure_active_pane(CreatePaneRequest {
+            command: "spindle-command-that-does-not-exist.exe".into(),
+            args: Vec::new(),
+            cwd: std::env::current_dir()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+            label: None,
+            env: Default::default(),
+            cols: 80,
+            rows: 24,
+            popup: false,
+            overlay: false,
+            popup_width_spec: None,
+            popup_height_spec: None,
+        });
+
+        assert!(
+            result.is_err(),
+            "the invalid shell should still fail to spawn"
+        );
+        let workspace = &session.snapshot.spaces[0].workspaces[0];
+        assert_eq!(workspace.tabs.len(), 1);
+        assert_eq!(workspace.tabs[0].name, "Main");
+        assert_eq!(workspace.active_tab_id, workspace.tabs[0].tab_id);
     }
 
     #[test]
