@@ -56,8 +56,22 @@ pub(crate) struct Action {
     #[serde(default)]
     pub(crate) title: String,
     #[serde(default)]
+    pub(crate) description: Option<String>,
+    #[serde(default)]
+    pub(crate) contexts: Vec<ActionContext>,
+    #[serde(default)]
     pub(crate) platforms: Option<Vec<String>>,
     pub(crate) command: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ActionContext {
+    Global,
+    Workspace,
+    Tab,
+    Pane,
+    Selection,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -329,6 +343,30 @@ mod tests {
         let error = super::load(&root).unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
         assert!(error.to_string().contains("pane.unknown"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn manifest_preserves_herdr_action_metadata() {
+        let root = std::env::temp_dir().join(format!(
+            "spindle-plugin-action-metadata-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("herdr-plugin.toml"),
+            "id = \"example.metadata\"\n[[actions]]\nid = \"open\"\ntitle = \"Open\"\ndescription = \"Open the selected item\"\ncontexts = [\"pane\", \"selection\"]\ncommand = [\"tool\", \"open\"]\n",
+        )
+        .unwrap();
+        let manifest = super::load(&root).unwrap();
+        assert_eq!(
+            manifest.actions[0].description.as_deref(),
+            Some("Open the selected item")
+        );
+        assert!(matches!(
+            manifest.actions[0].contexts.as_slice(),
+            [super::ActionContext::Pane, super::ActionContext::Selection]
+        ));
         let _ = std::fs::remove_dir_all(root);
     }
 }

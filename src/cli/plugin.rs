@@ -833,7 +833,31 @@ fn action(args: &[String]) -> io::Result<()> {
 }
 
 fn action_list(args: &[String]) -> io::Result<()> {
-    let plugin_id = one_option(args, "--plugin")?;
+    let mut plugin_id = None;
+    let mut json = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--plugin" => {
+                let value = args.get(index + 1).ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "--plugin needs a value")
+                })?;
+                plugin_id = Some(value.clone());
+                index += 2;
+            }
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            other => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unknown plugin action list option: {other}"),
+                ));
+            }
+        }
+    }
+    let mut rows = Vec::new();
     for (registration, manifest) in crate::plugin::installed()? {
         if !registration.enabled
             || !manifest.enabled
@@ -846,6 +870,18 @@ fn action_list(args: &[String]) -> io::Result<()> {
             if !crate::plugin::supports_windows(action.platforms.as_deref()) {
                 continue;
             }
+            if json {
+                rows.push(serde_json::json!({
+                    "plugin_id": &manifest.id,
+                    "action_id": &action.id,
+                    "title": &action.title,
+                    "description": &action.description,
+                    "contexts": &action.contexts,
+                    "command": &action.command,
+                    "platforms": &action.platforms,
+                }));
+                continue;
+            }
             let title = if action.title.is_empty() {
                 &action.id
             } else {
@@ -853,6 +889,12 @@ fn action_list(args: &[String]) -> io::Result<()> {
             };
             println!("{}\t{}\t{}", manifest.id, action.id, title);
         }
+    }
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&rows).map_err(io::Error::other)?
+        );
     }
     Ok(())
 }
@@ -1095,7 +1137,7 @@ fn help() {
     println!("  pane open --plugin ID --entrypoint ID [--placement overlay|split|tab|zoomed|popup] [--width N --height N] [--workspace ID] [--target-pane ID] [--direction right|down] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]");
     println!("  pane focus|close <pane_id>              manage a plugin pane");
     println!("  log list [--plugin ID] [--limit N]       show plugin launches");
-    println!("  action list [--plugin ID] list manifest actions");
+    println!("  action list [--plugin ID] [--json] list manifest actions");
     println!("  action invoke <id>        start a manifest action without a shell");
 }
 
