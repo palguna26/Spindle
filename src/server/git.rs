@@ -54,3 +54,17 @@ pub(crate) fn worktree_group_key(path: &str) -> Option<String> {
             .to_ascii_lowercase(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{branch, is_linked_worktree, worktree_group_key};
+    use std::path::Path;
+
+    #[test]
+    fn invalid_repository_paths_are_safe_misses() {
+        let path = Path::new("C:\\spindle\\path-that-does-not-exist");
+        assert_eq!(branch(path), None);
+        assert!(!is_linked_worktree(path.to_str().unwrap()));
+        assert_eq!(worktree_group_key(path.to_str().unwrap()), None);
+    }
+}
