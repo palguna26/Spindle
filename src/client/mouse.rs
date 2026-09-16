@@ -132,17 +132,7 @@ pub(super) fn pane_mouse_target(
             snapshot.popup_width_spec,
             snapshot.popup_height_spec,
         );
-        let inner = Rect::new(
-            popup.x.saturating_add(1),
-            popup.y.saturating_add(1),
-            popup.width.saturating_sub(2),
-            popup.height.saturating_sub(2),
-        );
-        if mouse.column >= inner.x
-            && mouse.column < inner.right()
-            && mouse.row >= inner.y
-            && mouse.row < inner.bottom()
-        {
+        if popup.contains((mouse.column, mouse.row).into()) {
             return Some((popup_id.to_owned(), popup));
         }
     }
@@ -349,7 +339,9 @@ pub(super) fn clear_mouse_capture(capture: &mut Option<PaneMouseCapture>, kind: 
 
 #[cfg(test)]
 mod tests {
-    use super::terminal_coordinates;
+    use super::{pane_mouse_target, terminal_coordinates};
+    use crate::server::session::Session;
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
     use ratatui::layout::Rect;
 
     #[test]
@@ -358,5 +350,32 @@ mod tests {
         assert_eq!(terminal_coordinates(10, 4, inner, 20, 8), (1, 1));
         assert_eq!(terminal_coordinates(15, 7, inner, 20, 8), (6, 4));
         assert_eq!(terminal_coordinates(0, 0, inner, 20, 8), (1, 1));
+    }
+
+    #[test]
+    fn popup_outer_border_is_a_modal_mouse_target() {
+        let mut snapshot = Session::default().snapshot().clone();
+        snapshot.popup_pane_id = Some("popup-1".into());
+        let area = Rect::new(0, 0, 80, 24);
+        let popup = super::super::renderer::popup_rect_with_specs(
+            super::super::renderer::pane_content_area_for_snapshot(&snapshot, area, false),
+            snapshot.popup_width,
+            snapshot.popup_height,
+            snapshot.popup_width_spec,
+            snapshot.popup_height_spec,
+        );
+        let target = pane_mouse_target(
+            &snapshot,
+            area,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: popup.x,
+                row: popup.y,
+                modifiers: crossterm::event::KeyModifiers::empty(),
+            },
+            &None,
+            false,
+        );
+        assert_eq!(target, Some(("popup-1".into(), popup)));
     }
 }

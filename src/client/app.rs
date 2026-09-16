@@ -2408,7 +2408,10 @@ fn forward_mouse_to_pane(
     let configured_modifier = crate::config::load().right_click_passthrough_modifier;
     if !should_forward_pane_mouse_with_modifier(pane, mouse, configured_modifier) {
         clear_mouse_capture(capture, mouse.kind);
-        return Ok(false);
+        // A popup is modal even when its terminal is not reporting mouse
+        // events. Do not let a border click fall through to the tiled pane
+        // underneath it.
+        return Ok(snapshot.popup_pane_id.as_deref() == Some(pane_id.as_str()));
     }
 
     let terminal_area = pane_terminal_area(snapshot, area, &pane_id, sidebar_collapsed)
