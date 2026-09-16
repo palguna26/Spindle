@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 const GEOMETRY_LEASE: Duration = Duration::from_secs(1);
@@ -115,48 +114,6 @@ fn default_cols() -> u16 {
 
 fn default_rows() -> u16 {
     24
-}
-
-fn path_is_linked_worktree(path: &str) -> bool {
-    let Ok(output) = Command::new("git")
-        .args(["-C", path, "rev-parse", "--git-dir"])
-        .output()
-    else {
-        return false;
-    };
-    if !output.status.success() {
-        return false;
-    }
-    let git_dir = String::from_utf8_lossy(&output.stdout).replace('\\', "/");
-    git_dir.trim().contains("/.git/worktrees/")
-}
-
-fn worktree_group_key(path: &str) -> Option<String> {
-    let output = Command::new("git")
-        .args(["-C", path, "rev-parse", "--git-common-dir"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let common_dir = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    if common_dir.is_empty() {
-        return None;
-    }
-    let common_path = Path::new(&common_dir);
-    let common_path = if common_path.is_absolute() {
-        common_path.to_owned()
-    } else {
-        Path::new(path).join(common_path)
-    };
-    Some(
-        common_path
-            .canonicalize()
-            .unwrap_or(common_path)
-            .to_string_lossy()
-            .replace('\\', "/")
-            .to_ascii_lowercase(),
-    )
 }
 
 fn history_path(session_path: &Path) -> PathBuf {
@@ -471,11 +428,11 @@ impl Session {
             workspace.is_linked_worktree = workspace
                 .repository_path
                 .as_deref()
-                .is_some_and(path_is_linked_worktree);
+                .is_some_and(crate::server::git::is_linked_worktree);
             workspace.worktree_group = workspace
                 .repository_path
                 .as_deref()
-                .and_then(worktree_group_key);
+                .and_then(crate::server::git::worktree_group_key);
         }
     }
 
@@ -830,10 +787,10 @@ impl Session {
         let tab_id = format!("tab-{}-1", workspace_id);
         let is_linked_worktree = repository_path
             .as_deref()
-            .is_some_and(crate::server::session::path_is_linked_worktree);
+            .is_some_and(crate::server::git::is_linked_worktree);
         let worktree_group = repository_path
             .as_deref()
-            .and_then(crate::server::session::worktree_group_key);
+            .and_then(crate::server::git::worktree_group_key);
         space.workspaces.push(WorkspaceView {
             workspace_id: workspace_id.clone(),
             name,

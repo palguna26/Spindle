@@ -1,4 +1,5 @@
 pub mod control;
+pub(crate) mod git;
 pub mod lifecycle;
 mod plugins;
 pub mod session;
@@ -44,8 +45,9 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     let interactive_address = transport::interactive_endpoint(state_dir);
     let mut loaded_session = session::Session::load_or_default(state_dir.join("session.json"))
         .map_err(|error| io::Error::other(format!("session snapshot is invalid: {error:?}")))?;
-    let repository_path = std::env::current_dir()?.to_string_lossy().into_owned();
-    loaded_session.set_default_workspace_context(repository_path, git_branch());
+    let repository = std::env::current_dir()?;
+    let repository_path = repository.to_string_lossy().into_owned();
+    loaded_session.set_default_workspace_context(repository_path, git::branch(&repository));
     loaded_session.save().map_err(|error| {
         io::Error::other(format!("session snapshot could not be saved: {error:?}"))
     })?;
@@ -167,18 +169,6 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     stop_fields.insert("pid".into(), std::process::id().to_string());
     let _ = logger.info("server_stopped", stop_fields);
     Ok(())
-}
-
-fn git_branch() -> Option<String> {
-    let output = std::process::Command::new("git")
-        .args(["branch", "--show-current"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    (!branch.is_empty()).then_some(branch)
 }
 
 #[cfg(not(windows))]
