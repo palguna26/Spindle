@@ -11,8 +11,9 @@ pub fn render_navigator(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, navig
     let config = crate::config::load();
     let palette = super::ThemePalette::from_config(&config);
     let selection_bg = super::ThemePalette::selection_bg(&config);
+    let panel_bg = super::ThemePalette::panel_bg(&config);
     if navigator.is_mobile() {
-        render_mobile_navigator(frame, snapshot, navigator, selection_bg);
+        render_mobile_navigator(frame, snapshot, navigator, selection_bg, panel_bg);
         return;
     }
     let area = navigator_area(frame.area());
@@ -51,11 +52,13 @@ pub fn render_navigator(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, navig
     )));
     frame.render_widget(Clear, area);
     frame.render_widget(
-        Paragraph::new(lines).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Session navigator"),
-        ),
+        Paragraph::new(lines)
+            .style(Style::default().bg(panel_bg))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Session navigator"),
+            ),
         area,
     );
 }
@@ -113,6 +116,7 @@ fn render_mobile_navigator(
     snapshot: &SessionSnapshot,
     navigator: &Navigator,
     selection_bg: Color,
+    panel_bg: Color,
 ) {
     let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
     let area = frame.area();
@@ -160,7 +164,10 @@ fn render_mobile_navigator(
         Style::default().fg(Color::DarkGray),
     )));
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new(lines), area);
+    frame.render_widget(
+        Paragraph::new(lines).style(Style::default().bg(panel_bg)),
+        area,
+    );
 }
 
 fn hit_test_mobile_navigator(
