@@ -423,7 +423,8 @@ approved design changes it.
   `sidebar_min_width`, and `sidebar_max_width` values with safe bound fallback.
   Narrow terminals now use a Herdr-style single-column mobile header; its
   `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
-  full-screen switcher with workspace, tab, create, search, and menu actions.
+  full-screen switcher with workspace, tab, create, search, and menu actions;
+  the header also summarizes local agent attention and activity.
   Windows PTY children now use kill-on-close Job Objects so child tools do not
   outlive their pane; assignment safely falls back when Windows denies it.
 - [x] Make `spindle stop` wait for endpoint cleanup and retry Windows named-pipe
