@@ -406,6 +406,11 @@ Terminal verification is still pending.
   under the Herdr-compatible `.pi/agent/extensions` layout. The extension
   tracks root-session start, active work, settled state, and blocked requests
   through Spindle's pane report protocol.
+
+- [x] Add the OMP integration. Install/uninstall now manages the OMP extension
+  under the Herdr-compatible `.omp/agent/extensions` layout, reports OMP agent
+  state through the pane protocol, and rejects a shared Pi/OMP extension
+  directory to avoid overwriting another integration.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
