@@ -90,6 +90,10 @@ pub(crate) struct Pane {
     pub(crate) title: String,
     #[serde(default)]
     pub(crate) description: Option<String>,
+    #[serde(default)]
+    pub(crate) width: Option<u16>,
+    #[serde(default)]
+    pub(crate) height: Option<u16>,
     pub(crate) command: Vec<String>,
     #[serde(default = "default_pane_placement")]
     pub(crate) placement: String,
@@ -381,7 +385,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
             root.join("herdr-plugin.toml"),
-            "id = \"example.pane\"\n[[panes]]\nid = \"logs\"\ntitle = \"Logs\"\ndescription = \"Live build output\"\ncommand = [\"tool\", \"logs\"]\n",
+            "id = \"example.pane\"\n[[panes]]\nid = \"logs\"\ntitle = \"Logs\"\ndescription = \"Live build output\"\nwidth = 90\nheight = 30\ncommand = [\"tool\", \"logs\"]\n",
         )
         .unwrap();
         let manifest = super::load(&root).unwrap();
@@ -389,6 +393,8 @@ mod tests {
             manifest.panes[0].description.as_deref(),
             Some("Live build output")
         );
+        assert_eq!(manifest.panes[0].width, Some(90));
+        assert_eq!(manifest.panes[0].height, Some(30));
         let _ = std::fs::remove_dir_all(root);
     }
 }

@@ -551,14 +551,14 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         .map(str::parse::<u16>)
         .transpose()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "--width must be a number"))?
-        .unwrap_or(40)
+        .unwrap_or(pane.width.unwrap_or(40))
         .max(6);
     let popup_height = requested_height
         .as_deref()
         .map(str::parse::<u16>)
         .transpose()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "--height must be a number"))?
-        .unwrap_or(12)
+        .unwrap_or(pane.height.unwrap_or(12))
         .max(4);
     let Some(command) = pane.command.first() else {
         return Err(io::Error::new(
