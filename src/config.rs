@@ -33,6 +33,7 @@ struct UiConfig {
     mobile_width_threshold: u16,
     sidebar_start_collapsed: bool,
     sidebar_collapsed_mode: SidebarCollapsedMode,
+    tab_bar_position: TabBarPosition,
     prompt_new_tab_name: bool,
     prompt_new_workspace_name: bool,
     copy_on_select: bool,
@@ -54,6 +55,14 @@ pub(crate) enum SidebarCollapsedMode {
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TabBarPosition {
+    #[default]
+    Top,
+    Bottom,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum HostCursorMode {
     #[default]
@@ -71,6 +80,7 @@ impl Default for UiConfig {
             mobile_width_threshold: 64,
             sidebar_start_collapsed: false,
             sidebar_collapsed_mode: SidebarCollapsedMode::Compact,
+            tab_bar_position: TabBarPosition::Top,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -190,6 +200,7 @@ pub struct Config {
     pub(crate) mobile_width_threshold: u16,
     pub(crate) sidebar_start_collapsed: bool,
     pub(crate) sidebar_collapsed_mode: SidebarCollapsedMode,
+    pub(crate) tab_bar_position: TabBarPosition,
     pub(crate) prompt_new_tab_name: bool,
     pub(crate) prompt_new_workspace_name: bool,
     pub(crate) copy_on_select: bool,
@@ -219,6 +230,7 @@ impl Default for Config {
             mobile_width_threshold: 64,
             sidebar_start_collapsed: false,
             sidebar_collapsed_mode: SidebarCollapsedMode::Compact,
+            tab_bar_position: TabBarPosition::Top,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -290,6 +302,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         mobile_width_threshold: file.ui.mobile_width_threshold,
         sidebar_start_collapsed: file.ui.sidebar_start_collapsed,
         sidebar_collapsed_mode: file.ui.sidebar_collapsed_mode,
+        tab_bar_position: file.ui.tab_bar_position,
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
         copy_on_select: file.ui.copy_on_select,
@@ -376,6 +389,7 @@ sidebar_max_width = 36
 mobile_width_threshold = 64
 sidebar_start_collapsed = false
 sidebar_collapsed_mode = "compact"
+tab_bar_position = "top"
 prompt_new_tab_name = true
 prompt_new_workspace_name = false
 copy_on_select = true
@@ -467,7 +481,7 @@ fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> S
 mod tests {
     use super::{
         load_from, upsert_section_key, Config, HostCursorMode, NotificationDelivery,
-        SidebarCollapsedMode,
+        SidebarCollapsedMode, TabBarPosition,
     };
     use crossterm::event::KeyModifiers;
 
@@ -698,6 +712,18 @@ mod tests {
             load_from(&path).sidebar_collapsed_mode,
             SidebarCollapsedMode::Hidden
         );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn tab_bar_position_matches_herdr_default_and_bottom_value() {
+        assert_eq!(Config::default().tab_bar_position, TabBarPosition::Top);
+        let path = std::env::temp_dir().join(format!(
+            "spindle-tab-bar-position-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[ui]\ntab_bar_position = \"bottom\"\n").unwrap();
+        assert_eq!(load_from(&path).tab_bar_position, TabBarPosition::Bottom);
         std::fs::remove_file(path).unwrap();
     }
 

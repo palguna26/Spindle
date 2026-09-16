@@ -104,10 +104,14 @@ fn main_areas_with_sidebar_and_tab_count(
             Constraint::Min(1),
         ])
         .split(right);
+    let (tabs, panes) = match config.tab_bar_position {
+        crate::config::TabBarPosition::Top => (rows[0], rows[1]),
+        crate::config::TabBarPosition::Bottom => (rows[1], rows[0]),
+    };
     MainAreas {
         sidebar: columns[0],
-        tabs: rows[0],
-        panes: rows[1],
+        tabs,
+        panes,
         mobile_header: Rect::default(),
     }
 }
