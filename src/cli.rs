@@ -61,7 +61,10 @@ pub fn run() -> io::Result<()> {
             return completion::run(&env::args().skip(2).collect::<Vec<_>>());
         }
         "api" => {
-            return api::run(&env::args().skip(2).collect::<Vec<_>>());
+            return api::run(
+                &Project::from_current_dir()?,
+                &env::args().skip(2).collect::<Vec<_>>(),
+            );
         }
         "agent" => {
             return agent::run_agent_command(
@@ -255,7 +258,7 @@ fn print_help() {
     println!(
         "  completion <shell>  generate shell completions (bash, elvish, fish, powershell, zsh)"
     );
-    println!("  api schema [--json|--output PATH]  inspect the control API schema");
+    println!("  api snapshot/schema  inspect the session or control API schema");
     println!("  plugin link/list/unlink/enable/disable/action/pane  manage local plugins");
     println!("  workspace list/create/close/report-metadata  manage workspaces in the current project session");
     println!("  workspace get <id>  show a workspace by ID");

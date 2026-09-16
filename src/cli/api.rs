@@ -2,10 +2,11 @@ use std::io;
 
 const API_SCHEMA_JSON: &str = include_str!("../../docs/api/spindle-api.schema.json");
 
-pub(super) fn run(args: &[String]) -> io::Result<()> {
+pub(super) fn run(project: &super::Project, args: &[String]) -> io::Result<()> {
     match args {
         [] => print_summary(),
         [command] if command == "schema" => print_summary(),
+        [command] if command == "snapshot" => print_snapshot(project),
         [command, flag] if command == "schema" && flag == "--json" => {
             print!("{API_SCHEMA_JSON}");
             Ok(())
@@ -47,8 +48,27 @@ fn print_summary() -> io::Result<()> {
     Ok(())
 }
 
+fn print_snapshot(project: &super::Project) -> io::Result<()> {
+    let response = super::send_command(project, "get_snapshot")?;
+    if !response.ok {
+        return Err(io::Error::other(
+            response
+                .error
+                .map(|error| error.message)
+                .unwrap_or_else(|| "server rejected the snapshot request".into()),
+        ));
+    }
+    let payload = response
+        .payload
+        .ok_or_else(|| io::Error::other("server returned no session snapshot"))?;
+    let json = serde_json::to_string_pretty(&payload).map_err(io::Error::other)?;
+    println!("{json}");
+    Ok(())
+}
+
 fn print_help() {
     eprintln!("spindle api commands:");
+    eprintln!("  spindle api snapshot");
     eprintln!("  spindle api schema [--json | --output PATH]");
 }
 
