@@ -10,6 +10,8 @@ const CODEX_HOOK_ASSET: &str = include_str!("integration/assets/codex-agent-stat
 const CODEX_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
+const PI_EXTENSION_NAME: &str = "spindle-agent-state.ts";
 const OPENCODE_PLUGIN_ASSET: &str = include_str!("integration/assets/opencode-agent-state.js");
 const OPENCODE_PLUGIN_NAME: &str = "spindle-agent-state.js";
 const OPENCODE_TUI_ASSET: &str = include_str!("integration/assets/opencode-tui-session.js");
@@ -18,16 +20,18 @@ const OPENCODE_TUI_SPEC: &str = "./spindle-tui-session.js";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Target {
+    Pi,
     Claude,
     Codex,
     Opencode,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 3] = [Self::Claude, Self::Codex, Self::Opencode];
+    pub(crate) const ALL: [Self; 4] = [Self::Pi, Self::Claude, Self::Codex, Self::Opencode];
 
     fn label(self) -> &'static str {
         match self {
+            Self::Pi => "pi",
             Self::Claude => "claude",
             Self::Codex => "codex",
             Self::Opencode => "opencode",
@@ -40,6 +44,7 @@ impl Target {
 
     fn path(self) -> PathBuf {
         match self {
+            Self::Pi => pi_extension_dir().join(PI_EXTENSION_NAME),
             Self::Claude => claude_dir().join("hooks").join(CLAUDE_HOOK_NAME),
             Self::Codex => codex_dir().join(CODEX_HOOK_NAME),
             Self::Opencode => home_dir()
@@ -311,11 +316,46 @@ pub(crate) fn uninstall_claude() -> std::io::Result<Vec<String>> {
     )])
 }
 
+pub(crate) fn install_pi() -> std::io::Result<Vec<String>> {
+    let dir = pi_extension_dir();
+    if !dir.parent().is_some_and(|parent| parent.is_dir()) && !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "pi extension directory not found at {}. install pi first",
+            dir.display()
+        )));
+    }
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(PI_EXTENSION_NAME);
+    std::fs::write(&path, PI_EXTENSION_ASSET)?;
+    Ok(vec![format!(
+        "installed pi integration to {}",
+        path.display()
+    )])
+}
+
+pub(crate) fn uninstall_pi() -> std::io::Result<Vec<String>> {
+    let path = pi_extension_dir().join(PI_EXTENSION_NAME);
+    let removed = remove_file_if_exists(&path)?;
+    Ok(vec![format!(
+        "{} pi integration {}",
+        if removed { "removed" } else { "did not find" },
+        path.display()
+    )])
+}
+
 fn claude_dir() -> PathBuf {
     env::var_os("CLAUDE_CONFIG_DIR")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| home_dir().join(".claude"))
+}
+
+fn pi_extension_dir() -> PathBuf {
+    env::var_os("PI_CODING_AGENT_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".pi").join("agent"))
+        .join("extensions")
 }
 
 fn add_claude_hook(
@@ -645,16 +685,18 @@ fn remove_file_if_exists(path: &std::path::Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Target, OPENCODE_PLUGIN_NAME, OPENCODE_TUI_SPEC};
+    use super::{Target, OPENCODE_PLUGIN_NAME, OPENCODE_TUI_SPEC, PI_EXTENSION_NAME};
 
     #[test]
     fn targets_match_herdr_names() {
+        assert_eq!(Target::Pi.label(), "pi");
         assert_eq!(Target::Codex.label(), "codex");
         assert_eq!(Target::Opencode.label(), "opencode");
     }
 
     #[test]
     fn target_paths_match_agent_layouts() {
+        assert!(Target::Pi.path().ends_with(PI_EXTENSION_NAME));
         assert!(Target::Codex.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Opencode.path().ends_with(OPENCODE_PLUGIN_NAME));
     }
