@@ -37,6 +37,7 @@ struct UiConfig {
     mouse_capture: bool,
     host_cursor: HostCursorMode,
     mouse_scroll_lines: u16,
+    confirm_close: bool,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
@@ -62,6 +63,7 @@ impl Default for UiConfig {
             mouse_capture: true,
             host_cursor: HostCursorMode::Auto,
             mouse_scroll_lines: 3,
+            confirm_close: true,
         }
     }
 }
@@ -176,6 +178,7 @@ pub struct Config {
     pub(crate) mouse_capture: bool,
     pub(crate) host_cursor: HostCursorMode,
     pub(crate) mouse_scroll_lines: usize,
+    pub(crate) confirm_close: bool,
 }
 
 impl Default for Config {
@@ -200,6 +203,7 @@ impl Default for Config {
             mouse_capture: true,
             host_cursor: HostCursorMode::Auto,
             mouse_scroll_lines: 3,
+            confirm_close: true,
         }
     }
 }
@@ -266,6 +270,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         mouse_capture: file.ui.mouse_capture,
         host_cursor: file.ui.host_cursor,
         mouse_scroll_lines: usize::from(file.ui.mouse_scroll_lines.max(1)),
+        confirm_close: file.ui.confirm_close,
     }
 }
 
@@ -322,6 +327,7 @@ copy_on_select = true
 mouse_capture = true
 host_cursor = "auto"
 mouse_scroll_lines = 3
+confirm_close = true
 "#
 }
 
@@ -554,6 +560,16 @@ mod tests {
         ));
         std::fs::write(&path, "[ui]\nmouse_scroll_lines = 7\n").unwrap();
         assert_eq!(load_from(&path).mouse_scroll_lines, 7);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn confirm_close_matches_herdr_default_and_value() {
+        assert!(Config::default().confirm_close);
+        let path =
+            std::env::temp_dir().join(format!("spindle-confirm-close-{}.toml", std::process::id()));
+        std::fs::write(&path, "[ui]\nconfirm_close = false\n").unwrap();
+        assert!(!load_from(&path).confirm_close);
         std::fs::remove_file(path).unwrap();
     }
 

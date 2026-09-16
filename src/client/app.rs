@@ -1494,7 +1494,12 @@ fn event_loop(
                 rename_prompt = Some(prompt_for_target(RenameTarget::Workspace, &snapshot));
             }
             Action::DeleteActiveWorkspace => {
-                rename_prompt = Some(RenamePrompt::new(RenameTarget::DeleteWorkspace));
+                if config.confirm_close {
+                    rename_prompt = Some(RenamePrompt::new(RenameTarget::DeleteWorkspace));
+                } else if let Err(error) = close_active_workspace(client, &snapshot, terminal_size)
+                {
+                    record_action_error(&mut action_error, "close workspace", Err(error));
+                }
             }
             Action::RenameFocusedPane
             | Action::RenameActiveTab
@@ -2399,11 +2404,25 @@ fn activate_context_menu(
                     }
                 }
                 ContextMenuAction::Rename => Ok(Some(RenameTarget::Workspace)),
-                ContextMenuAction::Close => Ok(Some(if close_group {
-                    RenameTarget::DeleteWorkspaceGroup
-                } else {
-                    RenameTarget::DeleteWorkspace
-                })),
+                ContextMenuAction::Close => {
+                    if crate::config::load().confirm_close {
+                        Ok(Some(if close_group {
+                            RenameTarget::DeleteWorkspaceGroup
+                        } else {
+                            RenameTarget::DeleteWorkspace
+                        }))
+                    } else {
+                        request_action(
+                            client,
+                            "context-close-workspace",
+                            "delete_workspace",
+                            json!({ "id": id, "close_group": close_group }),
+                            "close workspace",
+                        )?;
+                        ensure_active_default_pane(client, terminal_size)?;
+                        Ok(None)
+                    }
+                }
                 ContextMenuAction::NewWorktree => Ok(Some(RenameTarget::CreateWorktree)),
                 ContextMenuAction::OpenWorktree => Ok(Some(RenameTarget::OpenWorktree)),
                 ContextMenuAction::RemoveWorktree => Ok(Some(RenameTarget::RemoveWorktree)),
@@ -2696,6 +2715,25 @@ fn next_tab_name(snapshot: &SessionSnapshot) -> String {
         .map(|workspace| workspace.tabs.len() + 1)
         .unwrap_or(1)
         .to_string()
+}
+
+fn close_active_workspace(
+    client: &ControlClient,
+    snapshot: &SessionSnapshot,
+    terminal_size: (u16, u16),
+) -> Result<(), ClientError> {
+    let workspace = active_workspace(snapshot)
+        .ok_or_else(|| ClientError::Server("no active workspace".into()))?;
+    let close_group =
+        workspace_has_linked_children(snapshot, &snapshot.active_space_id, &workspace.workspace_id);
+    request_action(
+        client,
+        "close-workspace",
+        "delete_workspace",
+        json!({ "id": workspace.workspace_id, "close_group": close_group }),
+        "close workspace",
+    )?;
+    ensure_active_default_pane(client, terminal_size)
 }
 
 fn submit_rename(
