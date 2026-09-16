@@ -350,3 +350,6 @@ overrides.
 Sidebar active and selected rows now use Herdr's per-theme `active_row_bg` and
 `selection_bg` values; custom overrides and terminal reset selection are
 supported.
+
+Narrow tab strips now keep a minimum usable tab width and keep the active tab
+visible; render, click, and drag geometry share the same visible-tab window.
