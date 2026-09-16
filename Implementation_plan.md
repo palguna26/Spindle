@@ -38,7 +38,8 @@ detector control.
 
 Latest plugin pane milestone: popup width and height accept Herdr's cell-count
 or percentage forms, such as `90` and `80%`. Numeric manifest values remain
-compatible; percentage values are resolved against the invoking terminal.
+compatible; percentage values are retained in the session and recomputed when
+the terminal changes, including popup hit testing and PTY resizing.
 
 Latest sidebar milestone: nested Herdr-style sidebar row tokens now render in
 the live Spindle sidebar. Workspace and agent rows resolve state, names,
