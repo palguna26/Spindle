@@ -55,6 +55,9 @@ on top of the selected built-in theme; broader token overrides remain.
 The accent parser also accepts Herdr's `rgb(...)`, named-color, and reset
 forms, with safe fallback for invalid values.
 
+Modal surfaces now use Herdr-style theme panel backgrounds, with a
+`[theme.custom] panel_bg` override.
+
 An unset theme now defaults to Herdr's Catppuccin palette in both rendering
 and the settings overlay.
 

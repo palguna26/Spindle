@@ -46,6 +46,10 @@ with config and renderer coverage.
 Custom accents also accept Herdr's `rgb(...)`, named-color, and reset aliases;
 invalid values retain the base-theme accent.
 
+Modal surfaces now use the selected theme's Herdr-style panel background;
+`[theme.custom] panel_bg` accepts the same color formats and is covered by
+config and renderer tests.
+
 Spindle now uses Herdr's Catppuccin palette when no theme is configured, and
 the settings overlay selects that same default.
 
