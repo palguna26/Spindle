@@ -2,13 +2,13 @@ use super::context_menu::{ContextMenu, ContextMenuAction, ContextMenuTarget};
 use super::copy_mode::{CopyMode, KeyResult};
 use super::global_menu::{Action as GlobalMenuAction, GlobalMenu, Outcome as GlobalMenuOutcome};
 use super::input::{Action, Keymap};
+#[cfg(test)]
+use super::mouse::should_forward_pane_mouse;
 use super::mouse::{
     clear_mouse_capture, pane_mouse_target, should_forward_pane_mouse_with_modifier,
     visible_web_url_at_point, CachedScrollbackView, MouseState, PaneClick, PaneMouseCapture,
     SplitDrag, TabDrag, WorkspaceDrag,
 };
-#[cfg(test)]
-use super::mouse::should_forward_pane_mouse;
 use super::navigator::{Navigator, Outcome as NavigatorOutcome, Target as NavigatorTarget};
 use super::palette::{move_selection, Command};
 use super::prompt::{PromptResult, RenamePrompt, RenameTarget};
@@ -179,6 +179,7 @@ fn event_loop(
     let mut was_connected = true;
     let mut snapshot = current_snapshot(client)?;
     let mut previous_pane_id: Option<String> = None;
+    let mut skip_draw = false;
     let mut action_error: Option<(String, Instant)> = None;
     let mut status_notice: Option<(String, Instant)> = None;
     let mut notifications = VecDeque::new();
@@ -379,8 +380,9 @@ fn event_loop(
             && context_menu.is_none()
             && !resize_mode
             && startup_error.is_none();
-        terminal
-            .draw(|frame| {
+        if !skip_draw {
+            terminal
+                .draw(|frame| {
                 renderer::render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_groups(
                     frame,
                     &snapshot,
@@ -489,8 +491,10 @@ fn event_loop(
                 {
                     renderer::render_notification(frame, message);
                 }
-            })
-            .map_err(ClientError::Io)?;
+                })
+                .map_err(ClientError::Io)?;
+        }
+        skip_draw = false;
         if !event::poll(Duration::from_millis(100)).map_err(ClientError::Io)? {
             continue;
         }
@@ -685,6 +689,10 @@ fn event_loop(
                 ) {
                     record_action_error(&mut action_error, "handle mouse action", Err(error));
                 }
+                continue;
+            }
+            Event::FocusGained => {
+                skip_draw = !config.redraw_on_focus_gained;
                 continue;
             }
             Event::Key(key) => key,

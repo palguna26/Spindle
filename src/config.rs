@@ -41,6 +41,7 @@ struct UiConfig {
     confirm_close: bool,
     hide_tab_bar_when_single_tab: bool,
     right_click_passthrough_modifier: String,
+    redraw_on_focus_gained: bool,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
@@ -69,6 +70,7 @@ impl Default for UiConfig {
             confirm_close: true,
             hide_tab_bar_when_single_tab: false,
             right_click_passthrough_modifier: String::new(),
+            redraw_on_focus_gained: true,
         }
     }
 }
@@ -186,6 +188,7 @@ pub struct Config {
     pub(crate) confirm_close: bool,
     pub(crate) hide_tab_bar_when_single_tab: bool,
     pub(crate) right_click_passthrough_modifier: Option<KeyModifiers>,
+    pub(crate) redraw_on_focus_gained: bool,
 }
 
 impl Default for Config {
@@ -213,6 +216,7 @@ impl Default for Config {
             confirm_close: true,
             hide_tab_bar_when_single_tab: false,
             right_click_passthrough_modifier: None,
+            redraw_on_focus_gained: true,
         }
     }
 }
@@ -284,6 +288,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         right_click_passthrough_modifier: parse_right_click_passthrough_modifier(
             &file.ui.right_click_passthrough_modifier,
         ),
+        redraw_on_focus_gained: file.ui.redraw_on_focus_gained,
     }
 }
 
@@ -366,6 +371,7 @@ mouse_scroll_lines = 3
 confirm_close = true
 hide_tab_bar_when_single_tab = false
 right_click_passthrough_modifier = ""
+redraw_on_focus_gained = true
 "#
 }
 
@@ -638,6 +644,18 @@ mod tests {
             load_from(&path).right_click_passthrough_modifier,
             Some(KeyModifiers::SUPER | KeyModifiers::ALT)
         );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn redraw_on_focus_gained_matches_herdr_default_and_value() {
+        assert!(Config::default().redraw_on_focus_gained);
+        let path = std::env::temp_dir().join(format!(
+            "spindle-redraw-focus-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[ui]\nredraw_on_focus_gained = false\n").unwrap();
+        assert!(!load_from(&path).redraw_on_focus_gained);
         std::fs::remove_file(path).unwrap();
     }
 
