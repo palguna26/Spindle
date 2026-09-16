@@ -443,6 +443,8 @@ approved design changes it.
   true; when disabled, workspace actions close directly like Herdr.
   `[ui] hide_tab_bar_when_single_tab` defaults to false like Herdr; when enabled,
   the desktop tab row is removed for single-tab workspaces.
+  `[ui] tab_bar_position = "top"|"bottom"` now moves the desktop tab row and
+  pane surface together, matching Herdr's default and alternate placement.
   Configured `move_tab_previous`, `move_tab_next`, and directional
   `resize_pane_*` actions now execute through the existing tab-move and layout
   resize control operations; like Herdr, all are unset by default.

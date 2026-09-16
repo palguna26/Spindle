@@ -142,6 +142,10 @@ Single-tab layout note: `[ui] hide_tab_bar_when_single_tab` now controls the
 desktop tab row, defaulting to false like Herdr and updating pane geometry and
 mouse hit testing when enabled.
 
+Tab-bar placement note: `[ui] tab_bar_position = "top"|"bottom"` now moves the
+desktop tab row and pane surface together, matching Herdr's default and
+alternate placement.
+
 Action parity note: Herdr action names `move_tab_previous`, `move_tab_next`,
 and `resize_pane_left|down|up|right` are now accepted and execute their matching
 operations; they remain unset by default like Herdr.
