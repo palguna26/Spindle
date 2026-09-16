@@ -175,7 +175,8 @@ pub(crate) fn pane_sizes(snapshot: &SessionSnapshot, area: Rect) -> Vec<PaneSize
                 config.pane_outer_borders,
                 config.pane_gaps,
             );
-            let (cols, rows) = pane_inner_size_with_borders(pane.rect, borders);
+            let (cols, rows) =
+                pane_inner_size_with_options(pane.rect, borders, config.pane_scrollbars);
             PaneSize {
                 pane_id: pane.pane_id,
                 cols,
@@ -196,9 +197,27 @@ pub(crate) fn split_handles(snapshot: &SessionSnapshot, area: Rect) -> Vec<Split
     handles
 }
 
-pub(crate) fn pane_inner_size_with_borders(area: Rect, borders: Borders) -> (u16, u16) {
-    let inner = Block::default().borders(borders).inner(area);
+pub(crate) fn pane_inner_size_with_options(
+    area: Rect,
+    borders: Borders,
+    scrollbars: bool,
+) -> (u16, u16) {
+    let inner = pane_inner_area(area, borders, scrollbars);
     (inner.width.max(1), inner.height.max(1))
+}
+
+pub(crate) fn pane_inner_area(area: Rect, borders: Borders, scrollbars: bool) -> Rect {
+    let inner = Block::default().borders(borders).inner(area);
+    if scrollbars && inner.width > 4 {
+        Rect::new(
+            inner.x,
+            inner.y,
+            inner.width.saturating_sub(1),
+            inner.height,
+        )
+    } else {
+        inner
+    }
 }
 
 pub(crate) fn pane_borders_for_rect(

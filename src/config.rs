@@ -37,6 +37,7 @@ struct UiConfig {
     pane_borders: PaneBorders,
     pane_outer_borders: bool,
     pane_gaps: bool,
+    pane_scrollbars: bool,
     prompt_new_tab_name: bool,
     prompt_new_workspace_name: bool,
     copy_on_select: bool,
@@ -135,6 +136,7 @@ impl Default for UiConfig {
             pane_borders: PaneBorders::Auto,
             pane_outer_borders: true,
             pane_gaps: true,
+            pane_scrollbars: true,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -258,6 +260,7 @@ pub struct Config {
     pub(crate) pane_borders: PaneBorders,
     pub(crate) pane_outer_borders: bool,
     pub(crate) pane_gaps: bool,
+    pub(crate) pane_scrollbars: bool,
     pub(crate) prompt_new_tab_name: bool,
     pub(crate) prompt_new_workspace_name: bool,
     pub(crate) copy_on_select: bool,
@@ -291,6 +294,7 @@ impl Default for Config {
             pane_borders: PaneBorders::Auto,
             pane_outer_borders: true,
             pane_gaps: true,
+            pane_scrollbars: true,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -366,6 +370,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         pane_borders: file.ui.pane_borders,
         pane_outer_borders: file.ui.pane_outer_borders,
         pane_gaps: file.ui.pane_gaps,
+        pane_scrollbars: file.ui.pane_scrollbars,
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
         copy_on_select: file.ui.copy_on_select,
@@ -456,6 +461,7 @@ tab_bar_position = "top"
 pane_borders = "auto"
 pane_outer_borders = true
 pane_gaps = true
+pane_scrollbars = true
 prompt_new_tab_name = true
 prompt_new_workspace_name = false
 copy_on_select = true
@@ -799,19 +805,21 @@ mod tests {
         assert_eq!(config.pane_borders, PaneBorders::Auto);
         assert!(config.pane_outer_borders);
         assert!(config.pane_gaps);
+        assert!(config.pane_scrollbars);
         let path = std::env::temp_dir().join(format!(
             "spindle-pane-border-settings-{}.toml",
             std::process::id()
         ));
         std::fs::write(
             &path,
-            "[ui]\npane_borders = \"always\"\npane_outer_borders = false\npane_gaps = false\n",
+            "[ui]\npane_borders = \"always\"\npane_outer_borders = false\npane_gaps = false\npane_scrollbars = false\n",
         )
         .unwrap();
         let config = load_from(&path);
         assert_eq!(config.pane_borders, PaneBorders::Always);
         assert!(!config.pane_outer_borders);
         assert!(!config.pane_gaps);
+        assert!(!config.pane_scrollbars);
         std::fs::remove_file(path).unwrap();
     }
 

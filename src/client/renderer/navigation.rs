@@ -1544,10 +1544,10 @@ mod tests {
         let pane_sizes = pane_sizes(&snapshot, main.panes);
         assert_eq!(pane_sizes.len(), 2);
         assert_eq!(pane_sizes[0].pane_id, "pane-1");
-        assert_eq!(pane_sizes[0].cols, first.width.saturating_sub(2).max(1));
+        assert_eq!(pane_sizes[0].cols, first.width.saturating_sub(3).max(1));
         assert_eq!(pane_sizes[0].rows, first.height.saturating_sub(2).max(1));
         assert_eq!(pane_sizes[1].pane_id, "pane-2");
-        assert_eq!(pane_sizes[1].cols, second.width.saturating_sub(2).max(1));
+        assert_eq!(pane_sizes[1].cols, second.width.saturating_sub(3).max(1));
         assert_eq!(pane_sizes[1].rows, second.height.saturating_sub(2).max(1));
         assert_eq!(
             hit_test(

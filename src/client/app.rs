@@ -3567,7 +3567,11 @@ fn pane_size(terminal_size: (u16, u16)) -> (u16, u16) {
     } else {
         ratatui::widgets::Borders::NONE
     };
-    renderer::pane_inner_size_with_borders(renderer::pane_content_area(area), borders)
+    renderer::pane_inner_size_with_options(
+        renderer::pane_content_area(area),
+        borders,
+        config.pane_scrollbars,
+    )
 }
 
 fn pane_request(terminal_size: (u16, u16)) -> serde_json::Value {
@@ -4144,7 +4148,7 @@ mod tests {
         );
         assert_eq!(page_key_bytes(KeyCode::PageUp), Some(b"\x1b[5~".to_vec()));
         assert_eq!(page_key_bytes(KeyCode::PageDown), Some(b"\x1b[6~".to_vec()));
-        assert_eq!(pane_size((120, 40)), (94, 38));
+        assert_eq!(pane_size((120, 40)), (93, 38));
         assert_eq!(pane_size((0, 0)), (1, 1));
     }
 

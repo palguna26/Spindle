@@ -12,8 +12,8 @@ use super::settings::Settings;
 use crate::model::status::PaneStatus;
 use crate::server::session::{SessionSnapshot, WorkspaceView};
 pub(crate) use layout::{
-    pane_borders_for_rect, pane_content_area, pane_content_area_for_snapshot,
-    pane_inner_size_with_borders, pane_rectangles, pane_sizes, sidebar_area, split_handles,
+    pane_borders_for_rect, pane_content_area, pane_content_area_for_snapshot, pane_inner_area,
+    pane_inner_size_with_options, pane_rectangles, pane_sizes, sidebar_area, split_handles,
     PaneSize,
 };
 use navigation::render_tabs;
@@ -245,11 +245,20 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
                 ),
                 pane_rect.rect,
             );
+            if config.pane_scrollbars {
+                let inner = pane_inner_area(pane_rect.rect, borders, true);
+                render_pane_scrollbar(
+                    frame,
+                    inner,
+                    pane,
+                    snapshot.focused_pane_id.as_deref() == Some(&pane_rect.pane_id),
+                );
+            }
             if show_host_cursor
                 && pane.cursor_visible
                 && snapshot.focused_pane_id.as_deref() == Some(&pane_rect.pane_id)
             {
-                let inner = Block::default().borders(borders).inner(pane_rect.rect);
+                let inner = pane_inner_area(pane_rect.rect, borders, config.pane_scrollbars);
                 let (col, row) = pane.cursor;
                 if col < inner.width && row < inner.height {
                     host_cursor = Some((inner.x + col, inner.y + row));
@@ -323,6 +332,42 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
     frame.render_widget(Paragraph::new(chrome), footer_area(frame.area()));
 }
 
+fn render_pane_scrollbar(
+    frame: &mut Frame<'_>,
+    inner: Rect,
+    pane: &crate::server::session::PaneView,
+    focused: bool,
+) {
+    if inner.width == 0 || inner.height == 0 || pane.scrollback_bytes == 0 {
+        return;
+    }
+    let track = Rect::new(inner.right(), inner.y, 1, inner.height);
+    let screen_rows = pane.screen.lines().count().max(1);
+    let total_rows = screen_rows.saturating_add(
+        pane.scrollback
+            .iter()
+            .filter(|byte| **byte == b'\n')
+            .count(),
+    );
+    if total_rows <= usize::from(inner.height) {
+        return;
+    }
+    let thumb_height = (usize::from(inner.height) * usize::from(inner.height) / total_rows)
+        .max(1)
+        .min(usize::from(inner.height)) as u16;
+    let thumb_top = track.bottom().saturating_sub(thumb_height);
+    for row in track.y..track.bottom() {
+        if let Some(cell) = frame.buffer_mut().cell_mut((track.x, row)) {
+            cell.set_symbol(if row >= thumb_top { "█" } else { "│" });
+            cell.set_fg(if focused {
+                Color::Cyan
+            } else {
+                Color::DarkGray
+            });
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn render_selection(
     frame: &mut Frame<'_>,
@@ -363,7 +408,7 @@ pub(crate) fn render_selection_with_sidebar(
         config.pane_outer_borders,
         config.pane_gaps,
     );
-    let inner = Block::default().borders(borders).inner(pane.rect);
+    let inner = pane_inner_area(pane.rect, borders, config.pane_scrollbars);
     let ((start_row, start_col), (end_row, end_col)) = selection.ordered();
     for row in start_row..=end_row {
         if row >= inner.height {
@@ -407,7 +452,7 @@ pub(crate) fn render_copy_mode(
         config.pane_outer_borders,
         config.pane_gaps,
     );
-    let inner = Block::default().borders(borders).inner(pane.rect);
+    let inner = pane_inner_area(pane.rect, borders, config.pane_scrollbars);
     let selected = mode.selection.map(|selection| {
         if selection.anchor <= mode.cursor {
             (selection.anchor, mode.cursor, selection.kind)
