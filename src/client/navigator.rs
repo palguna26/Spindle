@@ -23,6 +23,12 @@ pub enum Target {
         tab_id: String,
         id: String,
     },
+    Agent {
+        space_id: String,
+        workspace_id: String,
+        tab_id: String,
+        id: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +124,7 @@ impl Navigator {
         let query = self.query.to_lowercase();
         let filtering = self.filter.is_some() || !query.is_empty();
         let mut rows = Vec::new();
+        let mut agent_rows = Vec::new();
         for space in &snapshot.spaces {
             let mut space_rows = Vec::new();
             for workspace in &space.workspaces {
@@ -160,6 +167,30 @@ impl Navigator {
                             tab_id: tab.tab_id.clone(),
                             id: pane.pane_id.clone(),
                         };
+                        if self.mobile && pane.agent.is_some() {
+                            let agent_target = Target::Agent {
+                                space_id: space.space_id.clone(),
+                                workspace_id: workspace.workspace_id.clone(),
+                                tab_id: tab.tab_id.clone(),
+                                id: pane.pane_id.clone(),
+                            };
+                            let agent_label =
+                                pane.agent.map(|agent| agent.label()).unwrap_or("agent");
+                            let agent_detail = pane.agent_display_state().label().to_owned();
+                            if query.is_empty()
+                                || contains(&[agent_label, &agent_detail, &pane.cwd], &query)
+                            {
+                                agent_rows.push(Row {
+                                    current: snapshot.focused_pane_id.as_deref()
+                                        == Some(&pane.pane_id),
+                                    target: agent_target,
+                                    depth: 0,
+                                    label: agent_label.to_owned(),
+                                    detail: agent_detail,
+                                    expanded: false,
+                                });
+                            }
+                        }
                         if query.is_empty()
                             || contains(&[&label, &detail, &pane.command, &pane.cwd], &query)
                         {
@@ -193,10 +224,11 @@ impl Navigator {
                             current: false,
                             expanded: true,
                         });
-                        if filtering
+                        if !self.mobile
+                            && (filtering
                             || self.expanded_workspaces.iter().any(|item| {
                                 item == &(space.space_id.clone(), workspace.workspace_id.clone())
-                            })
+                            }))
                         {
                             workspace_rows.extend(tab_rows);
                         }
@@ -259,7 +291,8 @@ impl Navigator {
             }
         }
         if self.mobile {
-            let mut mobile_rows = Vec::with_capacity(rows.len() + 8);
+            let mut mobile_rows = Vec::with_capacity(rows.len() + agent_rows.len() + 8);
+            mobile_rows.extend(agent_rows);
             mobile_rows.push(Row {
                 target: Target::NewWorkspace,
                 depth: 0,
@@ -533,7 +566,8 @@ mod tests {
         snapshot.panes.push(
             serde_json::from_value(serde_json::json!({
                 "pane_id": "pane-1", "command": "pwsh.exe", "args": [], "cwd": "C:/work",
-                "status": "Running", "scrollback_bytes": 0, "agent_state": "working"
+                "status": "Running", "scrollback_bytes": 0, "agent": "codex",
+                "agent_state": "working"
             }))
             .unwrap(),
         );
@@ -563,6 +597,22 @@ mod tests {
         ));
         assert!(rows.iter().any(|row| matches!(row.target, Target::NewTab)));
         assert!(rows.iter().any(|row| matches!(row.target, Target::Menu(0))));
+    }
+
+    #[test]
+    fn mobile_rows_put_detected_agents_first_like_herdr() {
+        let snapshot = snapshot_with_pane();
+        let navigator = Navigator::new_mobile(&snapshot);
+        let rows = navigator.rows(&snapshot);
+        assert!(matches!(
+            rows.first().map(|row| &row.target),
+            Some(Target::Agent { .. })
+        ));
+        assert_eq!(rows[0].label, "Codex");
+        assert_eq!(rows[0].detail, "working");
+        assert!(!rows
+            .iter()
+            .any(|row| matches!(row.target, Target::Pane { .. })));
     }
 
     #[test]

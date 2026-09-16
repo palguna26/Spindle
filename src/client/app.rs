@@ -3296,6 +3296,12 @@ fn switch_navigator_target(
             tab_id,
             id,
         } => (space_id, Some(workspace_id), Some(tab_id), Some(id)),
+        NavigatorTarget::Agent {
+            space_id,
+            workspace_id,
+            tab_id,
+            id,
+        } => (space_id, Some(workspace_id), Some(tab_id), Some(id)),
     };
     if !snapshot
         .spaces
