@@ -461,6 +461,9 @@ approved design changes it.
   `[ui] sidebar_collapsed_mode = "compact"|"hidden"` now controls whether a
   collapsed sidebar keeps Herdr's four-column rail or releases the full width
   to the pane area.
+  `[ui] pane_borders = "auto"|"always"|"off"` now follows Herdr's lone-pane
+  and split-pane border policy; `pane_outer_borders` and `pane_gaps` control
+  outer frames and shared split edges.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
