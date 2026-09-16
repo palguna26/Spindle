@@ -27,6 +27,8 @@ const QWEN_HOOK_NAME: &str = "spindle-agent-session.ps1";
 const GROK_HOOK_ASSET: &str = include_str!("integration/assets/grok-agent-state.ps1");
 const GROK_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const GROK_CONFIG_NAME: &str = "spindle.json";
+const KILO_PLUGIN_ASSET: &str = include_str!("integration/assets/kilo-agent-state.js");
+const KILO_PLUGIN_NAME: &str = "spindle-agent-state.js";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -54,10 +56,11 @@ pub(crate) enum Target {
     Qodercli,
     Qwen,
     Grok,
+    Kilo,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 13] = [
+    pub(crate) const ALL: [Self; 14] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
@@ -71,6 +74,7 @@ impl Target {
         Self::Qodercli,
         Self::Qwen,
         Self::Grok,
+        Self::Kilo,
     ];
 
     fn label(self) -> &'static str {
@@ -88,6 +92,7 @@ impl Target {
             Self::Qodercli => "qodercli",
             Self::Qwen => "qwen",
             Self::Grok => "grok",
+            Self::Kilo => "kilo",
         }
     }
 
@@ -114,6 +119,7 @@ impl Target {
             Self::Qodercli => qodercli_dir().join("hooks").join(QODERCLI_HOOK_NAME),
             Self::Qwen => qwen_dir().join("hooks").join(QWEN_HOOK_NAME),
             Self::Grok => grok_dir().join("hooks").join(GROK_HOOK_NAME),
+            Self::Kilo => kilo_dir().join("plugin").join(KILO_PLUGIN_NAME),
         }
     }
 
@@ -657,6 +663,34 @@ pub(crate) fn uninstall_grok() -> std::io::Result<Vec<String>> {
     )])
 }
 
+pub(crate) fn install_kilo() -> std::io::Result<Vec<String>> {
+    let dir = kilo_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "kilo config directory not found at {}. install kilo first",
+            dir.display()
+        )));
+    }
+    let plugin_dir = dir.join("plugin");
+    std::fs::create_dir_all(&plugin_dir)?;
+    let path = plugin_dir.join(KILO_PLUGIN_NAME);
+    std::fs::write(&path, KILO_PLUGIN_ASSET)?;
+    Ok(vec![format!(
+        "installed kilo integration plugin to {}",
+        path.display()
+    )])
+}
+
+pub(crate) fn uninstall_kilo() -> std::io::Result<Vec<String>> {
+    let path = kilo_dir().join("plugin").join(KILO_PLUGIN_NAME);
+    let removed = remove_file_if_exists(&path)?;
+    Ok(vec![format!(
+        "{} kilo integration plugin {}",
+        if removed { "removed" } else { "did not find" },
+        path.display()
+    )])
+}
+
 pub(crate) fn install_opencode() -> std::io::Result<Vec<String>> {
     let dir = opencode_dir();
     if !dir.is_dir() {
@@ -1140,6 +1174,18 @@ fn grok_dir() -> PathBuf {
                 .map(PathBuf::from)
         })
         .unwrap_or_else(|| home_dir().join(".grok"))
+}
+
+fn kilo_dir() -> PathBuf {
+    env::var_os("KILO_CONFIG_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("KILO_HOME")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+        })
+        .unwrap_or_else(|| home_dir().join(".config").join("kilo"))
 }
 
 fn qwen_command(path: &std::path::Path) -> String {
@@ -1804,6 +1850,7 @@ mod tests {
         assert_eq!(Target::Qodercli.label(), "qodercli");
         assert_eq!(Target::Qwen.label(), "qwen");
         assert_eq!(Target::Grok.label(), "grok");
+        assert_eq!(Target::Kilo.label(), "kilo");
     }
 
     #[test]
@@ -1820,6 +1867,7 @@ mod tests {
         assert!(Target::Qodercli.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Qwen.path().ends_with("spindle-agent-session.ps1"));
         assert!(Target::Grok.path().ends_with("spindle-agent-state.ps1"));
+        assert!(Target::Kilo.path().ends_with("spindle-agent-state.js"));
     }
 
     #[test]
