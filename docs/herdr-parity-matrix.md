@@ -357,6 +357,9 @@ Sidebar separators, summaries, and scrollbars now use Herdr's `overlay0` and
 Pane title indicators and unfocused pane borders now use Herdr's theme
 semantic colors for running, completed, and halted/interrupted states.
 
+Sidebar agent state icons now use the matching themed status colors and
+`overlay0` for unknown state.
+
 Narrow tab strips now keep a minimum usable tab width and keep the active tab
 visible; render, click, and drag geometry share the same visible-tab window.
 Edge ellipses indicate when tabs are hidden outside that window.
