@@ -7,7 +7,8 @@ mod agents;
 use agents::{
     amp_is_idle, amp_is_working, amp_permission_required, antigravity_is_working,
     antigravity_permission_required, claude_dynamic_workflow_prompt, claude_mcp_elicitation_prompt,
-    claude_should_skip_state_update, cline_permission_required, codex_should_skip_state_update,
+    claude_should_skip_state_update, cline_permission_required, codex_after_last_prompt_marker,
+    codex_has_current_prompt_marker, codex_should_skip_state_update,
     copilot_background_agents_working, copilot_has_cancel_hint, copilot_permission_required,
     cursor_agent_node_argv, cursor_is_working, cursor_permission_required, devin_is_idle,
     devin_is_working, devin_permission_required, gemini_permission_required, grok_state,
@@ -153,9 +154,7 @@ pub(crate) fn detect_state_with_osc(
     title: &str,
     osc_progress: &str,
 ) -> AgentState {
-    let screen_lower = screen.to_ascii_lowercase();
     let title_lower = title.to_ascii_lowercase();
-    let combined = format!("{title_lower}\n{screen_lower}");
     let recent = recent_nonempty_lines(screen, 20).to_ascii_lowercase();
     let bottom_fourteen = recent_nonempty_lines(screen, 14).to_ascii_lowercase();
     let bottom_three = recent_nonempty_lines(screen, 3).to_ascii_lowercase();
@@ -195,13 +194,18 @@ pub(crate) fn detect_state_with_osc(
         AgentKind::Maki => false,
         AgentKind::Muse => false,
         AgentKind::Codex => {
-            combined.contains("action required")
-                || codex_trust_directory_prompt(
-                    &top_nonempty_lines(screen, 20).to_ascii_lowercase(),
-                )
-                || combined.contains("allow command?")
-                || combined.contains("press enter to confirm or esc to cancel")
-                || codex_recent_blocker(&recent)
+            let after_prompt = codex_after_last_prompt_marker(screen).to_ascii_lowercase();
+            let prompt_scoped = after_prompt.contains("action required")
+                || after_prompt.contains("allow command?")
+                || after_prompt.contains("press enter to confirm or esc to cancel");
+            let trust_prompt =
+                codex_trust_directory_prompt(&top_nonempty_lines(screen, 20).to_ascii_lowercase());
+            let weak_blocker = if codex_has_current_prompt_marker(screen) {
+                false
+            } else {
+                codex_recent_blocker(&recent)
+            };
+            prompt_scoped || trust_prompt || weak_blocker
         }
         AgentKind::OpenCode => opencode_permission_required(&recent),
         AgentKind::Claude => claude_permission_required(&recent),
@@ -2222,6 +2226,18 @@ mod tests {
                 "Codex"
             ),
             AgentState::Blocked
+        );
+    }
+
+    #[test]
+    fn codex_stale_blockers_before_the_current_prompt_are_ignored() {
+        assert_eq!(
+            detect_state(AgentKind::Codex, "Action Required\n› ready", ""),
+            AgentState::Unknown
+        );
+        assert_eq!(
+            detect_state(AgentKind::Codex, "Run this command? [y/n]\n› ready", ""),
+            AgentState::Unknown
         );
     }
 

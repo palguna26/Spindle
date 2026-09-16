@@ -26,7 +26,9 @@ pub(super) use claude::{
     claude_dynamic_workflow_prompt, claude_mcp_elicitation_prompt, claude_should_skip_state_update,
 };
 pub(super) use cline::cline_permission_required;
-pub(super) use codex::codex_should_skip_state_update;
+pub(super) use codex::{
+    codex_after_last_prompt_marker, codex_has_current_prompt_marker, codex_should_skip_state_update,
+};
 pub(super) use copilot::{
     copilot_background_agents_working, copilot_has_cancel_hint, copilot_permission_required,
 };
