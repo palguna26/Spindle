@@ -144,24 +144,20 @@ pub(super) fn pane_mouse_target(
             return Some((popup_id.to_owned(), popup));
         }
     }
-    super::renderer::pane_rectangles(
-        snapshot,
-        super::renderer::pane_content_area_for_snapshot(snapshot, area, sidebar_collapsed),
-    )
-    .into_iter()
-    .find(|pane| {
-        let inner = Rect::new(
-            pane.rect.x.saturating_add(1),
-            pane.rect.y.saturating_add(1),
-            pane.rect.width.saturating_sub(2),
-            pane.rect.height.saturating_sub(2),
-        );
-        mouse.column >= inner.x
-            && mouse.column < inner.right()
-            && mouse.row >= inner.y
-            && mouse.row < inner.bottom()
-    })
-    .map(|pane| (pane.pane_id, pane.rect))
+    let pane_area =
+        super::renderer::pane_content_area_for_snapshot(snapshot, area, sidebar_collapsed);
+    let pane_rects = super::renderer::pane_rectangles(snapshot, pane_area);
+    let config = crate::config::load();
+    pane_rects
+        .iter()
+        .find(|pane| {
+            let inner = pane_inner_area(pane, &pane_rects, &config);
+            mouse.column >= inner.x
+                && mouse.column < inner.right()
+                && mouse.row >= inner.y
+                && mouse.row < inner.bottom()
+        })
+        .map(|pane| (pane.pane_id.clone(), pane.rect))
 }
 
 #[cfg(test)]
@@ -211,23 +207,19 @@ pub(super) fn visible_web_url_at_point(
     column: u16,
     row: u16,
 ) -> Option<String> {
-    let pane_rect = super::renderer::pane_rectangles(snapshot, pane_area)
-        .into_iter()
-        .find(|pane| {
-            let inner = Rect::new(
-                pane.rect.x.saturating_add(1),
-                pane.rect.y.saturating_add(1),
-                pane.rect.width.saturating_sub(2),
-                pane.rect.height.saturating_sub(2),
-            );
-            column >= inner.x && column < inner.right() && row >= inner.y && row < inner.bottom()
-        })?;
+    let pane_rects = super::renderer::pane_rectangles(snapshot, pane_area);
+    let config = crate::config::load();
+    let pane_rect = pane_rects.iter().find(|pane| {
+        let inner = pane_inner_area(pane, &pane_rects, &config);
+        column >= inner.x && column < inner.right() && row >= inner.y && row < inner.bottom()
+    })?;
     let pane = snapshot
         .panes
         .iter()
         .find(|candidate| candidate.pane_id == pane_rect.pane_id)?;
-    let inner_x = pane_rect.rect.x.saturating_add(1);
-    let inner_y = pane_rect.rect.y.saturating_add(1);
+    let inner = pane_inner_area(pane_rect, &pane_rects, &config);
+    let inner_x = inner.x;
+    let inner_y = inner.y;
     if let Some(link) = pane.hyperlinks.iter().find(|link| {
         link.row == row.saturating_sub(inner_y) && link.col == column.saturating_sub(inner_x)
     }) {
@@ -240,6 +232,21 @@ pub(super) fn visible_web_url_at_point(
         row.saturating_sub(inner_y),
         column.saturating_sub(inner_x),
     )
+}
+
+fn pane_inner_area(
+    pane: &super::renderer::PaneRect,
+    panes: &[super::renderer::PaneRect],
+    config: &crate::config::Config,
+) -> Rect {
+    let borders = super::renderer::pane_borders_for_rect(
+        pane.rect,
+        panes,
+        config.pane_borders,
+        config.pane_outer_borders,
+        config.pane_gaps,
+    );
+    super::renderer::pane_inner_area(pane.rect, borders, config.pane_scrollbars)
 }
 
 pub(super) fn clear_mouse_capture(capture: &mut Option<PaneMouseCapture>, kind: MouseEventKind) {

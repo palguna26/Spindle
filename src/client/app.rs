@@ -4461,7 +4461,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_mouse_hit_region_excludes_pane_borders_and_right_edge() {
+    fn terminal_mouse_hit_region_matches_pane_inner_area() {
         let snapshot = snapshot_with_mouse_pane();
         let area = Rect::new(0, 0, 120, 40);
         let pane_rect = renderer::pane_rectangles(
@@ -4469,12 +4469,18 @@ mod tests {
             renderer::pane_content_area_for_snapshot(&snapshot, area, false),
         )[0]
         .rect;
-        let inner = Rect::new(
-            pane_rect.x + 1,
-            pane_rect.y + 1,
-            pane_rect.width - 2,
-            pane_rect.height - 2,
+        let config = crate::config::load();
+        let borders = renderer::pane_borders_for_rect(
+            pane_rect,
+            &renderer::pane_rectangles(
+                &snapshot,
+                renderer::pane_content_area_for_snapshot(&snapshot, area, false),
+            ),
+            config.pane_borders,
+            config.pane_outer_borders,
+            config.pane_gaps,
         );
+        let inner = renderer::pane_inner_area(pane_rect, borders, config.pane_scrollbars);
         let capture = None;
         assert!(pane_mouse_target(
             &snapshot,
@@ -4496,18 +4502,20 @@ mod tests {
             false,
         )
         .is_none());
-        assert!(pane_mouse_target(
-            &snapshot,
-            area,
-            mouse_event(
-                MouseEventKind::Down(MouseButton::Left),
-                pane_rect.x,
-                pane_rect.y,
-            ),
-            &capture,
-            false,
-        )
-        .is_none());
+        if pane_rect.x < inner.x || pane_rect.y < inner.y {
+            assert!(pane_mouse_target(
+                &snapshot,
+                area,
+                mouse_event(
+                    MouseEventKind::Down(MouseButton::Left),
+                    pane_rect.x,
+                    pane_rect.y
+                ),
+                &capture,
+                false,
+            )
+            .is_none());
+        }
     }
 
     #[test]
@@ -4572,9 +4580,21 @@ mod tests {
         snapshot.focused_pane_id = Some("pane-1".into());
 
         let pane_area = renderer::pane_content_area(Rect::new(0, 0, 100, 30));
+        let pane_rect = renderer::pane_rectangles(&snapshot, pane_area)[0].rect;
+        let config = crate::config::load();
+        let inner = renderer::pane_inner_area(
+            pane_rect,
+            renderer::pane_borders_for_rect(
+                pane_rect,
+                &renderer::pane_rectangles(&snapshot, pane_area),
+                config.pane_borders,
+                config.pane_outer_borders,
+                config.pane_gaps,
+            ),
+            config.pane_scrollbars,
+        );
         assert_eq!(
-            visible_web_url_at_point(&snapshot, pane_area, pane_area.x + 5, pane_area.y + 1)
-                .as_deref(),
+            visible_web_url_at_point(&snapshot, pane_area, inner.x + 5, inner.y).as_deref(),
             Some("https://example.test")
         );
         assert_eq!(

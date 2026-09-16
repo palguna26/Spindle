@@ -16,7 +16,7 @@ use crate::server::session::{SessionSnapshot, WorkspaceView};
 pub(crate) use layout::{
     pane_borders_for_rect, pane_content_area, pane_content_area_for_snapshot, pane_inner_area,
     pane_inner_size_with_options, pane_rectangles, pane_sizes, sidebar_area, split_handles,
-    PaneSize,
+    PaneRect, PaneSize,
 };
 use navigation::render_tabs;
 pub use navigation::{
