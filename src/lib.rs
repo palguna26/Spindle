@@ -2,6 +2,7 @@ pub mod cli;
 pub mod client;
 pub mod config;
 pub mod detect;
+mod integration;
 pub mod logging;
 mod metadata_tokens;
 pub mod model;

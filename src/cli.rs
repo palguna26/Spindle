@@ -27,6 +27,7 @@ pub(super) fn parse_env_assignment(value: &str) -> io::Result<(String, String)> 
 mod agent;
 mod api;
 mod completion;
+mod integration;
 mod notification;
 mod pane;
 mod plugin;
@@ -78,6 +79,9 @@ pub fn run() -> io::Result<()> {
         }
         "notification" => {
             return notification::run(&env::args().skip(2).collect::<Vec<_>>());
+        }
+        "integration" => {
+            return integration::run(&env::args().skip(2).collect::<Vec<_>>());
         }
         _ => {}
     }
@@ -247,7 +251,7 @@ fn print_help() {
     println!("Spindle - persistent parallel coding-agent sessions");
     println!();
     println!(
-        "Usage: spindle [start|attach|stop|list|status|doctor|workspace|worktree|tab|pane|agent|notification|help]"
+        "Usage: spindle [start|attach|stop|list|status|doctor|workspace|worktree|tab|pane|agent|notification|integration|help]"
     );
     println!();
     println!("Commands:");
@@ -257,6 +261,7 @@ fn print_help() {
     println!("  list     show the current project identity and state path");
     println!("  status   show Herdr-style client and server status");
     println!("  doctor   check local Spindle state");
+    println!("  integration status  show Codex and OpenCode integration status");
     println!("  config path     show the user config path");
     println!("  config default  print a starter config");
     println!(
