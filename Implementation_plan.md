@@ -32,6 +32,11 @@ Latest TUI milestone: the live-pane renderer now keeps the status chrome
 visible after panes are attached. This follows Herdr's explicit UI area
 handling in `src/ui/widgets.rs` and is covered by a connected-pane render test.
 
+Latest first-run milestone: Spindle now shows a persistent welcome overlay
+when `onboarding` is absent or true, matching Herdr's `Config::should_show_onboarding`
+behavior. Enter or Esc records `onboarding = false` without removing other
+config sections.
+
 Latest API milestone: `report_agent` and `release_agent` are available through
 the pane CLI and control protocol. Hook reports retain source and sequence
 authority so stale updates are ignored and process/screen polling cannot
