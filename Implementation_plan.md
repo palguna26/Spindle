@@ -385,6 +385,13 @@ Terminal verification is still pending.
   the hook registry idempotently, and exposes the same commands through shell
   completion. Managed panes also receive Spindle and Herdr-compatible
   environment identity variables so hooks can report the correct pane.
+
+- [x] Add the OpenCode agent integration. Install/uninstall now manages an
+  auto-loaded plugin under the Herdr-compatible OpenCode plugin directory.
+  The plugin reports session, tool, permission, question, idle, and error
+  states through Spindle's pane report CLI and protects the root session from
+  child-session updates. The optional OpenCode TUI session plugin remains
+  pending.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
