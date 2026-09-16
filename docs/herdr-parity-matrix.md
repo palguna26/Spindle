@@ -89,6 +89,8 @@ lines. Configured state, workspace, branch, agent, machine, tab, pane, title,
 and custom metadata tokens are resolved in the renderer, while missing values
 are omitted. Agent-specific `rows_by_agent` layouts use canonical Herdr agent
 keys. Rust tests, release build, Windows smoke, and installer smoke pass.
+Configured `row_gap` spacing is included in scroll metrics and leaves blank,
+non-selectable visual rows, matching Herdr’s separated row geometry.
 
 | User behavior | Spindle status | Herdr reference | Evidence / next verification |
 | --- | --- | --- | --- |
