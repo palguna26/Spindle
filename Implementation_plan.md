@@ -38,6 +38,9 @@ Latest input milestone: Spindle now canonicalizes `Shift+Tab` and `BackTab`
 before matching configured or built-in bindings, following Herdr's
 `src/config/keybinds.rs::normalize_key_combo` behavior.
 
+Configured keybindings now take precedence over conflicting built-in and
+custom chords, following Herdr's user-before-default binding registry.
+
 Latest mode feedback milestone: prefix mode now renders a transient bottom
 bar with cancel, prefix, workspace navigation, and help bindings, matching
 Herdr's `src/client/shell/render.rs::render_mode_bar` behavior.

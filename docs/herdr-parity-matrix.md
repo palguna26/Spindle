@@ -29,6 +29,11 @@ top-level `onboarding = false` setting while preserving unrelated config.
 This is covered by config and renderer tests; interactive Windows Terminal
 verification remains pending.
 
+Keybinding precedence now follows Herdr: a valid configured chord displaces a
+conflicting built-in chord, including when the actions differ. The behavior is
+covered by `configured_binding_wins_when_it_reuses_a_default_chord`; malformed
+bindings still preserve the default.
+
 Notification parity now includes `spindle notification show <title>` with
 Herdr-compatible `--body`, `--position`, and `--sound` arguments. Delivery
 uses the existing Windows platform notification and sound adapters and works
