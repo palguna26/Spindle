@@ -451,6 +451,11 @@ Terminal verification is still pending.
 - [x] Add the Kilo integration. Install/uninstall now manages the Kilo plugin
   under `.config/kilo/plugin`, with the Herdr-compatible event-to-state
   mapping and Spindle socket reporting.
+
+- [x] Add the Hermes integration. Install/uninstall now manages the two-file
+  Python plugin under the Herdr-compatible Hermes plugin directory and
+  preserves the existing YAML config while enabling or removing Spindle's
+  plugin entry.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
