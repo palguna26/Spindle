@@ -79,6 +79,9 @@ Sidebar active and selected row backgrounds now use Herdr's per-theme
 `active_row_bg` and `selection_bg` defaults, while preserving custom token
 overrides and terminal reset behavior.
 
+Sidebar secondary chrome now uses Herdr's `overlay0` and `surface_dim` tokens
+for token separators, metadata summaries, and the scrollbar track/thumb.
+
 Narrow tab strips now keep a minimum tab width and center the active tab in the
 visible window, using one shared geometry calculation for rendering, clicks,
 and tab drag targets.
