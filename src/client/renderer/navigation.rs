@@ -201,12 +201,32 @@ pub fn workspace_drop_target(
         .iter()
         .filter(|workspace| !workspace.is_linked_worktree)
         .collect();
+    let target_workspace = workspaces
+        .iter()
+        .find(|workspace| workspace.workspace_id == *workspace_id)?;
+    let target_root_id = target_workspace
+        .worktree_group
+        .as_deref()
+        .filter(|_| target_workspace.is_linked_worktree)
+        .and_then(|group| {
+            workspaces
+                .iter()
+                .find(|workspace| {
+                    workspace.worktree_group.as_deref() == Some(group)
+                        && !workspace.is_linked_worktree
+                })
+                .map(|workspace| workspace.workspace_id.as_str())
+        })
+        .unwrap_or(workspace_id);
     let target_position = roots
         .iter()
-        .position(|workspace| workspace.workspace_id == *workspace_id)?;
+        .position(|workspace| workspace.workspace_id == target_root_id)?;
     let source_position = roots
         .iter()
         .position(|workspace| workspace.workspace_id == source_workspace_id)?;
+    if source_position == target_position {
+        return None;
+    }
     let insert_index = if source_position < target_position {
         target_position.saturating_add(1)
     } else {
@@ -214,7 +234,7 @@ pub fn workspace_drop_target(
     };
     Some((
         (*space_id).to_owned(),
-        (*workspace_id).to_owned(),
+        target_root_id.to_owned(),
         insert_index,
     ))
 }
@@ -1014,6 +1034,31 @@ mod tests {
         assert_eq!(
             workspace_drop_target(&snapshot, area, 0, false, "workspace-1", 4, 3),
             Some(("space-1".into(), "workspace-2".into(), 2))
+        );
+    }
+
+    #[test]
+    fn workspace_drop_target_maps_linked_children_to_their_herdr_group_root() {
+        let mut snapshot = sample_snapshot();
+        snapshot.spaces[0].workspaces[0].worktree_group = Some("repo".into());
+        snapshot.spaces[0].workspaces[1].is_linked_worktree = true;
+        snapshot.spaces[0].workspaces[1].worktree_group = Some("repo".into());
+        let mut third = snapshot.spaces[0].workspaces[1].clone();
+        third.workspace_id = "workspace-3".into();
+        third.name = "Build".into();
+        third.is_linked_worktree = false;
+        third.worktree_group = None;
+        snapshot.spaces[0].workspaces.push(third);
+
+        let area = Rect::new(0, 0, 100, 30);
+        assert_eq!(
+            workspace_drop_target(&snapshot, area, 0, false, "workspace-3", 4, 3),
+            Some(("space-1".into(), "workspace-1".into(), 0))
+        );
+        assert_eq!(
+            workspace_drop_target(&snapshot, area, 0, false, "workspace-1", 4, 3),
+            None,
+            "dropping a root on its own linked child must be a no-op"
         );
     }
 
