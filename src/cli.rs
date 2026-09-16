@@ -138,18 +138,7 @@ pub fn run() -> io::Result<()> {
             }
         }
         "status" => status::run(&project, command_args)?,
-        "stop" => {
-            let response = send_command(&project, "stop_server")?;
-            if !response.ok {
-                let error = response
-                    .error
-                    .map(|error| error.message)
-                    .unwrap_or_else(|| "server rejected the stop request".into());
-                return Err(io::Error::other(error));
-            }
-            wait_for_server_stop(&project)?;
-            println!("server stopped");
-        }
+        "stop" => stop_server(&project)?,
         "workspace" => workspace::run_workspace_command(&project, command_args)?,
         "worktree" => worktree::run_worktree_command(&project, command_args)?,
         "tab" => tab::run_tab_command(&project, command_args)?,
@@ -294,7 +283,7 @@ fn print_help() {
     println!("  tab get/focus/move/rename/close  manage tabs by ID");
     println!("  pane list/current/get/focus/neighbor/edges/layout/process-info/input/rename/stop/restart/zoom/close/send-text/send-keys/run/read/swap/move/report-agent/report-agent-session/report-metadata/release-agent/wait-output/split/resize  manage panes");
     println!("  agent list/get/focus/start/wait/read/send-keys/prompt/rename <target>  inspect and control agents");
-    println!("  session list/attach <name>  list or attach named sessions");
+    println!("  session list/attach/stop/delete <name>  manage named sessions");
     println!("Options:");
     println!("  --help, -h       show this help");
     println!("  --version, -V    print the version");
@@ -321,13 +310,35 @@ fn run_session_command(args: &[String]) -> io::Result<()> {
             validate_session_name(name)?;
             attach_server(&Project::from_current_dir_named(Some(name))?)
         }
+        [command, name] if command == "stop" => {
+            validate_session_name(name)?;
+            let project = Project::from_current_dir_named(Some(name))?;
+            stop_server(&project)
+        }
+        [command, name] if command == "delete" => {
+            validate_session_name(name)?;
+            let project = Project::from_current_dir_named(Some(name))?;
+            if project.endpoint_path().exists() && ping_server(&project).is_ok() {
+                stop_server(&project)?;
+            }
+            if project.state_dir.exists() {
+                fs::remove_dir_all(&project.state_dir)?;
+                println!("deleted session {name}");
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("session '{name}' does not exist"),
+                ));
+            }
+            Ok(())
+        }
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
-            println!("Usage: spindle session <list|attach> [name]");
+            println!("Usage: spindle session <list|attach|stop|delete> [name]");
             Ok(())
         }
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: spindle session <list|attach> [name]",
+            "usage: spindle session <list|attach|stop|delete> [name]",
         )),
     }
 }
@@ -349,6 +360,20 @@ fn validate_session_name(name: &str) -> io::Result<()> {
             format!("invalid session name: {name}"),
         ));
     }
+    Ok(())
+}
+
+fn stop_server(project: &Project) -> io::Result<()> {
+    let response = send_command(project, "stop_server")?;
+    if !response.ok {
+        let error = response
+            .error
+            .map(|error| error.message)
+            .unwrap_or_else(|| "server rejected the stop request".into());
+        return Err(io::Error::other(error));
+    }
+    wait_for_server_stop(project)?;
+    println!("server stopped");
     Ok(())
 }
 
