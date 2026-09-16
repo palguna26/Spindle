@@ -48,7 +48,7 @@ pub(super) fn main_areas_with_sidebar(area: Rect, sidebar_collapsed: bool) -> Ma
     let sidebar_width = if sidebar_collapsed {
         4.min(area.width.saturating_sub(1))
     } else {
-        area.width.min((area.width / 4).clamp(12, 28))
+        area.width.min((area.width / 4).clamp(12, 26))
     };
     let columns = Layout::default()
         .direction(Direction::Horizontal)

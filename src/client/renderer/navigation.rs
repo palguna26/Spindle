@@ -1170,6 +1170,12 @@ mod tests {
     }
 
     #[test]
+    fn expanded_sidebar_matches_herdr_default_width_at_normal_terminal_size() {
+        let main = main_areas_with_sidebar(Rect::new(0, 0, 120, 30), false);
+        assert_eq!(main.sidebar.width, 26);
+    }
+
+    #[test]
     fn collapsed_worktree_groups_hide_children_from_render_and_hit_testing() {
         let mut snapshot = sample_snapshot();
         snapshot.spaces[0].workspaces[0].worktree_group = Some("repo".into());

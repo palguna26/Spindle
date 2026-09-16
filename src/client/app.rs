@@ -3673,7 +3673,7 @@ mod tests {
         );
         assert_eq!(page_key_bytes(KeyCode::PageUp), Some(b"\x1b[5~".to_vec()));
         assert_eq!(page_key_bytes(KeyCode::PageDown), Some(b"\x1b[6~".to_vec()));
-        assert_eq!(pane_size((120, 40)), (90, 36));
+        assert_eq!(pane_size((120, 40)), (92, 36));
         assert_eq!(pane_size((0, 0)), (1, 1));
     }
 
