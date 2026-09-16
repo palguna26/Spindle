@@ -416,6 +416,11 @@ Terminal verification is still pending.
   Windows PowerShell session hook under `.copilot/hooks`, registers Herdr's
   `SessionStart` hook shape in `settings.json`, preserves unrelated settings,
   and exposes the target through every generated shell completion.
+
+- [x] Add the Cursor integration. Install/uninstall now manages the Windows
+  PowerShell session hook and Herdr-compatible `sessionStart` registration in
+  `.cursor/hooks.json`, removes stale lifecycle entries, and preserves user
+  hooks.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
