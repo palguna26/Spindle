@@ -52,6 +52,8 @@ spindle attach   Attach to the project server
 spindle stop     Stop the project server
 spindle list     Show project identity and state path
 spindle doctor   Show client/server identity and flag stale endpoint metadata
+spindle integration status  Show installed agent integration status
+spindle integration install mastracode  Install the Mastracode lifecycle hook
 ```
 
 ## Configuration

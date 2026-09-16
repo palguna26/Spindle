@@ -6,6 +6,12 @@ intentionally rejected and ignored, matching Herdr's
 
 Reference: `C:\Users\Palguna\.opensrc\repos\github.com\herdrdev\herdr\master`.
 
+Integration parity now includes Mastracode. `spindle integration status` also
+reports `current`, `outdated`, or `not-installed` using managed hook version
+markers, following Herdr `src/integration/registry.rs`. Antigravity CLI
+availability follows Herdr's `agy` executable name while retaining Spindle's
+`antigravity-cli` label.
+
 Notification parity now includes `spindle notification show <title>` with
 Herdr-compatible `--body`, `--position`, and `--sound` arguments. Delivery
 uses the existing Windows platform notification and sound adapters and works
