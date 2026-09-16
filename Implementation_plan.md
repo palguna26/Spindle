@@ -443,6 +443,10 @@ Terminal verification is still pending.
 - [x] Add the Qwen integration. Install/uninstall now manages the Windows
   PowerShell session hook under `.qwen/hooks`, registers the Herdr-compatible
   `SessionStart` matcher with the 10-second timeout, and preserves user hooks.
+
+- [x] Add the Grok integration. Install/uninstall now manages a dedicated
+  Windows PowerShell hook and hook manifest under `.grok/hooks`, matching
+  Herdr's merged-hook layout without editing other hook files.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
