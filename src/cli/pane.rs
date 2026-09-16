@@ -73,6 +73,9 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
         [command, id, options @ ..] if command == "release-agent" => {
             pane_release_agent(project, id, options)
         }
+        [command, id, options @ ..] if command == "clear-agent-authority" => {
+            pane_clear_agent_authority(project, id, options)
+        }
         [command, id, options @ ..] if command == "wait-output" => {
             pane_wait_output(project, id, options)
         }
@@ -84,7 +87,7 @@ pub(super) fn run_pane_command(project: &Project, args: &[String]) -> io::Result
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|report-agent-session|report-metadata|release-agent|wait-output|split|resize>",
+                "usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|report-agent-session|report-metadata|release-agent|clear-agent-authority|wait-output|split|resize>",
             ))
         }
     }
@@ -1600,6 +1603,37 @@ fn pane_release_agent(project: &Project, id: &str, args: &[String]) -> io::Resul
         project,
         "release_agent",
         serde_json::json!({ "pane_id": id, "source": source, "agent": agent, "seq": seq }),
+    )
+}
+
+fn pane_clear_agent_authority(project: &Project, id: &str, args: &[String]) -> io::Result<()> {
+    let mut source = None;
+    let mut seq = None;
+    let mut index = 0;
+    while index < args.len() {
+        let Some(value) = args.get(index + 1) else {
+            return Err(io::Error::other(format!(
+                "{} requires a value",
+                args[index]
+            )));
+        };
+        match args[index].as_str() {
+            "--source" => source = Some(value.clone()),
+            "--seq" => {
+                seq = Some(
+                    value
+                        .parse::<u64>()
+                        .map_err(|_| io::Error::other("--seq must be an unsigned integer"))?,
+                )
+            }
+            option => return Err(io::Error::other(format!("unknown option: {option}"))),
+        }
+        index += 2;
+    }
+    pane_mutation_with_payload(
+        project,
+        "clear_agent_authority",
+        serde_json::json!({ "pane_id": id, "source": source, "seq": seq }),
     )
 }
 

@@ -544,6 +544,32 @@ impl PaneManager {
         Ok(changed)
     }
 
+    pub(crate) fn clear_agent_authority(
+        &mut self,
+        id: &str,
+        source: Option<&str>,
+        seq: Option<u64>,
+    ) -> Result<bool, PaneManagerError> {
+        let pane = self
+            .panes
+            .get_mut(id)
+            .ok_or_else(|| PaneManagerError::MissingPane(id.into()))?;
+        let Some(authority) = pane.agent_authority.as_ref() else {
+            return Ok(false);
+        };
+        if source.is_some_and(|source| authority.source != source)
+            || !authority.accepts(source.unwrap_or(&authority.source), seq)
+        {
+            return Ok(false);
+        }
+        pane.agent_authority = None;
+        pane.agent_session = None;
+        pane.agent_session_seq = None;
+        pane.pending_idle.clear();
+        pane.terminal.clear_agent_osc_evidence();
+        Ok(true)
+    }
+
     pub fn release_agent(
         &mut self,
         id: &str,
@@ -589,7 +615,7 @@ impl PaneManager {
 #[cfg(test)]
 mod tests {
     use super::super::agent_detection::{
-        AgentStartupGrace, PendingIdleConfirmation, AGENT_EXIT_CONFIRMATIONS,
+        AgentReport, AgentStartupGrace, PendingIdleConfirmation, AGENT_EXIT_CONFIRMATIONS,
         AGENT_STARTUP_GRACE_WINDOW, IDLE_CONFIRM_CAP, IDLE_CONFIRM_INTERVAL,
     };
     use super::{observe_agent_process, PaneConfig, PaneManager};
@@ -615,6 +641,38 @@ mod tests {
     fn missing_pane_is_reported() {
         let mut manager = PaneManager::new(32);
         assert!(manager.send_input("missing", b"hello").is_err());
+    }
+
+    #[test]
+    fn clearing_agent_authority_preserves_detected_state_but_removes_session_identity() {
+        let mut manager = PaneManager::new(32);
+        manager
+            .spawn("pane-1", config("powershell.exe"))
+            .expect("powershell should start");
+        manager
+            .report_agent(
+                "pane-1",
+                AgentReport {
+                    agent: AgentKind::Claude,
+                    state: AgentState::Working,
+                    source: "herdr:claude".into(),
+                    seq: Some(1),
+                    session_id: Some("session-1".into()),
+                    session_path: None,
+                },
+            )
+            .unwrap();
+        assert!(!manager
+            .clear_agent_authority("pane-1", Some("other"), Some(2))
+            .unwrap());
+        assert!(manager
+            .clear_agent_authority("pane-1", Some("herdr:claude"), Some(2))
+            .unwrap());
+        let pane = manager.get("pane-1").unwrap();
+        assert_eq!(pane.agent, Some(AgentKind::Claude));
+        assert_eq!(pane.agent_state, Some(AgentState::Working));
+        assert!(pane.agent_session.is_none());
+        manager.stop("pane-1").unwrap();
     }
 
     #[test]

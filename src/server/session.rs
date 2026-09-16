@@ -56,6 +56,12 @@ pub struct AgentSessionReportRequest {
 }
 
 #[derive(Debug)]
+pub struct ClearAgentAuthorityRequest {
+    pub source: Option<String>,
+    pub seq: Option<u64>,
+}
+
+#[derive(Debug)]
 pub struct DisplayAgentReportRequest {
     pub source: String,
     pub display_agent: Option<String>,
@@ -2989,6 +2995,19 @@ impl Session {
             "pane_id": pane_id,
             "updated": changed
         }))
+    }
+
+    pub fn clear_agent_authority(
+        &mut self,
+        pane_id: &str,
+        report: ClearAgentAuthorityRequest,
+    ) -> Result<Value, String> {
+        let cleared = self
+            .pane_manager
+            .clear_agent_authority(pane_id, report.source.as_deref(), report.seq)
+            .map_err(|error| format!("{error:?}"))?;
+        self.refresh_snapshot();
+        Ok(serde_json::json!({ "pane_id": pane_id, "cleared": cleared }))
     }
 
     pub fn report_display_agent(

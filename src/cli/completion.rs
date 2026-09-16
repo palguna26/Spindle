@@ -88,7 +88,7 @@ const BASH: &str = r#"_spindle() {
       COMPREPLY=( $(compgen -W "status install uninstall help" -- "$cur") )
     fi
   elif [[ "$COMP_WORDS[1]" == "pane" ]]; then
-    COMPREPLY=( $(compgen -W "list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent wait-output split resize" -- "$cur") )
+    COMPREPLY=( $(compgen -W "list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent clear-agent-authority wait-output split resize" -- "$cur") )
   fi
 }
 complete -F _spindle spindle
@@ -116,7 +116,7 @@ complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subc
 complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from create' -l env -r
 complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from create' -l focus -l no-focus
 complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from list' -l workspace -r
-complete -c spindle -f -n '__fish_seen_subcommand_from pane' -a 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent wait-output split resize'
+complete -c spindle -f -n '__fish_seen_subcommand_from pane' -a 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent clear-agent-authority wait-output split resize'
 complete -c spindle -f -n '__fish_seen_subcommand_from api' -a 'snapshot schema help'
 complete -c spindle -f -n '__fish_seen_subcommand_from agent' -a 'list get focus start wait read send-keys prompt rename help'
 complete -c spindle -f -n '__fish_seen_subcommand_from notification' -a 'show help'
@@ -135,7 +135,7 @@ _spindle() {
     workspace) _arguments '1:command:(list create get focus report-metadata move rename close)' '2:options:(--cwd --label --env --focus --no-focus --group --source --token --clear-token --ttl-ms --seq)' ;;
     worktree) _arguments '1:command:(list create open remove help)' '2:options:(--workspace --cwd --branch --base --path --label --focus --no-focus --force)' ;;
     tab) _arguments '1:command:(list create get focus move rename close)' '2:options:(--label --workspace --cwd --env --focus --no-focus)' ;;
-    pane) _arguments '1:command:(list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent wait-output split resize)' ;;
+    pane) _arguments '1:command:(list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent clear-agent-authority wait-output split resize)' ;;
     api) _arguments '1:command:(snapshot schema help)' ;;
     agent) _arguments '1:command:(list get focus start wait read send-keys prompt rename help)' ;;
     notification) _arguments '1:command:(show help)' '2:options:(--body --position --sound)' ;;
@@ -159,7 +159,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq 'tab' -and $words[2] -eq 'list') { '--workspace' }
     elseif ($words[1] -eq 'tab' -and $words[2] -eq 'create') { '--label --workspace --cwd --env --focus --no-focus' }
     elseif ($words[1] -eq 'tab') { 'list create get focus move rename close' }
-    elseif ($words[1] -eq 'pane') { 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent wait-output split resize' }
+    elseif ($words[1] -eq 'pane') { 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent clear-agent-authority wait-output split resize' }
     elseif ($words[1] -eq 'api') { 'snapshot schema help' }
     elseif ($words[1] -eq 'agent') { 'list get focus start wait read send-keys prompt rename help' }
     elseif ($words[1] -eq 'notification') { 'show help --body --position --sound' }
@@ -185,7 +185,7 @@ edit:completion:argadd 'spindle workspace report-metadata' (--source --token --c
 edit:completion:argadd 'spindle tab list' (--workspace)
 edit:completion:argadd 'spindle tab create' (--label --workspace --cwd --env --focus --no-focus)
 edit:completion:argadd 'spindle tab' (list create get focus move rename close)
-edit:completion:argadd 'spindle pane' (list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent wait-output split resize)
+edit:completion:argadd 'spindle pane' (list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent clear-agent-authority wait-output split resize)
 edit:completion:argadd 'spindle agent' (list get focus start wait read send-keys prompt rename help)
 edit:completion:argadd 'spindle notification' (show help)
 edit:completion:argadd 'spindle notification show' (--body --position --sound)

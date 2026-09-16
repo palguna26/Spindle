@@ -84,6 +84,15 @@ struct ReleaseAgentRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct ClearAgentAuthorityRequest {
+    pane_id: String,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    seq: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
 struct PaneSwapRequest {
     source_pane_id: String,
     target_pane_id: String,
@@ -701,6 +710,25 @@ pub(crate) fn response_for_with_interactive(
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
                 session.release_agent(&payload.pane_id, &payload.source, agent, payload.seq)
+            })
+        }
+        "clear_agent_authority" => {
+            let payload: ClearAgentAuthorityRequest = match serde_json::from_value(request.payload)
+            {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.clear_agent_authority(
+                    &payload.pane_id,
+                    crate::server::session::ClearAgentAuthorityRequest {
+                        source: payload.source,
+                        seq: payload.seq,
+                    },
+                )
             })
         }
         "subscribe_events" => {
