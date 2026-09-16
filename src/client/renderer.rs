@@ -128,8 +128,41 @@ impl ThemePalette {
 }
 
 fn parse_theme_color(value: &str) -> Option<Color> {
-    let value = value.trim();
-    let hex = value.strip_prefix('#')?;
+    let value = value.trim().to_ascii_lowercase();
+    if matches!(value.as_str(), "reset" | "default" | "none" | "transparent") {
+        return Some(Color::Reset);
+    }
+    if let Some(inner) = value.strip_prefix("rgb(").and_then(|s| s.strip_suffix(')')) {
+        let values = inner
+            .split(',')
+            .map(|value| value.trim().parse::<u8>().ok())
+            .collect::<Option<Vec<_>>>()?;
+        if values.len() == 3 {
+            return Some(Color::Rgb(values[0], values[1], values[2]));
+        }
+        return None;
+    }
+    let Some(hex) = value.strip_prefix('#') else {
+        return Some(match value.as_str() {
+            "black" => Color::Black,
+            "red" => Color::Red,
+            "green" => Color::Green,
+            "yellow" => Color::Yellow,
+            "blue" => Color::Blue,
+            "magenta" | "purple" => Color::Magenta,
+            "cyan" => Color::Cyan,
+            "white" => Color::White,
+            "gray" | "grey" => Color::Gray,
+            "darkgray" | "darkgrey" => Color::DarkGray,
+            "lightred" => Color::LightRed,
+            "lightgreen" => Color::LightGreen,
+            "lightyellow" => Color::LightYellow,
+            "lightblue" => Color::LightBlue,
+            "lightmagenta" => Color::LightMagenta,
+            "lightcyan" => Color::LightCyan,
+            _ => return None,
+        });
+    };
     match hex.len() {
         3 => {
             let digits = hex
@@ -1292,6 +1325,21 @@ mod tests {
         assert_eq!(
             super::ThemePalette::from_config(&config).accent,
             Color::Rgb(187, 170, 221)
+        );
+        config.theme_custom_accent = Some("rgb(1, 2, 3)".into());
+        assert_eq!(
+            super::ThemePalette::from_config(&config).accent,
+            Color::Rgb(1, 2, 3)
+        );
+        config.theme_custom_accent = Some("magenta".into());
+        assert_eq!(
+            super::ThemePalette::from_config(&config).accent,
+            Color::Magenta
+        );
+        config.theme_custom_accent = Some("not-a-color".into());
+        assert_eq!(
+            super::ThemePalette::from_config(&config).accent,
+            Color::Rgb(136, 192, 208)
         );
     }
 
