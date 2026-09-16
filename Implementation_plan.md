@@ -451,6 +451,9 @@ approved design changes it.
   `[ui] right_click_passthrough_modifier` now accepts Herdr's empty/off,
   ctrl/control, alt/option, cmd/command/super, meta, hyper, and combinations;
   a matching right-click is forwarded to the pane with the modifier stripped.
+  `[ui] redraw_on_focus_gained` now defaults to true and controls whether a
+  terminal focus-gained event requests the next full client redraw, matching
+  Herdr.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
