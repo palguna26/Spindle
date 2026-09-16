@@ -34,6 +34,9 @@ Set `SPINDLE_SESSION` to select a named session from scripts. Spindle also
 accepts Herdr's `HERDR_SESSION` variable for compatibility; `--session <name>`
 overrides either environment variable.
 
+Set `SPINDLE_CONFIG_PATH` to override config discovery. `HERDR_CONFIG_PATH` is
+accepted as a compatibility alias.
+
 The screen shows spaces and workspaces in a left sidebar and tabs above the
 panes. Click a space, workspace, tab, or pane to switch focus. Drag split
 borders to resize. Right-click panes, tabs, and workspaces for actions. Drag

@@ -51,6 +51,9 @@ Scripts can select a named session without repeating the global option. Set
 `SPINDLE_SESSION`; `HERDR_SESSION` is also accepted for Herdr-compatible
 automation. An explicit `--session <name>` takes priority.
 
+Set `SPINDLE_CONFIG_PATH` to load a config file from a specific path. The
+Herdr-compatible `HERDR_CONFIG_PATH` name is also accepted.
+
 Press `Ctrl-b`, then `?` for the in-app mouse and keyboard guide. Press `Ctrl-b`,
 then `:` to open the command palette. Unless noted otherwise, the shortcuts
 below are pressed after `Ctrl-b`:
