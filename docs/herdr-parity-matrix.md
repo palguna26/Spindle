@@ -39,6 +39,10 @@ One, Solarized, Kanagawa, Rose Pine, and Vesper variants. The new choices map
 to matching Herdr accent colors and are covered by renderer tests; custom
 palette token overrides remain to be ported.
 
+The first custom palette slice is now supported: `[theme.custom] accent`
+accepts `#rgb` and `#rrggbb` overrides on top of the selected base theme,
+with config and renderer coverage.
+
 Notification parity now includes `spindle notification show <title>` with
 Herdr-compatible `--body`, `--position`, and `--sound` arguments. Delivery
 uses the existing Windows platform notification and sound adapters and works

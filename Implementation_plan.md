@@ -49,6 +49,9 @@ Theme choices now include Herdr's full built-in theme set, including light,
 One, Solarized, Kanagawa, Rose Pine, and Vesper variants; their renderer
 accents follow the matching Herdr palette definitions.
 
+Theme configuration now accepts Herdr's `[theme.custom] accent` hex override
+on top of the selected built-in theme; broader token overrides remain.
+
 Latest first-run milestone: Spindle now shows a persistent welcome overlay
 when `onboarding` is absent or true, matching Herdr's `Config::should_show_onboarding`
 behavior. Enter or Esc records `onboarding = false` without removing other
