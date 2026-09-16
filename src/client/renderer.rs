@@ -792,7 +792,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
             else {
                 continue;
             };
-            let title = pane_title(pane);
+            let title = pane_title_with_config(pane, &config);
             let lines = pane.screen.lines().map(Line::from).collect::<Vec<_>>();
             let border_color = if snapshot.focused_pane_id.as_deref() == Some(&pane_rect.pane_id) {
                 theme.focused_border
@@ -1657,15 +1657,19 @@ fn active_title(snapshot: &SessionSnapshot) -> String {
 }
 
 fn pane_title(pane: &crate::server::session::PaneView) -> Line<'static> {
+    pane_title_with_config(pane, &crate::config::load())
+}
+
+fn pane_title_with_config(
+    pane: &crate::server::session::PaneView,
+    config: &crate::config::Config,
+) -> Line<'static> {
     let indicator = pane.status.indicator().to_string();
     let title = pane_title_text(pane);
     Line::from(vec![
         Span::styled(
             indicator,
-            Style::default().fg(ThemePalette::pane_status_color(
-                &crate::config::load(),
-                &pane.status,
-            )),
+            Style::default().fg(ThemePalette::pane_status_color(config, &pane.status)),
         ),
         Span::raw(title[pane.status.indicator().len_utf8()..].to_string()),
     ])
