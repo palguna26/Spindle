@@ -329,7 +329,7 @@ workspace rows.
 | Scriptable agent report | Partial | Herdr `src/app/api/agents.rs` (`handle_agent_list`, `handle_agent_get`, `handle_agent_focus`, `handle_agent_start`, `handle_agent_read`, `handle_agent_send_keys`, `handle_agent_prompt`, `handle_agent_rename`); Herdr `src/api/wait.rs`; Spindle `src/cli/agent.rs`, `src/cli/pane.rs` | `spindle agent list`, `spindle agent get <target>`, and `spindle agent focus <target>` report or focus detected agents across all spaces with pane, workspace, tab, focus, state, cwd, and title. `spindle agent start <name> --kind KIND --pane PANE_ID [--timeout MS] [-- AGENT_ARGS...]` launches a supported agent in an existing shell pane and waits for detection. Every existing-agent command accepts a pane ID or a unique case-insensitive live agent name; ambiguous names require a pane ID. `spindle agent wait <target>` waits up to 30 seconds by default for idle/done/blocked, or selected states with `--until` and `--timeout`. `spindle agent read <target>` validates the agent and reuses pane read's visible/recent/detection, line-limit, ANSI, and raw output modes. `spindle agent send-keys <target> <key>...` validates the agent and reuses pane key encoding. `spindle agent prompt <target> <text>...` validates the agent, rejects blocked agents, and sends text followed by Enter; `--wait` can wait for idle/done/blocked or repeated `--until` states with `--timeout`. `spindle agent rename <target> <name>|--clear` validates the agent and reuses pane labels. Named targets currently use Spindle's detected agent-kind label; richer Herdr lifecycle metadata and prompt activity/stall handling remain. |
 OpenCode working-state parity note: the detector now follows Herdr's case-insensitive interrupt hints and four-or-more repeated `■`/`⬬` progress glyph rule.
 
-Codex/OpenCode/Gemini/Cline/Copilot/Pi/Qoder CLI/Droid/Devin/Cursor/Amp/Antigravity/Kilo/Hermes/Kiro/Kimi detection parity note: `src/detect/manifest.rs` now
+Codex/OpenCode/Gemini/Cline/Copilot/Pi/Qoder CLI/Droid/Devin/Cursor/Amp/Antigravity/Kilo/Hermes/Kiro/Kimi/Maki detection parity note: `src/detect/manifest.rs` now
 evaluates Herdr-style manifest slices with priority ordering, OSC title rules,
 top/bottom screen regions, directory trust validation, prompt-scoped blockers,
 confirmation controls, interrupt hints, visible-output fallbacks, progress
@@ -344,7 +344,8 @@ interrupt rules, and Hermes’ title-priority, approval, clarification,
 credential, confirmation, interrupt, cancel, and idle rules, and Kiro’s
 tool-approval, subagent-approval, idle-prompt, and spinner rules, and Kimi’s
 approval-panel, question-panel, legacy approval, background-agent, moon, and
-braille-spinner rules.
+braille-spinner rules, and Maki’s permission, plan-complete, status-bar, and
+narrow-pane prompt rules.
 Other agent detectors remain on
 compatibility functions until migrated to the shared evaluator.
 
