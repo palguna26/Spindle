@@ -342,6 +342,9 @@ approved design changes it.
 - [x] Accept Herdr's keybinding action names alongside Spindle's existing
   aliases, including `goto`, workspace actions, pane focus/swap actions,
   `copy_mode`, and `zoom`.
+- [x] Match Herdr's explicit grouped workspace close behavior with
+  `spindle workspace close <id> --group`; primary workspaces with linked
+  worktree children require the flag.
 - [x] Preserve terminal key modifiers in fallback input. Ctrl-C and modified
   cursor keys now reach the PTY as control/CSI sequences instead of losing
   their modifiers.

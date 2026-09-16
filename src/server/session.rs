@@ -975,7 +975,15 @@ impl Session {
     }
 
     pub fn delete_workspace_anywhere(&mut self, workspace_id: &str) -> Result<Value, String> {
-        let space_id = self
+        self.delete_workspace_anywhere_with_group(workspace_id, false)
+    }
+
+    pub fn delete_workspace_anywhere_with_group(
+        &mut self,
+        workspace_id: &str,
+        close_group: bool,
+    ) -> Result<Value, String> {
+        let _space_id = self
             .snapshot
             .spaces
             .iter()
@@ -987,8 +995,64 @@ impl Session {
             })
             .map(|space| space.space_id.clone())
             .ok_or_else(|| format!("workspace '{workspace_id}' does not exist"))?;
-        self.close_workspace(&space_id, workspace_id)?;
-        Ok(serde_json::json!({ "workspace_id": workspace_id }))
+        let target = self
+            .snapshot
+            .spaces
+            .iter()
+            .flat_map(|space| space.workspaces.iter())
+            .find(|workspace| workspace.workspace_id == workspace_id)
+            .expect("workspace was found above");
+        let group_key = target.worktree_group.clone();
+        let group_ids = group_key.as_deref().map(|key| {
+            self.snapshot
+                .spaces
+                .iter()
+                .flat_map(|space| space.workspaces.iter())
+                .filter(|workspace| workspace.worktree_group.as_deref() == Some(key))
+                .map(|workspace| workspace.workspace_id.clone())
+                .collect::<Vec<_>>()
+        });
+        let group_has_linked_member = group_ids.as_ref().is_some_and(|ids| {
+            ids.iter().any(|id| {
+                self.snapshot
+                    .spaces
+                    .iter()
+                    .flat_map(|space| space.workspaces.iter())
+                    .any(|workspace| workspace.workspace_id == *id && workspace.is_linked_worktree)
+            })
+        });
+        let ids = if close_group && group_has_linked_member {
+            group_ids
+                .filter(|ids| !ids.is_empty())
+                .unwrap_or_else(|| vec![workspace_id.to_owned()])
+        } else {
+            if !target.is_linked_worktree && group_has_linked_member {
+                return Err(
+                    "workspace has linked worktree workspaces; use --group to close the group"
+                        .into(),
+                );
+            }
+            vec![workspace_id.to_owned()]
+        };
+        for id in &ids {
+            let space_id = self
+                .snapshot
+                .spaces
+                .iter()
+                .find(|space| {
+                    space
+                        .workspaces
+                        .iter()
+                        .any(|workspace| &workspace.workspace_id == id)
+                })
+                .map(|space| space.space_id.clone())
+                .ok_or_else(|| format!("workspace '{id}' does not exist"))?;
+            self.close_workspace(&space_id, id)?;
+        }
+        Ok(serde_json::json!({
+            "workspace_id": workspace_id,
+            "closed_workspace_ids": ids,
+        }))
     }
 
     pub fn create_tab(&mut self, name: String) -> Result<Value, String> {
@@ -3380,6 +3444,34 @@ mod tests {
             session.events.back().unwrap().payload["workspace_id"],
             "workspace-1"
         );
+    }
+
+    #[test]
+    fn workspace_group_close_requires_explicit_intent_and_closes_all_members() {
+        let mut session = Session::default();
+        let linked = session.create_workspace("Linked checkout".into()).unwrap();
+        let linked_id = linked["workspace_id"].as_str().unwrap().to_owned();
+        for workspace in &mut session.snapshot.spaces[0].workspaces {
+            workspace.worktree_group = Some("repo-group".into());
+        }
+        session.snapshot.spaces[0].workspaces[1].is_linked_worktree = true;
+
+        let error = session
+            .delete_workspace_anywhere("workspace-1")
+            .expect_err("closing a worktree parent must require --group");
+        assert!(error.contains("use --group"));
+        assert_eq!(session.snapshot.spaces[0].workspaces.len(), 2);
+
+        let result = session
+            .delete_workspace_anywhere_with_group("workspace-1", true)
+            .unwrap();
+        assert_eq!(result["closed_workspace_ids"].as_array().unwrap().len(), 2);
+        assert!(session.snapshot.spaces[0].workspaces.is_empty());
+        assert!(result["closed_workspace_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|id| id.as_str() == Some(linked_id.as_str())));
     }
 
     #[test]

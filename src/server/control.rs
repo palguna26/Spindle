@@ -23,6 +23,13 @@ struct IdRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct WorkspaceDeleteRequest {
+    id: String,
+    #[serde(default)]
+    group: bool,
+}
+
+#[derive(Debug, Deserialize)]
 struct InputRequest {
     pane_id: String,
     bytes: Vec<u8>,
@@ -611,7 +618,7 @@ pub(crate) fn response_for_with_interactive(
             })
         }
         "delete_workspace" => {
-            let payload: IdRequest = match serde_json::from_value(request.payload) {
+            let payload: WorkspaceDeleteRequest = match serde_json::from_value(request.payload) {
                 Ok(payload) => payload,
                 Err(error) => {
                     return request_error(request.request_id, "invalid_payload", error.to_string())
@@ -619,7 +626,7 @@ pub(crate) fn response_for_with_interactive(
             };
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
-                session.delete_workspace_anywhere(&payload.id)
+                session.delete_workspace_anywhere_with_group(&payload.id, payload.group)
             })
         }
         "create_tab" => {

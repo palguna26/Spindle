@@ -13,7 +13,12 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
         [command, workspace_id, label @ ..] if command == "rename" && !label.is_empty() => {
             workspace_rename(project, workspace_id, &label.join(" "))
         }
-        [command, workspace_id] if command == "close" => workspace_close(project, workspace_id),
+        [command, workspace_id] if command == "close" => {
+            workspace_close(project, workspace_id, false)
+        }
+        [command, workspace_id, flag] if command == "close" && flag == "--group" => {
+            workspace_close(project, workspace_id, true)
+        }
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -22,7 +27,7 @@ pub(super) fn run_workspace_command(project: &Project, args: &[String]) -> io::R
             print_help();
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>|close <workspace_id>>",
+                "usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>|close <workspace_id> [--group]>",
             ))
         }
     }
@@ -179,11 +184,11 @@ fn get_snapshot(project: &Project) -> io::Result<SessionSnapshot> {
     .map_err(io::Error::other)
 }
 
-fn workspace_close(project: &Project, workspace_id: &str) -> io::Result<()> {
+fn workspace_close(project: &Project, workspace_id: &str, group: bool) -> io::Result<()> {
     let response = super::send_command_with_payload(
         project,
         "delete_workspace",
-        serde_json::json!({ "id": workspace_id }),
+        serde_json::json!({ "id": workspace_id, "group": group }),
     )?;
     if !response.ok {
         return Err(io::Error::other(
@@ -313,7 +318,7 @@ fn format_workspace_list(snapshot: &SessionSnapshot) -> String {
 }
 
 fn print_help() {
-    println!("Usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>|close <workspace_id>>");
+    println!("Usage: spindle workspace <list|create|get <workspace_id>|focus <workspace_id>|rename <workspace_id> <label>|close <workspace_id> [--group]>");
     println!("  list    list workspaces in the current project session");
     println!(
         "  create  create a workspace and start its PowerShell pane (--cwd, --label, --env, --focus|--no-focus)"
