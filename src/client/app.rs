@@ -4141,11 +4141,11 @@ mod tests {
         current_snapshot, ensure_active_default_pane, indexed_workspace_selection, input_pane_id,
         key_code_bytes, move_workspace_selection, page_key_bytes, pane_mouse_target, pane_size,
         reconnect_requires_reattach, record_action_error, rename_target, renderer,
-        require_server_success, should_forward_pane_mouse, should_forward_pane_mouse_with_modifier,
-        snapshot_has_focused_pane, startup_error_action, uses_mobile_navigation,
-        visible_web_url_at_point, workspace_has_linked_children, workspace_id_by_name,
-        workspace_picker_key, CachedScrollbackView, ControlClient, PaneClick, PaneMouseCapture,
-        SplitDirection, SplitDrag, StartupErrorAction, WorkspacePickerKey,
+        require_server_success, scrollbar_offset_from_row, should_forward_pane_mouse,
+        should_forward_pane_mouse_with_modifier, snapshot_has_focused_pane, startup_error_action,
+        uses_mobile_navigation, visible_web_url_at_point, workspace_has_linked_children,
+        workspace_id_by_name, workspace_picker_key, CachedScrollbackView, ControlClient, PaneClick,
+        PaneMouseCapture, SplitDirection, SplitDrag, StartupErrorAction, WorkspacePickerKey,
     };
     use crate::client::input::{Action, Keymap};
     use crate::config::Config;
@@ -4988,5 +4988,13 @@ mod tests {
         snapshot.spaces[0].workspaces[0].tabs[0].layout =
             Some(crate::model::layout::LayoutNode::pane("pane-missing"));
         assert!(snapshot_has_focused_pane(&snapshot));
+    }
+
+    #[test]
+    fn pane_scrollbar_click_mapping_matches_history_direction() {
+        let track = Rect::new(0, 10, 1, 11);
+        assert_eq!(scrollbar_offset_from_row(100, track, track.y), 100);
+        assert_eq!(scrollbar_offset_from_row(100, track, track.bottom() - 1), 0);
+        assert_eq!(scrollbar_offset_from_row(100, track, track.y + 5), 50);
     }
 }
