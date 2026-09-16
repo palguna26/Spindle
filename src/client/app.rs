@@ -511,6 +511,19 @@ fn event_loop(
                 if !mouse_capture {
                     continue;
                 }
+                if onboarding_open {
+                    let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
+                    if mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                        && renderer::onboarding_area(area)
+                            .contains((mouse.column, mouse.row).into())
+                    {
+                        onboarding_open = false;
+                        if let Err(error) = crate::config::complete_onboarding() {
+                            status_notice = Some((error, Instant::now() + ACTION_ERROR_DURATION));
+                        }
+                    }
+                    continue;
+                }
                 if let Some(open_settings) = settings.as_mut() {
                     if matches!(
                         open_settings.handle_mouse(

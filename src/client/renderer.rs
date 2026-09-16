@@ -690,7 +690,7 @@ pub fn render_help(frame: &mut Frame<'_>, keymap: &Keymap) {
 }
 
 pub fn render_onboarding(frame: &mut Frame<'_>) {
-    let area = centered_rect(80, 80, frame.area());
+    let area = onboarding_area(frame.area());
     let content = vec![
         Line::from("Welcome to Spindle"),
         Line::from("Persistent PowerShell sessions with a mouse-first layout."),
@@ -711,6 +711,10 @@ pub fn render_onboarding(frame: &mut Frame<'_>) {
         ),
         area,
     );
+}
+
+pub(crate) fn onboarding_area(area: Rect) -> Rect {
+    centered_rect(80, 80, area)
 }
 
 pub fn render_startup_error(frame: &mut Frame<'_>, error: &str) {
