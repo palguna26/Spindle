@@ -356,3 +356,5 @@ visible; render, click, and drag geometry share the same visible-tab window.
 Edge ellipses indicate when tabs are hidden outside that window.
 Mouse-wheel scrolling over the strip changes the visible window while keeping
 rendering and click geometry aligned.
+Overflowing strips also expose clickable `<` and `>` controls for the same
+window movement.
