@@ -585,12 +585,18 @@ fn sidebar_visual_rows(
             };
             let gap = if collapsed {
                 0
-            } else {
-                match row {
-                    SidebarRow::Workspace { .. } => config.spaces.row_gap,
-                    SidebarRow::Agent { .. } => config.agents.row_gap,
+            } else if let Some(next) = rows.get(index + 1) {
+                match (row, next) {
+                    (SidebarRow::Workspace { .. }, SidebarRow::Workspace { indented, .. })
+                        if !indented =>
+                    {
+                        config.spaces.row_gap
+                    }
+                    (SidebarRow::Agent { .. }, SidebarRow::Agent { .. }) => config.agents.row_gap,
                     _ => 0,
                 }
+            } else {
+                0
             };
             (0..height)
                 .map(move |line| (Some(index), line))
@@ -2234,7 +2240,7 @@ mod tests {
         config.spaces.row_gap = 2;
         let visual = super::sidebar_visual_rows(&rows, false, &config);
         assert!(visual.iter().any(|(row, _)| row.is_none()));
-        assert_eq!(visual.iter().filter(|(row, _)| row.is_none()).count(), 4);
+        assert_eq!(visual.iter().filter(|(row, _)| row.is_none()).count(), 2);
     }
 
     #[test]
