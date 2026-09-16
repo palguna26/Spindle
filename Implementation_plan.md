@@ -476,7 +476,7 @@ Terminal verification is still pending.
   transcript/model-picker status preservation plus MCP input-request blockers
   and dynamic-workflow blockers
 
-  Codex, OpenCode, Gemini, Cline, GitHub Copilot, Pi, Qoder CLI, Droid, Devin, Cursor, Amp, Antigravity, Kilo, and Hermes now use a shared
+  Codex, OpenCode, Gemini, Cline, GitHub Copilot, Pi, Qoder CLI, Droid, Devin, Cursor, Amp, Antigravity, Kilo, Hermes, and Kiro now use a shared
   Herdr-style manifest evaluator for priority and screen-region matching; the
   remaining agent detectors are still being migrated from compatibility
   functions.
