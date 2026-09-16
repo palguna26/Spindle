@@ -184,6 +184,8 @@ struct ThemeConfig {
 struct ThemeCustomConfig {
     accent: Option<String>,
     panel_bg: Option<String>,
+    sidebar_bg: Option<String>,
+    active_row_bg: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -279,6 +281,8 @@ pub struct Config {
     pub theme_name: Option<String>,
     pub(crate) theme_custom_accent: Option<String>,
     pub(crate) theme_custom_panel_bg: Option<String>,
+    pub(crate) theme_custom_sidebar_bg: Option<String>,
+    pub(crate) theme_custom_active_row_bg: Option<String>,
     pub notifications_enabled: bool,
     pub(crate) notification_delivery: NotificationDelivery,
     pub(crate) notification_delay_seconds: u64,
@@ -317,6 +321,8 @@ impl Default for Config {
             theme_name: None,
             theme_custom_accent: None,
             theme_custom_panel_bg: None,
+            theme_custom_sidebar_bg: None,
+            theme_custom_active_row_bg: None,
             notifications_enabled: true,
             notification_delivery: NotificationDelivery::Herdr,
             notification_delay_seconds: 1,
@@ -399,6 +405,8 @@ pub fn load_from(path: &std::path::Path) -> Config {
             .collect(),
         theme_custom_accent: file.theme.custom.accent,
         theme_custom_panel_bg: file.theme.custom.panel_bg,
+        theme_custom_sidebar_bg: file.theme.custom.sidebar_bg,
+        theme_custom_active_row_bg: file.theme.custom.active_row_bg,
         theme_name: file.theme.name,
         notifications_enabled: file.notifications.enabled,
         notification_delivery: file.notifications.delivery,
@@ -752,6 +760,26 @@ mod tests {
         std::fs::write(&path, "[theme.custom]\npanel_bg = \"#101112\"\n").unwrap();
         let config = load_from(&path);
         assert_eq!(config.theme_custom_panel_bg.as_deref(), Some("#101112"));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_herdr_custom_sidebar_surface_colors() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-theme-sidebar-surface-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "[theme.custom]\nsidebar_bg = \"#101112\"\nactive_row_bg = \"rgb(4, 5, 6)\"\n",
+        )
+        .unwrap();
+        let config = load_from(&path);
+        assert_eq!(config.theme_custom_sidebar_bg.as_deref(), Some("#101112"));
+        assert_eq!(
+            config.theme_custom_active_row_bg.as_deref(),
+            Some("rgb(4, 5, 6)")
+        );
         std::fs::remove_file(path).unwrap();
     }
 

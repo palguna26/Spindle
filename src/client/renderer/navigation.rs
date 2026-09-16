@@ -678,6 +678,7 @@ fn render_agent_token_row(
     tab_name: &str,
     workspace_name: &str,
     focused: bool,
+    active_row_bg: Color,
 ) -> Line<'static> {
     let state = pane.agent_display_state();
     let state_icon = state.sidebar_marker().to_owned();
@@ -693,7 +694,7 @@ fn render_agent_token_row(
     let label = pane.label.clone().filter(|label| !label.is_empty());
     let focused_style = |style: Style| {
         if focused {
-            style.bg(Color::DarkGray)
+            style.bg(active_row_bg)
         } else {
             style
         }
@@ -1015,7 +1016,10 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
     navigation_workspace: Option<(&str, &str)>,
     collapsed_groups: &HashSet<String>,
 ) {
-    let accent = super::ThemePalette::from_config(&crate::config::load()).accent;
+    let config = crate::config::load();
+    let accent = super::ThemePalette::from_config(&config).accent;
+    let sidebar_bg = super::ThemePalette::sidebar_bg(&config);
+    let active_row_bg = super::ThemePalette::active_row_bg(&config);
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
     let body = sidebar_body(area);
     let sidebar_config = crate::config::load().sidebar;
@@ -1116,7 +1120,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                     );
                     let line = append_summary(line, tokens);
                     if previewed {
-                        line.style(Style::default().bg(Color::DarkGray))
+                        line.style(Style::default().bg(active_row_bg))
                     } else {
                         line
                     }
@@ -1138,7 +1142,14 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                         .cloned()
                         .unwrap_or_default();
                     append_summary(
-                        render_agent_token_row(&row, pane, tab_name, workspace_name, focused),
+                        render_agent_token_row(
+                            &row,
+                            pane,
+                            tab_name,
+                            workspace_name,
+                            focused,
+                            active_row_bg,
+                        ),
                         &pane.tokens,
                     )
                 }
@@ -1150,15 +1161,17 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
         })
         .collect::<Vec<_>>();
     frame.render_widget(
-        Paragraph::new(lines).block(
-            ratatui::widgets::Block::default()
-                .borders(ratatui::widgets::Borders::ALL)
-                .title(sidebar_title(
-                    area,
-                    agent_priority_sort,
-                    navigation_workspace.is_some(),
-                )),
-        ),
+        Paragraph::new(lines)
+            .style(Style::default().bg(sidebar_bg))
+            .block(
+                ratatui::widgets::Block::default()
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .title(sidebar_title(
+                        area,
+                        agent_priority_sort,
+                        navigation_workspace.is_some(),
+                    )),
+            ),
         area,
     );
     if !area.is_empty() {

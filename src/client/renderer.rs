@@ -159,6 +159,22 @@ impl ThemePalette {
             _ => Color::Reset,
         }
     }
+
+    pub(super) fn sidebar_bg(config: &crate::config::Config) -> Color {
+        config
+            .theme_custom_sidebar_bg
+            .as_deref()
+            .and_then(parse_theme_color)
+            .unwrap_or(Color::Reset)
+    }
+
+    pub(super) fn active_row_bg(config: &crate::config::Config) -> Color {
+        config
+            .theme_custom_active_row_bg
+            .as_deref()
+            .and_then(parse_theme_color)
+            .unwrap_or(Color::DarkGray)
+    }
 }
 
 fn parse_theme_color(value: &str) -> Option<Color> {
@@ -1395,6 +1411,23 @@ mod tests {
             ..crate::config::Config::default()
         };
         assert_eq!(super::ThemePalette::panel_bg(&config), Color::Rgb(1, 2, 3));
+    }
+
+    #[test]
+    fn custom_theme_sidebar_surfaces_override_herdr_defaults() {
+        let config = crate::config::Config {
+            theme_custom_sidebar_bg: Some("#010203".into()),
+            theme_custom_active_row_bg: Some("rgb(4, 5, 6)".into()),
+            ..crate::config::Config::default()
+        };
+        assert_eq!(
+            super::ThemePalette::sidebar_bg(&config),
+            Color::Rgb(1, 2, 3)
+        );
+        assert_eq!(
+            super::ThemePalette::active_row_bg(&config),
+            Color::Rgb(4, 5, 6)
+        );
     }
 
     #[test]
