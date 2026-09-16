@@ -584,12 +584,14 @@ Terminal verification is still pending.
   support Herdr-style `--wait`, repeated `--until`, and `--timeout` options.
   `agent start` launches a supported agent kind in an existing shell pane and
   waits for detection, matching Herdr's existing-pane startup workflow.
-- [ ] Keep state associated with the correct pane, tab, and workspace through
-  switches, restarts, and recovery. A session test now verifies status remains
-  attached to its pane across tab and workspace switches; a restart test now
-  verifies stale agent identity, scrollback, title, cursor, and terminal modes
-  are cleared while pane labels and user preferences survive. Re-detection
-  after recovery still needs live verification.
+ - [ ] Keep state associated with the correct pane, tab, and workspace through
+   switches, restarts, and recovery. A session test now verifies status remains
+   attached to its pane across tab and workspace switches; a restart test now
+   verifies stale agent identity, scrollback, title, cursor, and terminal modes
+   are cleared while pane labels and user preferences survive. Completed agent
+   state is marked seen when its tab becomes active, matching Herdr's
+   `mark_active_tab_seen`; re-detection after recovery still needs live
+   verification.
 - [x] Make detection optional/fault-tolerant so normal shell use is unaffected.
   Detection runs only for recognized agents; unavailable process scans preserve
   the last known identity/status, and detection is separate from PTY input,
