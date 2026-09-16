@@ -60,6 +60,10 @@ enum Matcher {
     AmpStatusFooter,
     AmpTitleIdle,
     AntigravityPermission,
+    HermesDangerousApproval,
+    HermesClarification,
+    HermesCredential,
+    HermesConfirmation,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -454,6 +458,63 @@ const KILO_RULES: &[Rule] = &[
     },
 ];
 
+const HERMES_RULES: &[Rule] = &[
+    Rule {
+        priority: 1100,
+        state: AgentState::Blocked,
+        region: Region::OscTitle,
+        matcher: Matcher::Regex(r"^⚠[\u{fe0e}\u{fe0f}]?(?:\s|$)"),
+    },
+    Rule {
+        priority: 1050,
+        state: AgentState::Working,
+        region: Region::OscTitle,
+        matcher: Matcher::Regex(r"^⏳[\u{fe0e}\u{fe0f}]?(?:\s|$)"),
+    },
+    Rule {
+        priority: 900,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(14),
+        matcher: Matcher::HermesDangerousApproval,
+    },
+    Rule {
+        priority: 900,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(14),
+        matcher: Matcher::HermesClarification,
+    },
+    Rule {
+        priority: 900,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(14),
+        matcher: Matcher::HermesCredential,
+    },
+    Rule {
+        priority: 900,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(14),
+        matcher: Matcher::HermesConfirmation,
+    },
+    Rule {
+        priority: 950,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(5),
+        matcher: Matcher::Any(&[&["msg=interrupt"], &["ctrl+c to interrupt"]]),
+    },
+    Rule {
+        priority: 500,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(5),
+        matcher: Matcher::Contains(&["ctrl+c cancel"]),
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Idle,
+        region: Region::OscTitle,
+        matcher: Matcher::Regex(r"^✓[\u{fe0e}\u{fe0f}]?(?:\s|$)"),
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -504,6 +565,10 @@ pub(crate) fn detect_antigravity(input: DetectionInput<'_>) -> Option<AgentState
 
 pub(crate) fn detect_kilo(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, KILO_RULES)
+}
+
+pub(crate) fn detect_hermes(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, HERMES_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -713,6 +778,66 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                 && (text.contains("do you want to proceed?")
                     || (text.contains("tab amend") && text.contains("edit command")))
         }
+        Matcher::HermesDangerousApproval => {
+            (text.contains("dangerous")
+                || text.contains("approval")
+                || (text.contains("allow once") && text.contains("deny"))
+                || text.lines().any(|line| {
+                    let line = line
+                        .trim_start()
+                        .trim_start_matches(['▸', '>'])
+                        .trim_start();
+                    line.starts_with("1. allow")
+                }))
+                && [
+                    "enter confirm",
+                    "enter to confirm",
+                    "↑/↓ to select",
+                    "show full command",
+                ]
+                .iter()
+                .any(|signal| text.contains(signal))
+        }
+        Matcher::HermesClarification => {
+            (text.contains("hermes needs your")
+                || text.lines().any(|line| {
+                    let line = line
+                        .trim_start()
+                        .trim_start_matches(['▸', '>'])
+                        .trim_start();
+                    line.strip_prefix("ask ")
+                        .is_some_and(|rest| !rest.trim().is_empty())
+                })
+                || text.contains("type your answer"))
+                && [
+                    "enter confirm",
+                    "enter to confirm",
+                    "enter send",
+                    "press enter",
+                    "↑/↓ select",
+                    "↑/↓ to select",
+                    "other (type",
+                ]
+                .iter()
+                .any(|signal| text.contains(signal))
+        }
+        Matcher::HermesCredential => {
+            text.contains("sudo password")
+                || text.contains("skill setup")
+                || (text.contains("🔑") && text.contains("for "))
+        }
+        Matcher::HermesConfirmation => {
+            ((text.contains("approve once") && text.contains("cancel"))
+                || (text.contains("start a new session") && text.contains("keep going")))
+                && [
+                    "enter to confirm",
+                    "enter confirm",
+                    "type 1/2/3",
+                    "y/n quick",
+                ]
+                .iter()
+                .any(|signal| text.contains(signal))
+        }
     }
 }
 
@@ -787,8 +912,8 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 mod tests {
     use super::{
         detect_amp, detect_antigravity, detect_cline, detect_codex, detect_copilot, detect_cursor,
-        detect_devin, detect_droid, detect_gemini, detect_kilo, detect_opencode, detect_pi,
-        detect_qoder, DetectionInput,
+        detect_devin, detect_droid, detect_gemini, detect_hermes, detect_kilo, detect_opencode,
+        detect_pi, detect_qoder, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -892,6 +1017,14 @@ mod tests {
         detect_kilo(DetectionInput {
             screen,
             osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_hermes_state(screen: &str, title: &str) -> Option<AgentState> {
+        detect_hermes(DetectionInput {
+            screen,
+            osc_title: title,
             _osc_progress: "",
         })
     }
@@ -1147,5 +1280,37 @@ mod tests {
             Some(AgentState::Working)
         );
         assert_eq!(detect_kilo_state("ordinary output"), None);
+    }
+
+    #[test]
+    fn hermes_manifest_matches_herdr_priority_rules() {
+        assert_eq!(
+            detect_hermes_state("Dangerous command\nEnter confirm", ""),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_hermes_state("Approval needed\nShow full command", ""),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_hermes_state("Ctrl+C to interrupt", ""),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_hermes_state("Ctrl+C cancel", ""),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_hermes_state("Approval\nEnter confirm", "⏳ Working"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_hermes_state("ordinary output", "⚠ Permission needed"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_hermes_state("ordinary output", "✓ Ready"),
+            Some(AgentState::Idle)
+        );
     }
 }
