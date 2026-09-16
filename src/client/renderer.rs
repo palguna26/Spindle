@@ -29,8 +29,9 @@ pub use navigation::{
     sidebar_scroll_offset_from_drag_row, sidebar_scroll_offset_from_drag_row_with_sort,
     sidebar_scroll_offset_from_drag_row_with_sort_and_groups, sidebar_scroll_region,
     sidebar_scroll_thumb_grab_offset, sidebar_scroll_thumb_grab_offset_with_sort,
-    sidebar_scroll_thumb_grab_offset_with_sort_and_groups, tab_drop_target, tab_scroll_max,
-    tab_scroll_region, workspace_drop_target, workspace_drop_target_with_groups, ClickTarget,
+    sidebar_scroll_thumb_grab_offset_with_sort_and_groups, sidebar_section_divider,
+    sidebar_section_split_from_drag_row, tab_drop_target, tab_scroll_max, tab_scroll_region,
+    workspace_drop_target, workspace_drop_target_with_groups, ClickTarget,
 };
 pub use navigator::{hit_test_navigator, render_navigator, Hit as NavigatorHit};
 use ratatui::layout::Rect;

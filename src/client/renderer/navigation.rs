@@ -548,6 +548,31 @@ pub fn agent_sidebar_scroll_region(area: Rect, collapsed: bool, x: u16, y: u16) 
     contains(panel, x, y)
 }
 
+pub fn sidebar_section_divider(
+    area: Rect,
+    collapsed: bool,
+    split_ratio: f32,
+    x: u16,
+    y: u16,
+) -> bool {
+    if collapsed {
+        return false;
+    }
+    contains(
+        crate::client::sidebar::sections(sidebar_body(area), split_ratio).divider,
+        x,
+        y,
+    )
+}
+
+pub fn sidebar_section_split_from_drag_row(area: Rect, row: u16) -> f32 {
+    let body = sidebar_body(area);
+    if body.height == 0 {
+        return 0.5;
+    }
+    (f32::from(row.saturating_sub(body.y)) / f32::from(body.height)).clamp(0.1, 0.9)
+}
+
 pub fn sidebar_scroll_thumb_grab_offset(
     snapshot: &SessionSnapshot,
     area: Rect,
@@ -2172,6 +2197,23 @@ mod tests {
     fn expanded_sidebar_matches_herdr_default_width_at_normal_terminal_size() {
         let main = main_areas_with_sidebar(Rect::new(0, 0, 120, 30), false);
         assert_eq!(main.sidebar.width, 26);
+    }
+
+    #[test]
+    fn sidebar_divider_drag_uses_the_section_geometry() {
+        let sidebar = main_areas_with_sidebar(Rect::new(0, 0, 120, 30), false).sidebar;
+        let sections = crate::client::sidebar::sections(super::sidebar_body(sidebar), 0.5);
+        assert!(super::sidebar_section_divider(
+            sidebar,
+            false,
+            0.5,
+            sections.divider.x + 2,
+            sections.divider.y
+        ));
+        assert_eq!(
+            super::sidebar_section_split_from_drag_row(sidebar, sections.divider.y),
+            0.5
+        );
     }
 
     #[test]

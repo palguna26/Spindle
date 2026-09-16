@@ -1941,6 +1941,17 @@ fn handle_mouse(
     }
     if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
         mouse_state.sidebar_scroll_drag = None;
+        mouse_state.sidebar_section_split_drag = false;
+        if renderer::sidebar_section_divider(
+            renderer::sidebar_area(area, mouse_state.sidebar_collapsed),
+            mouse_state.sidebar_collapsed,
+            mouse_state.sidebar_section_split,
+            mouse.column,
+            mouse.row,
+        ) {
+            mouse_state.sidebar_section_split_drag = true;
+            return Ok(());
+        }
         if let Some(grab_row_offset) =
             renderer::sidebar_scroll_thumb_grab_offset_with_sort_and_groups(
                 snapshot,
@@ -2035,6 +2046,21 @@ fn handle_mouse(
         )? {
             return Ok(());
         }
+    }
+    if matches!(
+        mouse.kind,
+        MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
+    ) && mouse_state.sidebar_section_split_drag
+    {
+        mouse_state.sidebar_section_split = renderer::sidebar_section_split_from_drag_row(
+            renderer::sidebar_area(area, mouse_state.sidebar_collapsed),
+            mouse.row,
+        );
+        if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
+            mouse_state.sidebar_section_split_drag = false;
+            store_client_preferences(mouse_state);
+        }
+        return Ok(());
     }
     if matches!(
         mouse.kind,

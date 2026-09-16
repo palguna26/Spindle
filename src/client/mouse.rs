@@ -51,6 +51,7 @@ pub(super) struct MouseState {
     pub(super) agent_sidebar_scroll: usize,
     pub(super) tab_scroll: usize,
     pub(super) sidebar_scroll_drag: Option<u16>,
+    pub(super) sidebar_section_split_drag: bool,
     pub(super) preferences_path: std::path::PathBuf,
     pub(super) split_drag: Option<SplitDrag>,
     pub(super) workspace_drag: Option<WorkspaceDrag>,
