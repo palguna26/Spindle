@@ -1313,26 +1313,32 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
         } else {
             tab.name.clone()
         };
+        let style = if selected {
+            Style::default()
+                .fg(super::ThemePalette::panel_contrast_fg(&config))
+                .bg(palette.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(super::ThemePalette::overlay0(&config))
+                .bg(surface0)
+                .add_modifier(Modifier::DIM)
+        };
         frame.render_widget(
             Paragraph::new(label)
                 .alignment(Alignment::Center)
-                .style(if selected {
-                    Style::default()
-                        .fg(super::ThemePalette::panel_contrast_fg(&config))
-                        .bg(palette.accent)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(Color::Gray).bg(surface0)
-                }),
+                .style(style),
             rect,
         );
         x = x.saturating_add(width);
     }
     if area.width >= 4 {
         frame.render_widget(
-            Paragraph::new("+")
-                .alignment(Alignment::Center)
-                .style(Style::default().fg(Color::Gray).bg(surface0)),
+            Paragraph::new(" + ").alignment(Alignment::Center).style(
+                Style::default()
+                    .fg(super::ThemePalette::overlay1(&config))
+                    .bg(super::ThemePalette::panel_bg(&config)),
+            ),
             new_tab_area(area),
         );
     }

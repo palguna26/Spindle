@@ -257,6 +257,65 @@ impl ThemePalette {
             _ => Color::DarkGray,
         }
     }
+
+    pub(super) fn overlay0(config: &crate::config::Config) -> Color {
+        match config
+            .theme_name
+            .as_deref()
+            .unwrap_or("catppuccin")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "catppuccin" => Color::Rgb(108, 112, 134),
+            "catppuccin-latte" => Color::Rgb(156, 160, 176),
+            "terminal" => Color::Gray,
+            "tokyo-night" | "tokyonight" => Color::Rgb(86, 95, 137),
+            "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => Color::Rgb(137, 144, 179),
+            "dracula" => Color::Rgb(98, 114, 164),
+            "nord" => Color::Rgb(76, 86, 106),
+            "gruvbox" | "gruvbox-light" => Color::Rgb(146, 131, 116),
+            "one-dark" => Color::Rgb(92, 99, 112),
+            "one-light" => Color::Rgb(160, 161, 167),
+            "solarized" => Color::Rgb(88, 110, 117),
+            "solarized-light" => Color::Rgb(147, 161, 161),
+            "kanagawa" => Color::Rgb(114, 113, 105),
+            "kanagawa-lotus" => Color::Rgb(160, 156, 172),
+            "rose-pine" => Color::Rgb(110, 106, 134),
+            "rose-pine-dawn" => Color::Rgb(152, 147, 165),
+            "vesper" => Color::Rgb(92, 92, 92),
+            _ => Color::Gray,
+        }
+    }
+
+    pub(super) fn overlay1(config: &crate::config::Config) -> Color {
+        match config
+            .theme_name
+            .as_deref()
+            .unwrap_or("catppuccin")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "catppuccin" => Color::Rgb(127, 132, 156),
+            "catppuccin-latte" => Color::Rgb(140, 143, 161),
+            "terminal" => Color::White,
+            "tokyo-night" | "tokyonight" => Color::Rgb(105, 113, 150),
+            "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => Color::Rgb(104, 112, 154),
+            "dracula" => Color::Rgb(130, 140, 180),
+            "nord" => Color::Rgb(100, 110, 130),
+            "gruvbox" => Color::Rgb(168, 153, 132),
+            "gruvbox-light" => Color::Rgb(124, 111, 100),
+            "one-dark" => Color::Rgb(115, 122, 135),
+            "one-light" => Color::Rgb(104, 107, 119),
+            "solarized" => Color::Rgb(101, 123, 131),
+            "solarized-light" => Color::Rgb(88, 110, 117),
+            "kanagawa" => Color::Rgb(135, 134, 125),
+            "kanagawa-lotus" => Color::Rgb(138, 137, 128),
+            "rose-pine" => Color::Rgb(144, 140, 170),
+            "rose-pine-dawn" => Color::Rgb(121, 117, 147),
+            "vesper" => Color::Rgb(126, 126, 126),
+            _ => Color::White,
+        }
+    }
 }
 
 fn parse_theme_color(value: &str) -> Option<Color> {
