@@ -595,8 +595,16 @@ fn identify_process(name: &str) -> Option<AgentKind> {
 }
 
 pub(crate) fn parse_agent_label(label: &str) -> Option<AgentKind> {
-    let basename = label.to_ascii_lowercase();
-    match basename.as_str() {
+    let basename = label
+        .rsplit(['\\', '/'])
+        .next()
+        .unwrap_or(label)
+        .to_ascii_lowercase();
+    let basename = [".exe", ".cmd", ".bat", ".ps1"]
+        .iter()
+        .find_map(|suffix| basename.strip_suffix(suffix))
+        .unwrap_or(&basename);
+    match basename {
         "claude" | "claude-code" => Some(AgentKind::Claude),
         "pi" => Some(AgentKind::Pi),
         "qodercli" | "qoderclicn" | "qoder" | "qodercn" => Some(AgentKind::QoderCli),
@@ -998,8 +1006,8 @@ pub(crate) fn detect_in_process_tree(_root_pid: u32) -> AgentProcessScan {
 mod tests {
     use super::{
         classify_agent_process_scan, detect_state, detect_state_with_osc, identify_descendant,
-        identify_process, identify_process_command, is_python_process, should_skip_state_update,
-        AgentKind, AgentProcessScan, AgentState, ProcessEntry,
+        identify_process, identify_process_command, is_python_process, parse_agent_label,
+        should_skip_state_update, AgentKind, AgentProcessScan, AgentState, ProcessEntry,
     };
 
     #[test]
@@ -1080,6 +1088,11 @@ mod tests {
         assert_eq!(identify_process("codex.exe"), Some(AgentKind::Codex));
         assert_eq!(identify_process("gemini.cmd"), Some(AgentKind::Gemini));
         assert_eq!(identify_process("opencode2"), Some(AgentKind::OpenCode));
+        assert_eq!(
+            parse_agent_label("C:\\Tools\\codex.cmd"),
+            Some(AgentKind::Codex)
+        );
+        assert_eq!(parse_agent_label("opencode.exe"), Some(AgentKind::OpenCode));
         assert_eq!(
             identify_process("copilot.exe"),
             Some(AgentKind::GithubCopilot)
