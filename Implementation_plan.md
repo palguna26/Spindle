@@ -229,7 +229,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   `spindle pane neighbor` and `spindle pane edges` expose Herdr-style
   directional layout metadata for scripts;
   `spindle pane wait-output` now accepts Herdr's mutually exclusive
-  `--match TEXT` and `--regex PATTERN` selectors with invalid-regex errors;
+  `--match TEXT` and `--regex PATTERN` selectors, `visible`/`recent`/
+  `recent-unwrapped` sources, and `--raw`, with invalid-regex errors;
   `spindle pane layout` exposes the active tab's layout tree as JSON;
   generated shell completions expose all four pane introspection commands;
   `spindle pane process-info` reports live PTY PID and launch metadata without
