@@ -32,6 +32,10 @@ const KILO_PLUGIN_NAME: &str = "spindle-agent-state.js";
 const HERMES_PLUGIN_INIT: &str = include_str!("integration/assets/hermes/__init__.py");
 const HERMES_PLUGIN_MANIFEST: &str = include_str!("integration/assets/hermes/plugin.yaml");
 const HERMES_PLUGIN_NAME: &str = "spindle-agent-state";
+const ANTIGRAVITY_CLI_HOOK_ASSET: &str =
+    include_str!("integration/assets/antigravity-cli-agent-state.ps1");
+const ANTIGRAVITY_CLI_HOOK_NAME: &str = "spindle-agent-state.ps1";
+const ANTIGRAVITY_CLI_HOOK_BLOCK_NAME: &str = "spindle";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -61,10 +65,11 @@ pub(crate) enum Target {
     Grok,
     Kilo,
     Hermes,
+    AntigravityCli,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 15] = [
+    pub(crate) const ALL: [Self; 16] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
@@ -80,6 +85,7 @@ impl Target {
         Self::Grok,
         Self::Kilo,
         Self::Hermes,
+        Self::AntigravityCli,
     ];
 
     fn label(self) -> &'static str {
@@ -99,6 +105,7 @@ impl Target {
             Self::Grok => "grok",
             Self::Kilo => "kilo",
             Self::Hermes => "hermes",
+            Self::AntigravityCli => "antigravity-cli",
         }
     }
 
@@ -130,6 +137,9 @@ impl Target {
                 .join("plugins")
                 .join(HERMES_PLUGIN_NAME)
                 .join("__init__.py"),
+            Self::AntigravityCli => antigravity_cli_dir()
+                .join("hooks")
+                .join(ANTIGRAVITY_CLI_HOOK_NAME),
         }
     }
 
@@ -756,6 +766,55 @@ pub(crate) fn uninstall_hermes() -> std::io::Result<Vec<String>> {
     )])
 }
 
+pub(crate) fn install_antigravity_cli() -> std::io::Result<Vec<String>> {
+    let dir = antigravity_cli_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "antigravity cli config directory not found at {}. install antigravity cli first",
+            dir.display()
+        )));
+    }
+    let hooks_dir = dir.join("hooks");
+    std::fs::create_dir_all(&hooks_dir)?;
+    let hook_path = hooks_dir.join(ANTIGRAVITY_CLI_HOOK_NAME);
+    std::fs::write(&hook_path, ANTIGRAVITY_CLI_HOOK_ASSET)?;
+    let config_path = dir.join("hooks.json");
+    let mut config = read_json_object(&config_path, "antigravity cli hooks")?;
+    ensure_antigravity_cli_hook(&mut config, &hook_path);
+    std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
+    Ok(vec![
+        format!(
+            "installed antigravity cli integration hook to {}",
+            hook_path.display()
+        ),
+        format!("ensured antigravity cli hooks at {}", config_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_antigravity_cli() -> std::io::Result<Vec<String>> {
+    let dir = antigravity_cli_dir();
+    let hook_path = dir.join("hooks").join(ANTIGRAVITY_CLI_HOOK_NAME);
+    let config_path = dir.join("hooks.json");
+    let removed_hook = remove_file_if_exists(&hook_path)?;
+    let mut changed = false;
+    if config_path.is_file() {
+        let mut config = read_json_object(&config_path, "antigravity cli hooks")?;
+        changed = remove_antigravity_cli_hook(&mut config);
+        if changed {
+            std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
+        }
+    }
+    Ok(vec![format!(
+        "{} antigravity cli integration {}",
+        if removed_hook || changed {
+            "removed"
+        } else {
+            "did not find"
+        },
+        hook_path.display()
+    )])
+}
+
 pub(crate) fn install_opencode() -> std::io::Result<Vec<String>> {
     let dir = opencode_dir();
     if !dir.is_dir() {
@@ -1264,6 +1323,39 @@ fn hermes_dir() -> PathBuf {
                 .map(|p| p.join("hermes"))
                 .unwrap_or_else(|| home_dir().join(".hermes"))
         })
+}
+
+fn antigravity_cli_dir() -> PathBuf {
+    env::var_os("ANTIGRAVITY_CLI_CONFIG_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".gemini").join("config"))
+}
+
+fn ensure_antigravity_cli_hook(config: &mut Value, hook_path: &std::path::Path) {
+    let hooks = config
+        .as_object_mut()
+        .expect("read_json_object always returns an object")
+        .entry("hooks")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .expect("antigravity cli hooks must be an object");
+    hooks.insert(
+        ANTIGRAVITY_CLI_HOOK_BLOCK_NAME.to_owned(),
+        json!({"PreInvocation": [{
+            "type": "command",
+            "command": format!("{} session", direct_hook_command(hook_path)),
+            "timeout": 10
+        }]}),
+    );
+}
+
+fn remove_antigravity_cli_hook(config: &mut Value) -> bool {
+    config
+        .get_mut("hooks")
+        .and_then(Value::as_object_mut)
+        .and_then(|hooks| hooks.remove(ANTIGRAVITY_CLI_HOOK_BLOCK_NAME))
+        .is_some()
 }
 
 fn enable_hermes_plugin(content: &str) -> String {
@@ -1967,6 +2059,7 @@ mod tests {
         assert_eq!(Target::Grok.label(), "grok");
         assert_eq!(Target::Kilo.label(), "kilo");
         assert_eq!(Target::Hermes.label(), "hermes");
+        assert_eq!(Target::AntigravityCli.label(), "antigravity-cli");
     }
 
     #[test]
@@ -1985,6 +2078,38 @@ mod tests {
         assert!(Target::Grok.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Kilo.path().ends_with("spindle-agent-state.js"));
         assert!(Target::Hermes.path().ends_with("__init__.py"));
+        assert!(Target::AntigravityCli
+            .path()
+            .ends_with("spindle-agent-state.ps1"));
+    }
+
+    #[test]
+    fn antigravity_cli_hook_edit_preserves_named_hooks_and_is_idempotent() {
+        let hook_path = std::path::Path::new(
+            "C:\\Users\\test\\.gemini\\config\\hooks\\spindle-agent-state.ps1",
+        );
+        let mut config = serde_json::json!({
+            "hooks": {
+                "custom": {"PreInvocation": [{"type": "command", "command": "keep"}]},
+                "spindle": {"old": true}
+            },
+            "other": true
+        });
+
+        super::ensure_antigravity_cli_hook(&mut config, hook_path);
+        super::ensure_antigravity_cli_hook(&mut config, hook_path);
+        assert_eq!(
+            config["hooks"]["custom"]["PreInvocation"][0]["command"],
+            "keep"
+        );
+        assert_eq!(
+            config["hooks"]["spindle"]["PreInvocation"][0]["timeout"],
+            10
+        );
+        assert!(config["other"].as_bool().unwrap());
+        assert!(super::remove_antigravity_cli_hook(&mut config));
+        assert!(config["hooks"]["custom"].is_object());
+        assert!(config["hooks"]["spindle"].is_null());
     }
 
     #[test]

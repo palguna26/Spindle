@@ -97,6 +97,12 @@ pub(super) fn run(args: &[String]) -> io::Result<()> {
         [command, target] if command == "uninstall" && target == "hermes" => {
             print_messages(crate::integration::uninstall_hermes()?)
         }
+        [command, target] if command == "install" && target == "antigravity-cli" => {
+            print_messages(crate::integration::install_antigravity_cli()?)
+        }
+        [command, target] if command == "uninstall" && target == "antigravity-cli" => {
+            print_messages(crate::integration::uninstall_antigravity_cli()?)
+        }
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -143,6 +149,8 @@ fn print_help() {
     eprintln!("       spindle integration uninstall kilo");
     eprintln!("       spindle integration install hermes");
     eprintln!("       spindle integration uninstall hermes");
+    eprintln!("       spindle integration install antigravity-cli");
+    eprintln!("       spindle integration uninstall antigravity-cli");
 }
 
 fn print_messages(messages: Vec<String>) -> io::Result<()> {
