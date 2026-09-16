@@ -18,5 +18,6 @@ pub mod renderer;
 mod selection;
 mod settings;
 mod startup;
+mod workspace_navigation;
 
 pub use control::{ClientError, ControlClient, EventStream};
