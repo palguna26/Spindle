@@ -416,6 +416,7 @@ fn event_loop(
                     &mouse_state.collapsed_worktree_groups,
                     &mouse_state.scroll_offsets,
                     mouse_state.tab_scroll,
+                    mouse_state.sidebar_section_split,
                 );
                 if let Some(insert_index) = mouse_state
                     .tab_drag

@@ -1070,6 +1070,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
         agent_priority_sort,
         navigation_workspace,
         &HashSet::new(),
+        0.5,
     );
 }
 
@@ -1083,6 +1084,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
     agent_priority_sort: bool,
     navigation_workspace: Option<(&str, &str)>,
     collapsed_groups: &HashSet<String>,
+    sidebar_section_split: f32,
 ) {
     let config = crate::config::load();
     let accent = super::ThemePalette::from_config(&config).accent;
@@ -1255,6 +1257,17 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
             ),
         area,
     );
+    if !collapsed {
+        let sections = crate::client::sidebar::sections(sidebar_body(area), sidebar_section_split);
+        if !sections.divider.is_empty() {
+            let divider_style = Style::default().fg(surface_dim).bg(sidebar_bg);
+            frame.render_widget(
+                Paragraph::new("─".repeat(usize::from(sections.divider.width)))
+                    .style(divider_style),
+                sections.divider,
+            );
+        }
+    }
     if !area.is_empty() {
         let x = area.right().saturating_sub(2);
         let y = area.bottom().saturating_sub(1);

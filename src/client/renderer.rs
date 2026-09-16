@@ -770,6 +770,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
         collapsed_groups,
         scroll_offsets,
         0,
+        0.5,
     );
 }
 
@@ -786,6 +787,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
     collapsed_groups: &HashSet<String>,
     scroll_offsets: &HashMap<String, usize>,
     tab_scroll: usize,
+    sidebar_section_split: f32,
 ) {
     let theme = ThemePalette::from_config(&crate::config::load());
     let main = layout::main_areas_for_snapshot(snapshot, frame.area(), sidebar_collapsed);
@@ -799,6 +801,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
         agent_priority_sort,
         navigation_workspace,
         collapsed_groups,
+        sidebar_section_split,
     );
     render_tabs_with_scroll(frame, snapshot, main.tabs, tab_scroll);
     let panes = pane_rectangles(snapshot, main.panes);
