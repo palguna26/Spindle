@@ -6,8 +6,10 @@ use jsonc_parser::ParseOptions;
 use serde::Serialize;
 use serde_json::{json, Value};
 
+mod command;
 mod file_ops;
 mod paths;
+use self::command::*;
 use self::file_ops::*;
 use self::paths::*;
 
@@ -1702,13 +1704,6 @@ fn copilot_removed_events() -> [&'static str; 9] {
         "notification",
         "error",
     ]
-}
-
-fn direct_hook_command(path: &std::path::Path) -> String {
-    format!(
-        "powershell -NoProfile -ExecutionPolicy Bypass -File \"{}\"",
-        path.display().to_string().replace('"', "\\\"")
-    )
 }
 
 fn ensure_copilot_hook(
