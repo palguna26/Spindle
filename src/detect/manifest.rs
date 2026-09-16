@@ -1,7 +1,7 @@
 //! Small manifest evaluator shared by screen-based agent detectors.
 //!
 //! The regions and rule priority follow Herdr's `src/detect/manifest.rs`.
-//! Codex, OpenCode, Gemini, Cline, Copilot, and Pi are migrated first; other agents still use their
+//! Codex, OpenCode, Gemini, Cline, Copilot, Pi, and Qoder CLI are migrated first; other agents still use their
 //! compatibility detectors until their rules are moved here.
 
 use super::{agents, AgentState};
@@ -42,6 +42,7 @@ enum Matcher {
     TrustDirectory,
     OpenCodePermission,
     CopilotSelection,
+    QoderPermission,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -235,6 +236,27 @@ const PI_RULES: &[Rule] = &[Rule {
     matcher: Matcher::Contains(&["working..."]),
 }];
 
+const QODER_RULES: &[Rule] = &[
+    Rule {
+        priority: 300,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::QoderPermission,
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::Contains(&["(esc to cancel,"]),
+    },
+    Rule {
+        priority: 90,
+        state: AgentState::Working,
+        region: Region::WholeRecent,
+        matcher: Matcher::LineRegex(r"^\s*[\u2800-\u28FF]\s+.*\p{Alphabetic}"),
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -257,6 +279,10 @@ pub(crate) fn detect_copilot(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_pi(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, PI_RULES)
+}
+
+pub(crate) fn detect_qoder(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, QODER_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -328,6 +354,22 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                     || text.contains("enter to submit")
                     || text.contains("enter accept"))
         }
+        Matcher::QoderPermission => {
+            text.contains("permission required")
+                || text.contains("allow once or always?")
+                || text.contains("asking user")
+                || text.contains("enter your response")
+                || text.contains("review your answers:")
+                || text.contains("shell awaiting input")
+                || (text.contains("waiting for user confirmation")
+                    && ["yes", "no", "allow", "reject"]
+                        .iter()
+                        .any(|signal| text.contains(signal)))
+                || (text.contains("awaiting approval")
+                    && ["allow", "reject"]
+                        .iter()
+                        .any(|signal| text.contains(signal)))
+        }
     }
 }
 
@@ -357,7 +399,7 @@ fn top_nonempty_lines(screen: &str, limit: usize) -> String {
 mod tests {
     use super::{
         detect_cline, detect_codex, detect_copilot, detect_gemini, detect_opencode, detect_pi,
-        DetectionInput,
+        detect_qoder, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -403,6 +445,14 @@ mod tests {
 
     fn detect_pi_state(screen: &str) -> Option<AgentState> {
         detect_pi(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    fn detect_qoder_state(screen: &str) -> Option<AgentState> {
+        detect_qoder(DetectionInput {
             screen,
             osc_title: "",
             _osc_progress: "",
@@ -511,5 +561,19 @@ mod tests {
     fn pi_manifest_requires_the_complete_working_literal() {
         assert_eq!(detect_pi_state("Working..."), Some(AgentState::Working));
         assert_eq!(detect_pi_state("working"), None);
+    }
+
+    #[test]
+    fn qoder_manifest_matches_permission_cancel_and_spinner_rules() {
+        assert_eq!(
+            detect_qoder_state("Waiting for user confirmation · Allow"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_qoder_state("(Esc to cancel, press q to quit)"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_qoder_state("⠋ Thinking"), Some(AgentState::Working));
+        assert_eq!(detect_qoder_state("⠋ 123"), None);
     }
 }
