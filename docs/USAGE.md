@@ -30,6 +30,10 @@ also start a pane in the workspace's repository directory.
 Running `spindle` without a server starts the server and attaches. The server
 runs independently of the attached terminal.
 
+Set `SPINDLE_SESSION` to select a named session from scripts. Spindle also
+accepts Herdr's `HERDR_SESSION` variable for compatibility; `--session <name>`
+overrides either environment variable.
+
 The screen shows spaces and workspaces in a left sidebar and tabs above the
 panes. Click a space, workspace, tab, or pane to switch focus. Drag split
 borders to resize. Right-click panes, tabs, and workspaces for actions. Drag

@@ -47,6 +47,10 @@ spindle --help   show commands
 spindle --version  show the build version
 ```
 
+Scripts can select a named session without repeating the global option. Set
+`SPINDLE_SESSION`; `HERDR_SESSION` is also accepted for Herdr-compatible
+automation. An explicit `--session <name>` takes priority.
+
 Press `Ctrl-b`, then `?` for the in-app mouse and keyboard guide. Press `Ctrl-b`,
 then `:` to open the command palette. Unless noted otherwise, the shortcuts
 below are pressed after `Ctrl-b`:
