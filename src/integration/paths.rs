@@ -82,6 +82,10 @@ pub(super) fn antigravity_cli_dir() -> PathBuf {
         .unwrap_or_else(|| home_dir().join(".gemini").join("config"))
 }
 
+pub(super) fn mastracode_dir() -> PathBuf {
+    env_path("MASTRACODE_HOME").unwrap_or_else(|| home_dir().join(".mastracode"))
+}
+
 pub(super) fn opencode_dir() -> PathBuf {
     home_dir().join(".config").join("opencode")
 }

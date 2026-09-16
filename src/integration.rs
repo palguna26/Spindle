@@ -43,6 +43,32 @@ const ANTIGRAVITY_CLI_HOOK_ASSET: &str =
     include_str!("integration/assets/antigravity-cli-agent-state.ps1");
 const ANTIGRAVITY_CLI_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const ANTIGRAVITY_CLI_HOOK_BLOCK_NAME: &str = "spindle";
+const MASTRACODE_HOOK_ASSET: &str = if cfg!(windows) {
+    include_str!("integration/assets/mastracode-agent-state.ps1")
+} else {
+    include_str!("integration/assets/mastracode-agent-state.sh")
+};
+const MASTRACODE_HOOK_NAME: &str = if cfg!(windows) {
+    "spindle-agent-state.ps1"
+} else {
+    "spindle-agent-state.sh"
+};
+const MASTRACODE_HOOK_TIMEOUT_MS: u64 = 10_000;
+const MASTRACODE_REMOVED_EVENTS: [(&str, &str); 2] =
+    [("SessionStart", "idle"), ("SessionEnd", "release")];
+const MASTRACODE_EVENTS: [(&str, &str); 11] = [
+    ("SessionStart", "session"),
+    ("UserPromptSubmit", "working"),
+    ("AgentStart", "working"),
+    ("PreToolUse", "working"),
+    ("PermissionRequest", "blocked"),
+    ("PermissionResult", "working"),
+    ("SubagentStart", "working"),
+    ("SubagentEnd", "working"),
+    ("Interrupt", "idle"),
+    ("AgentEnd", "idle"),
+    ("Stop", "idle"),
+];
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -75,10 +101,11 @@ pub(crate) enum Target {
     Kilo,
     Hermes,
     AntigravityCli,
+    Mastracode,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 16] = [
+    pub(crate) const ALL: [Self; 17] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
@@ -95,6 +122,7 @@ impl Target {
         Self::Kilo,
         Self::Hermes,
         Self::AntigravityCli,
+        Self::Mastracode,
     ];
 
     fn label(self) -> &'static str {
@@ -115,6 +143,7 @@ impl Target {
             Self::Kilo => "kilo",
             Self::Hermes => "hermes",
             Self::AntigravityCli => "antigravity-cli",
+            Self::Mastracode => "mastracode",
         }
     }
 
@@ -153,6 +182,7 @@ impl Target {
             Self::AntigravityCli => antigravity_cli_dir()
                 .join("hooks")
                 .join(ANTIGRAVITY_CLI_HOOK_NAME),
+            Self::Mastracode => mastracode_dir().join("hooks").join(MASTRACODE_HOOK_NAME),
         }
     }
 
@@ -801,6 +831,48 @@ pub(crate) fn uninstall_hermes() -> std::io::Result<Vec<String>> {
     )])
 }
 
+pub(crate) fn install_mastracode() -> std::io::Result<Vec<String>> {
+    let dir = mastracode_dir();
+    std::fs::create_dir_all(dir.join("hooks"))?;
+    let hook_path = dir.join("hooks").join(MASTRACODE_HOOK_NAME);
+    std::fs::write(&hook_path, MASTRACODE_HOOK_ASSET)?;
+    let hooks_path = dir.join("hooks.json");
+    let mut config = read_json_object(&hooks_path, "mastracode hooks")?;
+    ensure_mastracode_hooks(&mut config, &hook_path)?;
+    std::fs::write(&hooks_path, serde_json::to_string_pretty(&config)?)?;
+    Ok(vec![
+        format!(
+            "installed mastracode integration hook to {}",
+            hook_path.display()
+        ),
+        format!("ensured mastracode hooks at {}", hooks_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_mastracode() -> std::io::Result<Vec<String>> {
+    let dir = mastracode_dir();
+    let hook_path = dir.join("hooks").join(MASTRACODE_HOOK_NAME);
+    let hooks_path = dir.join("hooks.json");
+    let removed_hook = remove_file_if_exists(&hook_path)?;
+    let mut changed = false;
+    if hooks_path.is_file() {
+        let mut config = read_json_object(&hooks_path, "mastracode hooks")?;
+        changed = remove_mastracode_hooks(&mut config, &hook_path)?;
+        if changed {
+            std::fs::write(&hooks_path, serde_json::to_string_pretty(&config)?)?;
+        }
+    }
+    Ok(vec![format!(
+        "{} mastracode integration {}",
+        if removed_hook || changed {
+            "removed"
+        } else {
+            "did not find"
+        },
+        hook_path.display()
+    )])
+}
+
 pub(crate) fn install_antigravity_cli() -> std::io::Result<Vec<String>> {
     let dir = antigravity_cli_dir();
     if !dir.is_dir() {
@@ -1266,6 +1338,86 @@ fn remove_antigravity_cli_hook(config: &mut Value) -> bool {
         .and_then(Value::as_object_mut)
         .and_then(|hooks| hooks.remove(ANTIGRAVITY_CLI_HOOK_BLOCK_NAME))
         .is_some()
+}
+
+fn mastracode_command(path: &std::path::Path, action: &str) -> String {
+    #[cfg(windows)]
+    {
+        format!("{} {}", direct_hook_command(path), action)
+    }
+    #[cfg(not(windows))]
+    {
+        format!("sh \"{}\" {}", path.display(), action)
+    }
+}
+
+fn ensure_mastracode_hooks(config: &mut Value, path: &std::path::Path) -> std::io::Result<()> {
+    let hooks = config
+        .as_object_mut()
+        .ok_or_else(|| std::io::Error::other("mastracode hooks must be a JSON object"))?;
+    for (event, action) in MASTRACODE_REMOVED_EVENTS {
+        remove_flat_mastracode_hook(hooks, event, &mastracode_command(path, action))?;
+    }
+    for (event, action) in MASTRACODE_EVENTS {
+        remove_flat_mastracode_hook(hooks, event, &mastracode_command(path, action))?;
+        let entries = hooks
+            .entry(event.to_owned())
+            .or_insert_with(|| json!([]))
+            .as_array_mut()
+            .ok_or_else(|| {
+                std::io::Error::other(format!("mastracode {event} hooks must be an array"))
+            })?;
+        if !entries.iter().any(|entry| {
+            entry.get("type").and_then(Value::as_str) == Some("command")
+                && entry.get("command").and_then(Value::as_str)
+                    == Some(mastracode_command(path, action).as_str())
+        }) {
+            entries.push(json!({"type":"command","command":mastracode_command(path, action),"timeout":MASTRACODE_HOOK_TIMEOUT_MS,"description":"Report MastraCode agent state to Spindle"}));
+        }
+    }
+    Ok(())
+}
+
+fn remove_mastracode_hooks(
+    config: &mut Value,
+    hook_path: &std::path::Path,
+) -> std::io::Result<bool> {
+    let Some(hooks) = config.as_object_mut() else {
+        return Err(std::io::Error::other(
+            "mastracode hooks must be a JSON object",
+        ));
+    };
+    let mut changed = false;
+    for (event, action) in MASTRACODE_EVENTS
+        .into_iter()
+        .chain(MASTRACODE_REMOVED_EVENTS)
+    {
+        changed |=
+            remove_flat_mastracode_hook(hooks, event, &mastracode_command(hook_path, action))?;
+    }
+    Ok(changed)
+}
+
+fn remove_flat_mastracode_hook(
+    hooks: &mut serde_json::Map<String, Value>,
+    event: &str,
+    command: &str,
+) -> std::io::Result<bool> {
+    let Some(entries) = hooks.get_mut(event).and_then(Value::as_array_mut) else {
+        return Ok(false);
+    };
+    let (removed, empty) = {
+        let before = entries.len();
+        entries.retain(|entry| {
+            !(entry.get("type").and_then(Value::as_str) == Some("command")
+                && entry.get("command").and_then(Value::as_str) == Some(command))
+        });
+        (before != entries.len(), entries.is_empty())
+    };
+    if empty {
+        hooks.remove(event);
+    }
+    Ok(removed)
 }
 
 fn enable_hermes_plugin(content: &str) -> String {
@@ -1925,6 +2077,7 @@ mod tests {
         assert_eq!(Target::Hermes.label(), "hermes");
         assert_eq!(Target::AntigravityCli.label(), "antigravity-cli");
         assert_eq!(Target::AntigravityCli.command(), "agy");
+        assert_eq!(Target::Mastracode.label(), "mastracode");
     }
 
     #[test]
@@ -1988,6 +2141,28 @@ mod tests {
         assert!(super::remove_antigravity_cli_hook(&mut config));
         assert!(config["hooks"]["custom"].is_object());
         assert!(config["hooks"]["spindle"].is_null());
+    }
+
+    #[test]
+    fn mastracode_hook_edit_preserves_unrelated_flat_hooks_and_is_idempotent() {
+        let hook_path =
+            std::path::Path::new("C:\\Users\\test\\.mastracode\\hooks\\spindle-agent-state.ps1");
+        let mut config = serde_json::json!({
+            "SessionStart": [{"type":"command","command":"keep"}],
+            "Stop": [{"type":"command","command":"old"}]
+        });
+        super::ensure_mastracode_hooks(&mut config, hook_path).unwrap();
+        super::ensure_mastracode_hooks(&mut config, hook_path).unwrap();
+        assert_eq!(config["SessionStart"][0]["command"], "keep");
+        assert_eq!(config["Stop"].as_array().unwrap().len(), 2);
+        assert!(config["AgentEnd"].as_array().unwrap().iter().any(|entry| {
+            entry["command"]
+                .as_str()
+                .unwrap()
+                .contains("agent-state.ps1")
+        }));
+        assert!(super::remove_mastracode_hooks(&mut config, hook_path).unwrap());
+        assert_eq!(config["SessionStart"][0]["command"], "keep");
     }
 
     #[test]
