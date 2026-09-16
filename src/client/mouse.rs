@@ -24,11 +24,13 @@ pub(super) struct PaneMouseCapture {
 pub(super) struct WorkspaceDrag {
     pub(super) space_id: String,
     pub(super) workspace_id: String,
+    pub(super) drop_row: Option<u16>,
 }
 
 pub(super) struct TabDrag {
     pub(super) workspace_id: String,
     pub(super) tab_id: String,
+    pub(super) insert_index: Option<usize>,
 }
 
 #[derive(Default)]

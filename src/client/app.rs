@@ -318,6 +318,29 @@ fn event_loop(
                         .as_ref()
                         .map(|(space, workspace)| (space.as_str(), workspace.as_str())),
                 );
+                if let Some(insert_index) = mouse_state
+                    .tab_drag
+                    .as_ref()
+                    .and_then(|drag| drag.insert_index)
+                {
+                    renderer::render_tab_drop_indicator(
+                        frame,
+                        &snapshot,
+                        mouse_state.sidebar_collapsed,
+                        insert_index,
+                    );
+                }
+                if let Some(row) = mouse_state
+                    .workspace_drag
+                    .as_ref()
+                    .and_then(|drag| drag.drop_row)
+                {
+                    renderer::render_workspace_drop_indicator(
+                        frame,
+                        mouse_state.sidebar_collapsed,
+                        row,
+                    );
+                }
                 if resize_mode {
                     renderer::render_resize_mode(frame);
                 }
@@ -1515,6 +1538,7 @@ fn handle_mouse(
             mouse_state.workspace_drag = Some(WorkspaceDrag {
                 space_id,
                 workspace_id,
+                drop_row: None,
             });
             return Ok(());
         }
@@ -1532,6 +1556,7 @@ fn handle_mouse(
                 mouse_state.tab_drag = Some(TabDrag {
                     workspace_id: workspace.workspace_id.clone(),
                     tab_id,
+                    insert_index: None,
                 });
                 return Ok(());
             }
@@ -1599,6 +1624,21 @@ fn handle_mouse(
         MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
     ) && mouse_state.workspace_drag.is_some()
     {
+        if mouse.kind == MouseEventKind::Drag(MouseButton::Left) {
+            if let Some(drag) = mouse_state.workspace_drag.as_mut() {
+                drag.drop_row = renderer::workspace_drop_target(
+                    snapshot,
+                    area,
+                    mouse_state.sidebar_scroll,
+                    mouse_state.agent_priority_sort,
+                    &drag.workspace_id,
+                    mouse.column,
+                    mouse.row,
+                )
+                .map(|(_, _, _)| mouse.row);
+            }
+            return Ok(());
+        }
         let drag = mouse_state
             .workspace_drag
             .take()
@@ -1649,6 +1689,20 @@ fn handle_mouse(
         MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
     ) && mouse_state.tab_drag.is_some()
     {
+        if mouse.kind == MouseEventKind::Drag(MouseButton::Left) {
+            if let Some(drag) = mouse_state.tab_drag.as_mut() {
+                drag.insert_index = renderer::tab_drop_target(
+                    snapshot,
+                    area,
+                    mouse_state.sidebar_collapsed,
+                    &drag.tab_id,
+                    mouse.column,
+                    mouse.row,
+                )
+                .map(|(_, _, insert_index)| insert_index);
+            }
+            return Ok(());
+        }
         let drag = mouse_state.tab_drag.take().expect("tab drag exists");
         if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
             if let Some((workspace_id, target_tab_id, insert_index)) = renderer::tab_drop_target(

@@ -17,7 +17,8 @@ pub(crate) use layout::{
 use navigation::render_tabs;
 pub use navigation::{
     hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
-    hit_test_with_sidebar_scroll_and_sort, sidebar_scroll_max, sidebar_scroll_max_with_sort,
+    hit_test_with_sidebar_scroll_and_sort, render_tab_drop_indicator,
+    render_workspace_drop_indicator, sidebar_scroll_max, sidebar_scroll_max_with_sort,
     sidebar_scroll_offset_from_drag_row, sidebar_scroll_offset_from_drag_row_with_sort,
     sidebar_scroll_region, sidebar_scroll_thumb_grab_offset,
     sidebar_scroll_thumb_grab_offset_with_sort, tab_drop_target, workspace_drop_target,

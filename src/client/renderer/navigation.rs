@@ -892,6 +892,48 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
     }
 }
 
+pub fn render_tab_drop_indicator(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    collapsed: bool,
+    insert_index: usize,
+) {
+    let area = super::layout::main_areas_with_sidebar(frame.area(), collapsed).tabs;
+    let Some(workspace) = active_workspace(snapshot) else {
+        return;
+    };
+    if workspace.tabs.is_empty() || area.height == 0 {
+        return;
+    }
+    let widths = equal_widths(area.width, workspace.tabs.len());
+    let x = widths
+        .iter()
+        .take(insert_index.min(widths.len()))
+        .fold(area.x, |x, width| x.saturating_add(*width))
+        .min(area.right().saturating_sub(1));
+    if let Some(cell) = frame.buffer_mut().cell_mut((x, area.y)) {
+        cell.set_symbol("│");
+        cell.set_fg(Color::Cyan);
+    }
+}
+
+pub fn render_workspace_drop_indicator(frame: &mut Frame<'_>, collapsed: bool, row: u16) {
+    if collapsed {
+        return;
+    }
+    let area = super::layout::main_areas_with_sidebar(frame.area(), false).sidebar;
+    let body = sidebar_body(area);
+    if row < body.y || row >= body.bottom() {
+        return;
+    }
+    for x in body.x..body.right().saturating_sub(1) {
+        if let Some(cell) = frame.buffer_mut().cell_mut((x, row)) {
+            cell.set_symbol("─");
+            cell.set_fg(Color::Cyan);
+        }
+    }
+}
+
 fn equal_widths(total: u16, count: usize) -> Vec<u16> {
     if count == 0 {
         return Vec::new();
