@@ -80,6 +80,13 @@ Agent navigation parity note: Spindle now accepts Herdr-compatible
 The Herdr-compatible `[ui] sidebar_start_collapsed` setting is also honored
 on startup, while saved client preferences still take precedence.
 
+Sidebar layout parity note: the nested `[sidebar.agents]` and `[sidebar.spaces]`
+row-token layouts now drive the rendered sidebar, scrolling, scrollbar mapping,
+hit testing, and workspace drop targets. The default two-line workspace and
+agent rows follow Herdr's `src/config/sidebar.rs` and
+`src/client/shell/sidebar.rs`; focused agent styling is retained across both
+lines. Rust tests, release build, Windows smoke, and installer smoke pass.
+
 | User behavior | Spindle status | Herdr reference | Evidence / next verification |
 | --- | --- | --- | --- |
 | Filtered navigator branches show expanded state | Present | Herdr `src/client/shell/aggregate_navigation.rs` (`filtering` expands workspace children) | Spindle marks matching space/workspace rows expanded while filtering; regression coverage verifies collapsed branches expose descendants with open markers. |
