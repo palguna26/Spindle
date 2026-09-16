@@ -5,9 +5,9 @@ use super::input::{Action, Keymap};
 #[cfg(test)]
 use super::mouse::should_forward_pane_mouse;
 use super::mouse::{
-    clear_mouse_capture, pane_mouse_target, should_forward_pane_mouse_with_modifier,
-    visible_web_url_at_point, CachedScrollbackView, MouseState, PaneClick, PaneMouseCapture,
-    PaneScrollbarDrag, SplitDrag, TabDrag, WorkspaceDrag,
+    clear_mouse_capture, pane_mouse_target, pane_terminal_area,
+    should_forward_pane_mouse_with_modifier, visible_web_url_at_point, CachedScrollbackView,
+    MouseState, PaneClick, PaneMouseCapture, PaneScrollbarDrag, SplitDrag, TabDrag, WorkspaceDrag,
 };
 use super::navigator::{Navigator, Outcome as NavigatorOutcome, Target as NavigatorTarget};
 use super::palette::{move_selection, Command};
@@ -2411,16 +2411,22 @@ fn forward_mouse_to_pane(
         return Ok(false);
     }
 
-    let x = mouse
-        .column
-        .saturating_sub(rect.x.saturating_add(1))
-        .saturating_add(1)
-        .clamp(1, pane.cols.max(1));
-    let y = mouse
-        .row
-        .saturating_sub(rect.y.saturating_add(1))
-        .saturating_add(1)
-        .clamp(1, pane.rows.max(1));
+    let terminal_area = pane_terminal_area(snapshot, area, &pane_id, sidebar_collapsed)
+        .unwrap_or_else(|| {
+            Rect::new(
+                rect.x.saturating_add(1),
+                rect.y.saturating_add(1),
+                rect.width.saturating_sub(2),
+                rect.height.saturating_sub(2),
+            )
+        });
+    let (x, y) = super::mouse::terminal_coordinates(
+        mouse.column,
+        mouse.row,
+        terminal_area,
+        pane.cols,
+        pane.rows,
+    );
     let mut forwarded_mouse = mouse;
     if mouse.kind == MouseEventKind::Down(MouseButton::Right)
         && configured_modifier.is_some_and(|modifier| modifier == mouse.modifiers)

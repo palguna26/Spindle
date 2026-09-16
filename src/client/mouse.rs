@@ -160,6 +160,51 @@ pub(super) fn pane_mouse_target(
         .map(|pane| (pane.pane_id.clone(), pane.rect))
 }
 
+pub(super) fn pane_terminal_area(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    pane_id: &str,
+    sidebar_collapsed: bool,
+) -> Option<Rect> {
+    let config = crate::config::load();
+    if snapshot.popup_pane_id.as_deref() == Some(pane_id) {
+        let popup = super::renderer::popup_rect(
+            super::renderer::pane_content_area_for_snapshot(snapshot, area, sidebar_collapsed),
+            snapshot.popup_width,
+            snapshot.popup_height,
+        );
+        return Some(Rect::new(
+            popup.x.saturating_add(1),
+            popup.y.saturating_add(1),
+            popup.width.saturating_sub(2),
+            popup.height.saturating_sub(2),
+        ));
+    }
+    let pane_area =
+        super::renderer::pane_content_area_for_snapshot(snapshot, area, sidebar_collapsed);
+    let panes = super::renderer::pane_rectangles(snapshot, pane_area);
+    let pane = panes.iter().find(|pane| pane.pane_id == pane_id)?;
+    Some(pane_inner_area(pane, &panes, &config))
+}
+
+pub(super) fn terminal_coordinates(
+    column: u16,
+    row: u16,
+    inner: Rect,
+    cols: u16,
+    rows: u16,
+) -> (u16, u16) {
+    (
+        column
+            .saturating_sub(inner.x)
+            .saturating_add(1)
+            .clamp(1, cols.max(1)),
+        row.saturating_sub(inner.y)
+            .saturating_add(1)
+            .clamp(1, rows.max(1)),
+    )
+}
+
 #[cfg(test)]
 pub(super) fn should_forward_pane_mouse(
     pane: &crate::server::session::PaneView,
@@ -259,5 +304,19 @@ pub(super) fn clear_mouse_capture(capture: &mut Option<PaneMouseCapture>, kind: 
             *capture = None;
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::terminal_coordinates;
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn terminal_coordinates_use_the_herdr_inner_rect_origin() {
+        let inner = Rect::new(10, 4, 20, 8);
+        assert_eq!(terminal_coordinates(10, 4, inner, 20, 8), (1, 1));
+        assert_eq!(terminal_coordinates(15, 7, inner, 20, 8), (6, 4));
+        assert_eq!(terminal_coordinates(0, 0, inner, 20, 8), (1, 1));
     }
 }
