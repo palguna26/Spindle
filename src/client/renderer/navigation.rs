@@ -149,6 +149,17 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
         if !sidebar_collapsed && y == main.sidebar.y && x > main.sidebar.x {
             return Some(ClickTarget::ToggleAgentSort);
         }
+        if !sidebar_collapsed && snapshot.panes.iter().any(|pane| pane.agent.is_some()) {
+            return hit_test_split_sidebar(
+                snapshot,
+                main.sidebar,
+                x,
+                y,
+                sidebar_scroll,
+                agent_priority_sort,
+                collapsed_groups,
+            );
+        }
         let body = sidebar_body(main.sidebar);
         if !contains(body, x, y) {
             return None;
@@ -234,6 +245,84 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
         return Some(ClickTarget::Pane(pane.pane_id));
     }
     None
+}
+
+fn hit_test_split_sidebar(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    x: u16,
+    y: u16,
+    workspace_scroll: usize,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+) -> Option<ClickTarget> {
+    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
+    let workspace_rows = rows
+        .iter()
+        .copied()
+        .filter(|row| matches!(row, SidebarRow::Space { .. } | SidebarRow::Workspace { .. }))
+        .collect::<Vec<_>>();
+    let agent_rows = rows
+        .iter()
+        .copied()
+        .filter(|row| matches!(row, SidebarRow::Agent { .. }))
+        .collect::<Vec<_>>();
+    let sidebar_config = crate::config::load().sidebar;
+    let sections = crate::client::sidebar::sections(sidebar_body(area), 0.5);
+    let workspace_visual = sidebar_visual_rows(&workspace_rows, false, &sidebar_config);
+    if contains(sections.workspaces, x, y) {
+        let max_scroll = workspace_visual
+            .len()
+            .saturating_sub(usize::from(sections.workspaces.height));
+        let visual_row = usize::from(y.saturating_sub(sections.workspaces.y))
+            .saturating_add(workspace_scroll.min(max_scroll));
+        let (Some(row), _) = workspace_visual.get(visual_row)? else {
+            return None;
+        };
+        return sidebar_click_target(workspace_rows.get(*row));
+    }
+    let agent_area = Rect::new(
+        sections.agents.x,
+        sections.agents.y.saturating_add(2),
+        sections.agents.width,
+        sections.agents.height.saturating_sub(2),
+    );
+    if contains(agent_area, x, y) {
+        let agent_visual = sidebar_visual_rows(&agent_rows, false, &sidebar_config);
+        let visual_row = usize::from(y.saturating_sub(agent_area.y));
+        let (Some(row), _) = agent_visual.get(visual_row)? else {
+            return None;
+        };
+        return sidebar_click_target(agent_rows.get(*row));
+    }
+    None
+}
+
+fn sidebar_click_target(row: Option<&SidebarRow<'_>>) -> Option<ClickTarget> {
+    match row? {
+        SidebarRow::Space { space_id, .. } => Some(ClickTarget::Space((*space_id).to_owned())),
+        SidebarRow::Workspace {
+            space_id,
+            workspace_id,
+            ..
+        } => Some(ClickTarget::Workspace {
+            space_id: (*space_id).to_owned(),
+            workspace_id: (*workspace_id).to_owned(),
+        }),
+        SidebarRow::Agent {
+            space_id,
+            workspace_id,
+            tab_id,
+            pane,
+            ..
+        } => Some(ClickTarget::Agent {
+            space_id: (*space_id).to_owned(),
+            workspace_id: (*workspace_id).to_owned(),
+            tab_id: (*tab_id).to_owned(),
+            pane_id: pane.pane_id.clone(),
+        }),
+        SidebarRow::AgentHeader => Some(ClickTarget::ToggleAgentSort),
+    }
 }
 
 /// Returns the same-space insertion slot represented by a workspace row.
@@ -2683,11 +2772,13 @@ mod tests {
         ];
         let area = Rect::new(0, 0, 100, 30);
         let sidebar = main_areas(area).sidebar;
+        let sections = crate::client::sidebar::sections(super::sidebar_body(sidebar), 0.5);
+        let agent_y = sections.agents.y.saturating_add(2);
         assert_eq!(
             hit_test_with_sidebar_scroll_and_sort(
                 &snapshot,
                 area,
-                click(sidebar.x + 3, sidebar.y + 7),
+                click(sidebar.x + 3, agent_y),
                 false,
                 0,
                 true,
@@ -2703,7 +2794,7 @@ mod tests {
             hit_test_with_sidebar_scroll_and_sort(
                 &snapshot,
                 area,
-                click(sidebar.x + 3, sidebar.y + 9),
+                click(sidebar.x + 3, agent_y.saturating_add(2)),
                 false,
                 0,
                 true,
