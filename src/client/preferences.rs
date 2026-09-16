@@ -6,8 +6,8 @@ static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub(super) struct ClientPreferences {
-    #[serde(default)]
-    pub(super) sidebar_collapsed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) sidebar_collapsed: Option<bool>,
     #[serde(default)]
     pub(super) agent_priority_sort: bool,
     #[serde(default)]
@@ -76,7 +76,7 @@ mod tests {
         let path = test_path("legacy-sort");
         std::fs::write(&path, br#"{"sidebar_collapsed":true}"#).unwrap();
         let preferences = load(&path);
-        assert!(preferences.sidebar_collapsed);
+        assert_eq!(preferences.sidebar_collapsed, Some(true));
         assert!(!preferences.agent_priority_sort);
         std::fs::remove_file(path).unwrap();
     }
@@ -88,17 +88,17 @@ mod tests {
         store(
             &path,
             ClientPreferences {
-                sidebar_collapsed: true,
+                sidebar_collapsed: Some(true),
                 agent_priority_sort: true,
                 collapsed_worktree_groups: vec!["repo-a".into(), "repo-b".into()],
             },
         )
         .unwrap();
-        assert!(load(&path).sidebar_collapsed);
+        assert_eq!(load(&path).sidebar_collapsed, Some(true));
         assert!(load(&path).agent_priority_sort);
         assert_eq!(load(&path).collapsed_worktree_groups, ["repo-a", "repo-b"]);
         store(&path, ClientPreferences::default()).unwrap();
-        assert!(!load(&path).sidebar_collapsed);
+        assert_eq!(load(&path).sidebar_collapsed, None);
         assert!(load(&path).collapsed_worktree_groups.is_empty());
         std::fs::remove_file(path).unwrap();
     }

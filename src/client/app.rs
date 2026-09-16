@@ -65,7 +65,7 @@ pub fn run(
         &mut terminal,
         &client,
         startup_error,
-        preferences.sidebar_collapsed || config.sidebar_start_collapsed,
+        initial_sidebar_collapsed(&preferences, &config),
         preferences.agent_priority_sort,
         preferences.collapsed_worktree_groups,
         &preferences_path,
@@ -107,11 +107,20 @@ fn store_client_preferences(mouse_state: &MouseState) {
     let _ = super::preferences::store(
         &mouse_state.preferences_path,
         super::preferences::ClientPreferences {
-            sidebar_collapsed: mouse_state.sidebar_collapsed,
+            sidebar_collapsed: Some(mouse_state.sidebar_collapsed),
             agent_priority_sort: mouse_state.agent_priority_sort,
             collapsed_worktree_groups,
         },
     );
+}
+
+fn initial_sidebar_collapsed(
+    preferences: &super::preferences::ClientPreferences,
+    config: &crate::config::Config,
+) -> bool {
+    preferences
+        .sidebar_collapsed
+        .unwrap_or(config.sidebar_start_collapsed)
 }
 
 fn event_loop(
@@ -3787,6 +3796,23 @@ mod tests {
     fn mobile_navigation_replaces_hidden_sidebar_controls() {
         assert!(uses_mobile_navigation(64, 64));
         assert!(!uses_mobile_navigation(65, 64));
+    }
+
+    #[test]
+    fn saved_sidebar_preference_overrides_startup_default() {
+        let config = Config {
+            sidebar_start_collapsed: true,
+            ..Config::default()
+        };
+        let preferences = super::super::preferences::ClientPreferences {
+            sidebar_collapsed: Some(false),
+            ..Default::default()
+        };
+        assert!(!super::initial_sidebar_collapsed(&preferences, &config));
+        assert!(super::initial_sidebar_collapsed(
+            &Default::default(),
+            &config
+        ));
     }
 
     #[test]
