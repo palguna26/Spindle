@@ -3,6 +3,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::popup_size::PopupSize;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Manifest {
     pub(crate) id: String,
@@ -91,9 +93,9 @@ pub(crate) struct Pane {
     #[serde(default)]
     pub(crate) description: Option<String>,
     #[serde(default)]
-    pub(crate) width: Option<u16>,
+    pub(crate) width: Option<PopupSize>,
     #[serde(default)]
-    pub(crate) height: Option<u16>,
+    pub(crate) height: Option<PopupSize>,
     pub(crate) command: Vec<String>,
     #[serde(default = "default_pane_placement")]
     pub(crate) placement: String,
@@ -301,6 +303,7 @@ pub(crate) fn installed() -> io::Result<Vec<(Registration, Manifest)>> {
 #[cfg(test)]
 mod tests {
     use super::load;
+    use crate::popup_size::PopupSize;
 
     #[test]
     fn manifest_loads_herdr_build_commands() {
@@ -393,8 +396,8 @@ mod tests {
             manifest.panes[0].description.as_deref(),
             Some("Live build output")
         );
-        assert_eq!(manifest.panes[0].width, Some(90));
-        assert_eq!(manifest.panes[0].height, Some(30));
+        assert_eq!(manifest.panes[0].width, Some(PopupSize::Cells(90)));
+        assert_eq!(manifest.panes[0].height, Some(PopupSize::Cells(30)));
         let _ = std::fs::remove_dir_all(root);
     }
 }

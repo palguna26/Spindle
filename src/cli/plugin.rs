@@ -2,6 +2,7 @@ use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::popup_size::PopupSize;
 use crate::server::session::SessionSnapshot;
 
 pub(crate) fn run(args: &[String]) -> io::Result<()> {
@@ -546,19 +547,28 @@ fn pane_open(args: &[String]) -> io::Result<()> {
     if placement != "popup" && (requested_width.is_some() || requested_height.is_some()) {
         return usage("--width and --height are only supported for popup placement");
     }
+    let terminal_size = crossterm::terminal::size().map_err(|error| {
+        io::Error::other(format!(
+            "could not read terminal size for plugin pane: {error}"
+        ))
+    })?;
     let popup_width = requested_width
         .as_deref()
-        .map(str::parse::<u16>)
+        .map(PopupSize::parse_cli)
         .transpose()
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "--width must be a number"))?
-        .unwrap_or(pane.width.unwrap_or(40))
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, format!("--width {error}")))?
+        .or(pane.width)
+        .unwrap_or(PopupSize::Cells(40))
+        .resolve(terminal_size.0)
         .max(6);
     let popup_height = requested_height
         .as_deref()
-        .map(str::parse::<u16>)
+        .map(PopupSize::parse_cli)
         .transpose()
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "--height must be a number"))?
-        .unwrap_or(pane.height.unwrap_or(12))
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, format!("--height {error}")))?
+        .or(pane.height)
+        .unwrap_or(PopupSize::Cells(12))
+        .resolve(terminal_size.1)
         .max(4);
     let Some(command) = pane.command.first() else {
         return Err(io::Error::new(

@@ -10,6 +10,7 @@ pub mod persist;
 mod platform;
 mod plugin;
 mod plugin_command;
+mod popup_size;
 pub mod protocol;
 pub mod pty;
 pub mod server;
