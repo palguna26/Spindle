@@ -243,11 +243,12 @@ fn truncate_build_output(value: &str) -> String {
 
 fn link(args: &[String]) -> io::Result<()> {
     let Some(path_arg) = args.first() else {
-        return usage("usage: spindle plugin link <path> [--disabled]");
+        return usage("usage: spindle plugin link <path> [--disabled|--enabled]");
     };
-    if args.len() > 2 || (args.len() == 2 && args[1] != "--disabled") {
-        return usage("usage: spindle plugin link <path> [--disabled]");
-    }
+    let enabled = match parse_link_enabled(args) {
+        Ok(enabled) => enabled,
+        Err(_) => return usage("usage: spindle plugin link <path> [--disabled|--enabled]"),
+    };
     let input_path = PathBuf::from(path_arg).canonicalize()?;
     let manifest = crate::plugin::load(&input_path)?;
     let path = if input_path.is_file() {
@@ -260,13 +261,30 @@ fn link(args: &[String]) -> io::Result<()> {
     registrations.push(crate::plugin::Registration {
         id: manifest.id.clone(),
         path,
-        enabled: args.get(1).is_none(),
+        enabled,
         managed: false,
         source: None,
     });
     crate::plugin::write_registry(&registrations)?;
     println!("linked plugin {}", manifest.id);
     Ok(())
+}
+
+fn parse_link_enabled(args: &[String]) -> io::Result<bool> {
+    if args.len() > 2 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "too many link arguments",
+        ));
+    }
+    match args.get(1).map(String::as_str) {
+        None | Some("--enabled") => Ok(true),
+        Some("--disabled") => Ok(false),
+        Some(other) => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("unknown link option '{other}'"),
+        )),
+    }
 }
 
 fn uninstall(args: &[String]) -> io::Result<()> {
@@ -1069,7 +1087,7 @@ fn help() {
     );
     println!("  install owner/repo[/subdir] [--ref REF] --yes  install from GitHub");
     println!("  uninstall <id|owner/repo[/subdir]>            remove a managed plugin");
-    println!("  link <path> [--disabled]  register a local Herdr manifest");
+    println!("  link <path> [--disabled|--enabled]  register a local Herdr manifest");
     println!("  list [--plugin ID] [--json] list linked plugins");
     println!("  unlink <plugin_id>        unregister a plugin, leaving files alone");
     println!("  enable|disable <id>       change a plugin's global enabled state");
@@ -1083,7 +1101,7 @@ fn help() {
 
 #[cfg(test)]
 mod action_context_tests {
-    use super::{add_session_context, plugin_split_direction};
+    use super::{add_session_context, parse_link_enabled, plugin_split_direction};
     use crate::server::session::{Session, SessionSnapshot};
 
     #[test]
@@ -1105,6 +1123,14 @@ mod action_context_tests {
         assert_eq!(context["tab_label"], "Build");
         assert_eq!(context["focused_pane_id"], "pane-1");
         assert_eq!(context["focused_pane_cwd"], "C:/repo");
+    }
+
+    #[test]
+    fn plugin_link_accepts_explicit_enabled_and_disabled_modes() {
+        assert!(parse_link_enabled(&["path".into()]).unwrap());
+        assert!(parse_link_enabled(&["path".into(), "--enabled".into()]).unwrap());
+        assert!(!parse_link_enabled(&["path".into(), "--disabled".into()]).unwrap());
+        assert!(parse_link_enabled(&["path".into(), "--other".into()]).is_err());
     }
 
     #[test]
