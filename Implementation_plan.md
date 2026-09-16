@@ -435,6 +435,10 @@ Terminal verification is still pending.
   PowerShell state hook under `.kimi-code/hooks` and an idempotent, marked
   `config.toml` hook block with Kimi's session, working, blocked, idle, and
   release routes.
+
+- [x] Add the QoderCLI integration. Install/uninstall now manages the Windows
+  PowerShell session hook under `.qoder/hooks`, registers the Herdr-compatible
+  `SessionStart` matcher in `settings.json`, and preserves user hooks.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
