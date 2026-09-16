@@ -339,6 +339,9 @@ approved design changes it.
   the user config and take effect on the next client loop iteration.
 - [x] Match Herdr's default `Ctrl-b s` Settings binding; stop-pane remains
   available through the command palette and explicit `stop_pane` bindings.
+- [x] Accept Herdr's keybinding action names alongside Spindle's existing
+  aliases, including `goto`, workspace actions, pane focus/swap actions,
+  `copy_mode`, and `zoom`.
 - [x] Preserve terminal key modifiers in fallback input. Ctrl-C and modified
   cursor keys now reach the PTY as control/CSI sequences instead of losing
   their modifiers.

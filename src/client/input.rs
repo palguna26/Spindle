@@ -307,6 +307,7 @@ fn action_name(name: &str) -> Option<Action> {
     Some(match name {
         "detach" => Action::Detach,
         "new_tab" => Action::NewTab,
+        "new_workspace" => Action::CreateWorkspace,
         "new_pane" => Action::NewPane,
         "close_pane" => Action::ClosePane,
         "close_tab" => Action::CloseTab,
@@ -320,25 +321,26 @@ fn action_name(name: &str) -> Option<Action> {
         "next_workspace" => Action::NextWorkspace,
         "workspace_picker" => Action::WorkspacePicker,
         "session_navigator" => Action::SessionNavigator,
+        "goto" => Action::SessionNavigator,
         "stop_pane" => Action::StopFocusedPane,
         "restart_pane" => Action::RestartFocusedPane,
         "edit_scrollback" => Action::EditScrollback,
         "resize_mode" => Action::EnterResizeMode,
         "focus_next" => Action::FocusNext,
         "focus_previous" => Action::FocusPrevious,
-        "focus_left" => Action::FocusLeft,
-        "focus_down" => Action::FocusDown,
-        "focus_up" => Action::FocusUp,
-        "focus_right" => Action::FocusRight,
-        "swap_left" => Action::SwapLeft,
-        "swap_down" => Action::SwapDown,
-        "swap_up" => Action::SwapUp,
-        "swap_right" => Action::SwapRight,
+        "focus_left" | "focus_pane_left" => Action::FocusLeft,
+        "focus_down" | "focus_pane_down" => Action::FocusDown,
+        "focus_up" | "focus_pane_up" => Action::FocusUp,
+        "focus_right" | "focus_pane_right" => Action::FocusRight,
+        "swap_left" | "swap_pane_left" => Action::SwapLeft,
+        "swap_down" | "swap_pane_down" => Action::SwapDown,
+        "swap_up" | "swap_pane_up" => Action::SwapUp,
+        "swap_right" | "swap_pane_right" => Action::SwapRight,
         "split_horizontal" => Action::SplitHorizontal,
         "split_vertical" => Action::SplitVertical,
         "resize_smaller" => Action::ResizeSmaller,
         "resize_larger" => Action::ResizeLarger,
-        "toggle_zoom" => Action::ToggleZoom,
+        "toggle_zoom" | "zoom" => Action::ToggleZoom,
         "toggle_sidebar" => Action::ToggleSidebar,
         "toggle_right_click_passthrough" => Action::ToggleRightClickPassthrough,
         "help" => Action::Help,
@@ -346,10 +348,10 @@ fn action_name(name: &str) -> Option<Action> {
         "reload_config" => Action::ReloadConfig,
         "command_palette" => Action::CommandPalette,
         "open_notification_target" => Action::OpenNotificationTarget,
-        "enter_copy_mode" => Action::EnterCopyMode,
+        "enter_copy_mode" | "copy_mode" => Action::EnterCopyMode,
         "create_workspace" => Action::CreateWorkspace,
         "rename_workspace" => Action::RenameActiveWorkspace,
-        "delete_workspace" => Action::DeleteActiveWorkspace,
+        "delete_workspace" | "close_workspace" => Action::DeleteActiveWorkspace,
         _ => return None,
     })
 }
@@ -605,6 +607,63 @@ mod tests {
         assert_eq!(
             keymap.action(true, KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE)),
             Action::NewTab
+        );
+    }
+
+    #[test]
+    fn herdr_keybinding_action_names_are_accepted() {
+        let config = Config {
+            bindings: BTreeMap::from([
+                (String::from("goto"), vec![String::from("prefix+g")]),
+                (
+                    String::from("new_workspace"),
+                    vec![String::from("prefix+alt+n")],
+                ),
+                (
+                    String::from("focus_pane_right"),
+                    vec![String::from("prefix+l")],
+                ),
+                (
+                    String::from("swap_pane_left"),
+                    vec![String::from("prefix+shift+h")],
+                ),
+                (String::from("copy_mode"), vec![String::from("prefix+[")]),
+                (String::from("zoom"), vec![String::from("prefix+z")]),
+                (
+                    String::from("close_workspace"),
+                    vec![String::from("prefix+shift+d")],
+                ),
+            ]),
+            ..Config::default()
+        };
+        let keymap = Keymap::from_config(&config);
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
+            Action::SessionNavigator
+        );
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Char('n'), KeyModifiers::ALT)),
+            Action::CreateWorkspace
+        );
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE)),
+            Action::FocusRight
+        );
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Char('H'), KeyModifiers::SHIFT)),
+            Action::SwapLeft
+        );
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Char('['), KeyModifiers::NONE)),
+            Action::EnterCopyMode
+        );
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)),
+            Action::ToggleZoom
+        );
+        assert_eq!(
+            keymap.action(true, KeyEvent::new(KeyCode::Char('D'), KeyModifiers::SHIFT)),
+            Action::DeleteActiveWorkspace
         );
     }
 
