@@ -9,6 +9,8 @@ use std::collections::HashSet;
 
 use super::layout::{pane_rectangles, split_handles};
 
+const MIN_TAB_WIDTH: u16 = 12;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickTarget {
     MobileSwitcher,
@@ -174,7 +176,12 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups(
         if contains(new_tab_area(main.tabs), x, y) {
             return Some(ClickTarget::NewTab);
         }
-        let index = tab_index_at(tab_area, x, workspace.tabs.len())?;
+        let active_index = workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.tab_id == workspace.active_tab_id)
+            .unwrap_or(0);
+        let index = tab_index_at(tab_area, x, workspace.tabs.len(), active_index)?;
         return workspace
             .tabs
             .get(index)
@@ -317,7 +324,17 @@ pub fn tab_drop_target(
         return None;
     }
     let workspace = active_workspace(snapshot)?;
-    let target_index = tab_index_at(main.tabs, x, workspace.tabs.len())?;
+    let active_index = workspace
+        .tabs
+        .iter()
+        .position(|tab| tab.tab_id == workspace.active_tab_id)
+        .unwrap_or(0);
+    let target_index = tab_index_at(
+        tab_strip_area(main.tabs),
+        x,
+        workspace.tabs.len(),
+        active_index,
+    )?;
     let target = workspace.tabs.get(target_index)?;
     let source_index = workspace
         .tabs
@@ -1303,9 +1320,14 @@ pub(super) fn render_tabs(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, are
         return;
     }
     let tab_area = tab_strip_area(area);
-    let widths = equal_widths(tab_area.width, workspace.tabs.len());
+    let active_index = workspace
+        .tabs
+        .iter()
+        .position(|tab| tab.tab_id == workspace.active_tab_id)
+        .unwrap_or(0);
+    let (first_tab, widths) = tab_window(tab_area.width, workspace.tabs.len(), active_index);
     let mut x = tab_area.x;
-    for (tab, width) in workspace.tabs.iter().zip(widths) {
+    for (tab, width) in workspace.tabs.iter().skip(first_tab).zip(widths) {
         let rect = Rect::new(x, area.y, width, area.height);
         let selected = tab.tab_id == workspace.active_tab_id;
         let label = if tab.zoomed {
@@ -1374,10 +1396,15 @@ pub fn render_tab_drop_indicator(
     if workspace.tabs.is_empty() || area.height == 0 {
         return;
     }
-    let widths = equal_widths(area.width, workspace.tabs.len());
+    let active_index = workspace
+        .tabs
+        .iter()
+        .position(|tab| tab.tab_id == workspace.active_tab_id)
+        .unwrap_or(0);
+    let (first_tab, widths) = tab_window(area.width, workspace.tabs.len(), active_index);
     let x = widths
         .iter()
-        .take(insert_index.min(widths.len()))
+        .take(insert_index.saturating_sub(first_tab).min(widths.len()))
         .fold(area.x, |x, width| x.saturating_add(*width))
         .min(area.right().saturating_sub(1));
     if let Some(cell) = frame.buffer_mut().cell_mut((x, area.y)) {
@@ -1416,18 +1443,39 @@ fn equal_widths(total: u16, count: usize) -> Vec<u16> {
         .collect()
 }
 
-fn tab_index_at(area: Rect, x: u16, count: usize) -> Option<usize> {
+fn tab_index_at(area: Rect, x: u16, count: usize, active_index: usize) -> Option<usize> {
     if count == 0 || area.width == 0 {
         return None;
     }
-    let widths = equal_widths(area.width, count);
+    let (first_tab, widths) = tab_window(area.width, count, active_index);
     let offset = x.checked_sub(area.x)?;
     let mut edge = 0u16;
-    widths.iter().position(|width| {
-        let contains = offset >= edge && offset < edge.saturating_add(*width);
-        edge = edge.saturating_add(*width);
-        contains
-    })
+    widths
+        .iter()
+        .position(|width| {
+            let contains = offset >= edge && offset < edge.saturating_add(*width);
+            edge = edge.saturating_add(*width);
+            contains
+        })
+        .map(|index| first_tab + index)
+}
+
+fn tab_window(total: u16, count: usize, active_index: usize) -> (usize, Vec<u16>) {
+    if count == 0 || total == 0 {
+        return (0, Vec::new());
+    }
+    let desired = count
+        .saturating_mul(usize::from(MIN_TAB_WIDTH))
+        .saturating_add(count.saturating_sub(1));
+    if desired <= usize::from(total) {
+        return (0, equal_widths(total, count));
+    }
+    let visible = usize::from((total / MIN_TAB_WIDTH).max(1)).min(count);
+    let first = active_index
+        .min(count - 1)
+        .saturating_sub(visible / 2)
+        .min(count - visible);
+    (first, equal_widths(total, visible))
 }
 
 fn active_workspace(snapshot: &SessionSnapshot) -> Option<&WorkspaceView> {
@@ -1455,7 +1503,8 @@ mod tests {
         agent_state_priority, hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
         hit_test_with_sidebar_scroll_and_sort, hit_test_with_sidebar_scroll_and_sort_and_groups,
         render_sidebar, render_sidebar_with_collapsed, render_sidebar_with_scroll, render_tabs,
-        sidebar_rows_with_collapsed, tab_drop_target, workspace_drop_target, ClickTarget,
+        sidebar_rows_with_collapsed, tab_drop_target, tab_window, workspace_drop_target,
+        ClickTarget, MIN_TAB_WIDTH,
     };
     use crate::model::layout::{Direction as SplitDirection, LayoutNode};
     use crate::server::session::{SessionSnapshot, SpaceView, TabView, WorkspaceView};
@@ -1603,6 +1652,14 @@ mod tests {
             collapsed_tabs.y,
         )
         .is_some());
+    }
+
+    #[test]
+    fn narrow_tab_strip_keeps_the_active_tab_in_a_minimum_width_window() {
+        let (first, widths) = tab_window(30, 6, 4);
+        assert_eq!(first, 3);
+        assert_eq!(widths.len(), 2);
+        assert!(widths.iter().all(|width| *width >= MIN_TAB_WIDTH));
     }
 
     #[test]
