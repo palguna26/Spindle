@@ -127,18 +127,21 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups(
             return None;
         }
         let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
-        let max_scroll = rows.len().saturating_sub(usize::from(body.height));
+        let sidebar_config = crate::config::load().sidebar;
+        let visual_rows = sidebar_visual_rows(&rows, sidebar_collapsed, &sidebar_config);
+        let max_scroll = visual_rows.len().saturating_sub(usize::from(body.height));
         if max_scroll > 0 && body.width > 1 && x == body.right().saturating_sub(1) {
             return Some(ClickTarget::SidebarScroll(sidebar_scroll_for_track_row(
                 body,
-                rows.len(),
+                visual_rows.len(),
                 max_scroll,
                 y,
             )));
         }
-        let row =
+        let visual_row =
             usize::from(y.saturating_sub(body.y)).saturating_add(sidebar_scroll.min(max_scroll));
-        return rows.get(row).map(|row| match row {
+        let (row, _) = visual_rows.get(visual_row)?;
+        return rows.get(*row).map(|row| match row {
             SidebarRow::Space { space_id, .. } => ClickTarget::Space(space_id.to_string()),
             SidebarRow::Workspace {
                 space_id,
@@ -234,8 +237,12 @@ pub fn workspace_drop_target_with_groups(
         return None;
     }
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
-    let max_scroll = rows.len().saturating_sub(usize::from(body.height));
-    let row = usize::from(y.saturating_sub(body.y)).saturating_add(sidebar_scroll.min(max_scroll));
+    let sidebar_config = crate::config::load().sidebar;
+    let visual_rows = sidebar_visual_rows(&rows, false, &sidebar_config);
+    let max_scroll = visual_rows.len().saturating_sub(usize::from(body.height));
+    let visual_row =
+        usize::from(y.saturating_sub(body.y)).saturating_add(sidebar_scroll.min(max_scroll));
+    let row = visual_rows.get(visual_row).map(|(row, _)| *row)?;
     let SidebarRow::Workspace {
         space_id,
         workspace_id,
@@ -351,9 +358,9 @@ pub fn sidebar_scroll_max_with_sort_and_groups(
 ) -> usize {
     let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
     let body = sidebar_body(sidebar);
-    sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups)
-        .len()
-        .saturating_sub(usize::from(body.height))
+    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
+    let visual_rows = sidebar_visual_rows(&rows, collapsed, &crate::config::load().sidebar);
+    visual_rows.len().saturating_sub(usize::from(body.height))
 }
 
 pub fn sidebar_scroll_region(area: Rect, collapsed: bool, x: u16, y: u16) -> bool {
@@ -420,12 +427,10 @@ pub fn sidebar_scroll_thumb_grab_offset_with_sort_and_groups(
     {
         return None;
     }
-    let (thumb_top, thumb_height) = sidebar_scrollbar_thumb(
-        body,
-        scroll,
-        max_scroll,
-        sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups).len(),
-    )?;
+    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
+    let visual_rows = sidebar_visual_rows(&rows, collapsed, &crate::config::load().sidebar);
+    let (thumb_top, thumb_height) =
+        sidebar_scrollbar_thumb(body, scroll, max_scroll, visual_rows.len())?;
     let row = y.saturating_sub(body.y);
     (row >= thumb_top && row < thumb_top.saturating_add(thumb_height)).then_some(row - thumb_top)
 }
@@ -484,7 +489,8 @@ pub fn sidebar_scroll_offset_from_drag_row_with_sort_and_groups(
         agent_priority_sort,
         collapsed_groups,
     );
-    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups).len();
+    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
+    let rows = sidebar_visual_rows(&rows, collapsed, &crate::config::load().sidebar).len();
     let Some((_, thumb_height)) = sidebar_scrollbar_thumb(body, 0, max_scroll, rows) else {
         return 0;
     };
@@ -551,6 +557,28 @@ fn sidebar_body(area: Rect) -> Rect {
         area.width.saturating_sub(2),
         area.height.saturating_sub(2),
     )
+}
+
+fn sidebar_visual_rows(
+    rows: &[SidebarRow<'_>],
+    collapsed: bool,
+    config: &crate::config::SidebarConfig,
+) -> Vec<(usize, usize)> {
+    rows.iter()
+        .enumerate()
+        .flat_map(|(index, row)| {
+            let height = if collapsed {
+                1
+            } else {
+                match row {
+                    SidebarRow::Workspace { .. } => config.spaces.rows.len().max(1),
+                    SidebarRow::Agent { .. } => config.agents.rows.len().max(1),
+                    _ => 1,
+                }
+            };
+            (0..height).map(move |line| (index, line))
+        })
+        .collect()
 }
 
 enum SidebarRow<'a> {
@@ -821,21 +849,22 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
 ) {
     let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
     let body = sidebar_body(area);
+    let sidebar_config = crate::config::load().sidebar;
+    let visual_rows = sidebar_visual_rows(&rows, collapsed, &sidebar_config);
     let metadata_width = usize::from(body.width);
-    let show_branch = crate::config::load()
-        .sidebar
+    let show_branch = sidebar_config
         .spaces
         .rows
         .iter()
         .flatten()
         .any(|token| token == "branch");
-    let max_scroll = rows.len().saturating_sub(usize::from(body.height));
+    let max_scroll = visual_rows.len().saturating_sub(usize::from(body.height));
     let start = scroll.min(max_scroll);
-    let lines = rows
+    let lines = visual_rows
         .iter()
         .skip(start)
         .take(usize::from(body.height))
-        .map(|row| match row {
+        .map(|(row_index, line_index)| match &rows[*row_index] {
             SidebarRow::Space { space_id, name } => {
                 let active = *space_id == snapshot.active_space_id;
                 if collapsed {
@@ -864,6 +893,13 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                 indented,
                 last_child,
             } => {
+                if *line_index > 0 {
+                    let detail = branch
+                        .filter(|branch| !branch.is_empty())
+                        .map(|branch| format!("    · {branch}"))
+                        .unwrap_or_default();
+                    return Line::from(detail);
+                }
                 let previewed =
                     navigation_workspace.is_some_and(|(selected_space, selected_workspace)| {
                         selected_space == *space_id && selected_workspace == *workspace_id
@@ -975,8 +1011,23 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                 workspace_name,
                 ..
             } => {
-                let state = pane.agent_display_state();
                 let focused = snapshot.focused_pane_id.as_deref() == Some(&pane.pane_id);
+                if *line_index > 0 {
+                    let kind = pane.agent_display_name().unwrap_or("Agent");
+                    let label = pane
+                        .label
+                        .as_deref()
+                        .filter(|label| !label.is_empty())
+                        .map(|label| format!("{kind} · {label}"))
+                        .unwrap_or_else(|| kind.to_owned());
+                    let style = Style::default().fg(Color::Gray).bg(if focused {
+                        Color::DarkGray
+                    } else {
+                        Color::Reset
+                    });
+                    return Line::styled(format!("      {label}"), style);
+                }
+                let state = pane.agent_display_state();
                 let mut state_style = Style::default().fg(match state {
                     crate::detect::AgentDisplayState::Unknown => Color::DarkGray,
                     crate::detect::AgentDisplayState::Idle => Color::Green,
@@ -1082,7 +1133,7 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
         }
     }
     if max_scroll > 0 && body.width > 1 && body.height > 0 {
-        render_sidebar_scrollbar(frame, body, start, max_scroll, rows.len());
+        render_sidebar_scrollbar(frame, body, start, max_scroll, visual_rows.len());
     }
 }
 
@@ -1375,7 +1426,7 @@ mod tests {
             hit_test_with_sidebar_scroll_and_sort_and_groups(
                 &snapshot,
                 area,
-                click(body.x + 3, body.y + 2),
+                click(body.x + 3, body.y + 4),
                 false,
                 0,
                 false,
@@ -1394,7 +1445,7 @@ mod tests {
             Some(("space-1".into(), "workspace-1".into(), 0))
         );
         assert_eq!(
-            workspace_drop_target(&snapshot, area, 0, false, "workspace-1", 4, 3),
+            workspace_drop_target(&snapshot, area, 0, false, "workspace-1", 4, 4),
             Some(("space-1".into(), "workspace-2".into(), 2))
         );
     }
@@ -1414,11 +1465,11 @@ mod tests {
 
         let area = Rect::new(0, 0, 100, 30);
         assert_eq!(
-            workspace_drop_target(&snapshot, area, 0, false, "workspace-3", 4, 3),
+            workspace_drop_target(&snapshot, area, 0, false, "workspace-3", 4, 2),
             Some(("space-1".into(), "workspace-1".into(), 0))
         );
         assert_eq!(
-            workspace_drop_target(&snapshot, area, 0, false, "workspace-1", 4, 3),
+            workspace_drop_target(&snapshot, area, 0, false, "workspace-1", 4, 4),
             None,
             "dropping a root on its own linked child must be a no-op"
         );
@@ -1641,7 +1692,7 @@ mod tests {
             hit_test(
                 &snapshot,
                 area,
-                click(main.sidebar.x + 1, main.sidebar.y + 3)
+                click(main.sidebar.x + 1, main.sidebar.y + 4)
             ),
             Some(ClickTarget::Workspace {
                 space_id: "space-1".into(),
@@ -1749,7 +1800,7 @@ mod tests {
         let main = super::super::layout::main_areas_with_sidebar(area, false);
         let body = super::sidebar_body(main.sidebar);
         let max_scroll = super::sidebar_scroll_max(&snapshot, area, false);
-        assert_eq!(max_scroll, 6);
+        assert_eq!(max_scroll, 16);
         assert_eq!(
             hit_test_with_sidebar_scroll(
                 &snapshot,
@@ -1758,19 +1809,19 @@ mod tests {
                 false,
                 0,
             ),
-            Some(ClickTarget::SidebarScroll(2))
+            Some(ClickTarget::SidebarScroll(8))
         );
         let track_x = body.right() - 1;
         assert_eq!(
-            super::sidebar_scroll_thumb_grab_offset(&snapshot, area, false, 0, track_x, body.y + 1),
-            Some(1)
+            super::sidebar_scroll_thumb_grab_offset(&snapshot, area, false, 0, track_x, body.y),
+            Some(0)
         );
         assert_eq!(
             super::sidebar_scroll_thumb_grab_offset(&snapshot, area, false, 0, track_x, body.y - 1,),
             None
         );
         assert_eq!(
-            super::sidebar_scroll_offset_from_drag_row(&snapshot, area, false, body.y + 1, 1,),
+            super::sidebar_scroll_offset_from_drag_row(&snapshot, area, false, body.y, 0,),
             0
         );
         assert_eq!(
@@ -1779,12 +1830,12 @@ mod tests {
                 area,
                 false,
                 body.bottom() - 1,
-                1,
+                0,
             ),
             max_scroll
         );
         assert_eq!(
-            hit_test_with_sidebar_scroll(&snapshot, area, click(body.x, body.y), false, 3),
+            hit_test_with_sidebar_scroll(&snapshot, area, click(body.x, body.y), false, 5),
             Some(ClickTarget::Workspace {
                 space_id: "space-1".into(),
                 workspace_id: "workspace-extra-0".into(),
@@ -1794,7 +1845,7 @@ mod tests {
         let backend = TestBackend::new(80, 8);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| render_sidebar_with_scroll(frame, &snapshot, main.sidebar, false, 6))
+            .draw(|frame| render_sidebar_with_scroll(frame, &snapshot, main.sidebar, false, 16))
             .unwrap();
         let content: String = terminal
             .backend()
@@ -1922,11 +1973,11 @@ mod tests {
             .unwrap();
         let buffer = terminal.backend().buffer();
         assert_eq!(
-            buffer.cell((sidebar.x + 8, sidebar.y + 5)).unwrap().bg,
+            buffer.cell((sidebar.x + 8, sidebar.y + 8)).unwrap().bg,
             ratatui::style::Color::DarkGray
         );
         assert_ne!(
-            buffer.cell((sidebar.x + 8, sidebar.y + 4)).unwrap().bg,
+            buffer.cell((sidebar.x + 8, sidebar.y + 7)).unwrap().bg,
             ratatui::style::Color::DarkGray
         );
     }
@@ -1944,7 +1995,7 @@ mod tests {
             hit_test_with_sidebar_scroll_and_sort(
                 &snapshot,
                 area,
-                click(sidebar.x + 3, sidebar.y + 5),
+                click(sidebar.x + 3, sidebar.y + 7),
                 false,
                 0,
                 true,
@@ -1960,7 +2011,7 @@ mod tests {
             hit_test_with_sidebar_scroll_and_sort(
                 &snapshot,
                 area,
-                click(sidebar.x + 3, sidebar.y + 6),
+                click(sidebar.x + 3, sidebar.y + 9),
                 false,
                 0,
                 true,
@@ -1976,7 +2027,7 @@ mod tests {
             hit_test_with_sidebar_scroll_and_sort(
                 &snapshot,
                 area,
-                click(sidebar.x + 3, sidebar.y + 4),
+                click(sidebar.x + 3, sidebar.y),
                 false,
                 0,
                 true,
@@ -2092,7 +2143,7 @@ mod tests {
         let area = Rect::new(0, 0, 100, 30);
         let sidebar = main_areas(area).sidebar;
         assert_eq!(
-            hit_test(&snapshot, area, click(sidebar.x + 3, sidebar.y + 4)),
+            hit_test(&snapshot, area, click(sidebar.x + 3, sidebar.y + 6)),
             Some(ClickTarget::Agent {
                 space_id: "space-1".into(),
                 workspace_id: "workspace-2".into(),
@@ -2134,7 +2185,7 @@ mod tests {
             hit_test(
                 &snapshot,
                 area,
-                right_click(main.sidebar.x + 1, main.sidebar.y + 3)
+                right_click(main.sidebar.x + 1, main.sidebar.y + 4)
             ),
             Some(ClickTarget::Workspace {
                 space_id: "space-1".into(),
