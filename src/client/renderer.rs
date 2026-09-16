@@ -249,7 +249,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
                 ),
                 pane_rect.rect,
             );
-            if config.pane_scrollbars {
+            if config.pane_scrollbars && !pane.alternate_screen {
                 let inner = pane_inner_area(pane_rect.rect, borders, true);
                 render_pane_scrollbar(
                     frame,
@@ -263,7 +263,11 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
                 && pane.cursor_visible
                 && snapshot.focused_pane_id.as_deref() == Some(&pane_rect.pane_id)
             {
-                let inner = pane_inner_area(pane_rect.rect, borders, config.pane_scrollbars);
+                let inner = pane_inner_area(
+                    pane_rect.rect,
+                    borders,
+                    config.pane_scrollbars && !pane.alternate_screen,
+                );
                 let (col, row) = pane.cursor;
                 if col < inner.width && row < inner.height {
                     host_cursor = Some((inner.x + col, inner.y + row));
@@ -402,7 +406,16 @@ pub(crate) fn render_selection_with_sidebar(
         config.pane_outer_borders,
         config.pane_gaps,
     );
-    let inner = pane_inner_area(pane.rect, borders, config.pane_scrollbars);
+    let alternate_screen = snapshot
+        .panes
+        .iter()
+        .find(|view| view.pane_id == pane.pane_id)
+        .is_some_and(|view| view.alternate_screen);
+    let inner = pane_inner_area(
+        pane.rect,
+        borders,
+        config.pane_scrollbars && !alternate_screen,
+    );
     let ((start_row, start_col), (end_row, end_col)) = selection.ordered();
     for row in start_row..=end_row {
         if row >= inner.height {
@@ -446,7 +459,16 @@ pub(crate) fn render_copy_mode(
         config.pane_outer_borders,
         config.pane_gaps,
     );
-    let inner = pane_inner_area(pane.rect, borders, config.pane_scrollbars);
+    let alternate_screen = snapshot
+        .panes
+        .iter()
+        .find(|view| view.pane_id == pane.pane_id)
+        .is_some_and(|view| view.alternate_screen);
+    let inner = pane_inner_area(
+        pane.rect,
+        borders,
+        config.pane_scrollbars && !alternate_screen,
+    );
     let selected = mode.selection.map(|selection| {
         if selection.anchor <= mode.cursor {
             (selection.anchor, mode.cursor, selection.kind)

@@ -151,7 +151,17 @@ pub(super) fn pane_mouse_target(
     pane_rects
         .iter()
         .find(|pane| {
-            let inner = pane_inner_area(pane, &pane_rects, &config);
+            let inner = pane_inner_area(
+                pane,
+                &pane_rects,
+                &config,
+                config.pane_scrollbars
+                    && !snapshot
+                        .panes
+                        .iter()
+                        .find(|view| view.pane_id == pane.pane_id)
+                        .is_some_and(|view| view.alternate_screen),
+            );
             mouse.column >= inner.x
                 && mouse.column < inner.right()
                 && mouse.row >= inner.y
@@ -184,7 +194,17 @@ pub(super) fn pane_terminal_area(
         super::renderer::pane_content_area_for_snapshot(snapshot, area, sidebar_collapsed);
     let panes = super::renderer::pane_rectangles(snapshot, pane_area);
     let pane = panes.iter().find(|pane| pane.pane_id == pane_id)?;
-    Some(pane_inner_area(pane, &panes, &config))
+    Some(pane_inner_area(
+        pane,
+        &panes,
+        &config,
+        config.pane_scrollbars
+            && !snapshot
+                .panes
+                .iter()
+                .find(|view| view.pane_id == pane_id)
+                .is_some_and(|view| view.alternate_screen),
+    ))
 }
 
 pub(super) fn terminal_coordinates(
@@ -255,14 +275,29 @@ pub(super) fn visible_web_url_at_point(
     let pane_rects = super::renderer::pane_rectangles(snapshot, pane_area);
     let config = crate::config::load();
     let pane_rect = pane_rects.iter().find(|pane| {
-        let inner = pane_inner_area(pane, &pane_rects, &config);
+        let inner = pane_inner_area(
+            pane,
+            &pane_rects,
+            &config,
+            config.pane_scrollbars
+                && !snapshot
+                    .panes
+                    .iter()
+                    .find(|view| view.pane_id == pane.pane_id)
+                    .is_some_and(|view| view.alternate_screen),
+        );
         column >= inner.x && column < inner.right() && row >= inner.y && row < inner.bottom()
     })?;
     let pane = snapshot
         .panes
         .iter()
         .find(|candidate| candidate.pane_id == pane_rect.pane_id)?;
-    let inner = pane_inner_area(pane_rect, &pane_rects, &config);
+    let inner = pane_inner_area(
+        pane_rect,
+        &pane_rects,
+        &config,
+        config.pane_scrollbars && !pane.alternate_screen,
+    );
     let inner_x = inner.x;
     let inner_y = inner.y;
     if let Some(link) = pane.hyperlinks.iter().find(|link| {
@@ -283,6 +318,7 @@ fn pane_inner_area(
     pane: &super::renderer::PaneRect,
     panes: &[super::renderer::PaneRect],
     config: &crate::config::Config,
+    scrollbars: bool,
 ) -> Rect {
     let borders = super::renderer::pane_borders_for_rect(
         pane.rect,
@@ -291,7 +327,7 @@ fn pane_inner_area(
         config.pane_outer_borders,
         config.pane_gaps,
     );
-    super::renderer::pane_inner_area(pane.rect, borders, config.pane_scrollbars)
+    super::renderer::pane_inner_area(pane.rect, borders, scrollbars)
 }
 
 pub(super) fn clear_mouse_capture(capture: &mut Option<PaneMouseCapture>, kind: MouseEventKind) {

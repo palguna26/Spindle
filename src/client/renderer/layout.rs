@@ -168,6 +168,11 @@ pub(crate) fn pane_sizes(snapshot: &SessionSnapshot, area: Rect) -> Vec<PaneSize
     panes
         .into_iter()
         .map(|pane| {
+            let alternate_screen = snapshot
+                .panes
+                .iter()
+                .find(|known| known.pane_id == pane.pane_id)
+                .is_some_and(|known| known.alternate_screen);
             let borders = pane_borders_for_rect(
                 pane.rect,
                 &pane_rectangles(snapshot, area),
@@ -175,8 +180,11 @@ pub(crate) fn pane_sizes(snapshot: &SessionSnapshot, area: Rect) -> Vec<PaneSize
                 config.pane_outer_borders,
                 config.pane_gaps,
             );
-            let (cols, rows) =
-                pane_inner_size_with_options(pane.rect, borders, config.pane_scrollbars);
+            let (cols, rows) = pane_inner_size_with_options(
+                pane.rect,
+                borders,
+                config.pane_scrollbars && !alternate_screen,
+            );
             PaneSize {
                 pane_id: pane.pane_id,
                 cols,
@@ -386,7 +394,7 @@ pub(super) fn split_areas(area: Rect, direction: SplitDirection, ratio: f32) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::{pane_borders_for_rect, PaneRect};
+    use super::{pane_borders_for_rect, pane_inner_size_with_options, PaneRect};
     use crate::config::PaneBorders;
     use ratatui::layout::Rect;
     use ratatui::widgets::Borders;
@@ -436,5 +444,18 @@ mod tests {
         assert!(!borders.contains(Borders::TOP));
         assert!(!borders.contains(Borders::BOTTOM));
         assert!(!borders.contains(Borders::RIGHT));
+    }
+
+    #[test]
+    fn alternate_screen_reclaims_scrollbar_column_like_herdr() {
+        let area = Rect::new(0, 0, 20, 8);
+        let borders = Borders::NONE;
+
+        let host_size = pane_inner_size_with_options(area, borders, true);
+        let alternate_size = pane_inner_size_with_options(area, borders, false);
+
+        assert_eq!(host_size.0, 19);
+        assert_eq!(alternate_size.0, 20);
+        assert_eq!(host_size.1, alternate_size.1);
     }
 }
