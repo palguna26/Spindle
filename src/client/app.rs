@@ -941,6 +941,11 @@ fn event_loop(
             continue;
         }
         if pressed == Action::ToggleSidebar {
+            if uses_mobile_navigation(terminal_size.0, config.mobile_width_threshold) {
+                navigator = Some(Navigator::new(&snapshot));
+                prefix_active = false;
+                continue;
+            }
             mouse_state.sidebar_collapsed = !mouse_state.sidebar_collapsed;
             mouse_state.selection = None;
             mouse_state.last_click = None;
@@ -1123,6 +1128,11 @@ fn event_loop(
                 }
             }
             Action::WorkspacePicker => {
+                if uses_mobile_navigation(terminal_size.0, config.mobile_width_threshold) {
+                    navigator = Some(Navigator::new(&snapshot));
+                    prefix_active = false;
+                    continue;
+                }
                 let active_space = snapshot
                     .spaces
                     .iter()
@@ -3579,6 +3589,10 @@ fn active_tab_id(snapshot: &SessionSnapshot) -> Option<String> {
     Some(workspace.active_tab_id.clone())
 }
 
+fn uses_mobile_navigation(terminal_width: u16, threshold: u16) -> bool {
+    terminal_width <= threshold
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -3588,9 +3602,9 @@ mod tests {
         move_workspace_selection, page_key_bytes, pane_mouse_target, pane_size,
         reconnect_requires_reattach, record_action_error, renderer, require_server_success,
         should_forward_pane_mouse, snapshot_has_focused_pane, startup_error_action,
-        visible_web_url_at_point, workspace_has_linked_children, workspace_id_by_name,
-        workspace_picker_key, CachedScrollbackView, ControlClient, PaneClick, PaneMouseCapture,
-        SplitDirection, SplitDrag, StartupErrorAction, WorkspacePickerKey,
+        uses_mobile_navigation, visible_web_url_at_point, workspace_has_linked_children,
+        workspace_id_by_name, workspace_picker_key, CachedScrollbackView, ControlClient, PaneClick,
+        PaneMouseCapture, SplitDirection, SplitDrag, StartupErrorAction, WorkspacePickerKey,
     };
     use crate::client::input::Keymap;
     use crate::config::Config;
@@ -3690,6 +3704,12 @@ mod tests {
         assert_eq!(page_key_bytes(KeyCode::PageDown), Some(b"\x1b[6~".to_vec()));
         assert_eq!(pane_size((120, 40)), (92, 36));
         assert_eq!(pane_size((0, 0)), (1, 1));
+    }
+
+    #[test]
+    fn mobile_navigation_replaces_hidden_sidebar_controls() {
+        assert!(uses_mobile_navigation(64, 64));
+        assert!(!uses_mobile_navigation(65, 64));
     }
 
     #[test]
