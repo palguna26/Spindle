@@ -385,7 +385,8 @@ approved design changes it.
   create/open/remove worktree actions remain. Worktree-backed workspaces now
   persist their linked-checkout state and the sidebar groups child checkouts
   under the main checkout, shows normal checkout branches, and uses a compact
-  branch cue for children.
+  branch cue for children. Workspace branch metadata also refreshes on the
+  Herdr-inspired 1.5-second cadence and emits `workspace.updated` events.
 - [ ] For behavior not included, record the concrete reason and an equivalent
   Spindle workflow; do not silently omit it.
 - [ ] Improve Windows-specific process launch, terminal input/output, resizing,

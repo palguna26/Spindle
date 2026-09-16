@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const GEOMETRY_LEASE: Duration = Duration::from_secs(1);
+const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(1500);
 const MAX_EVENT_HISTORY_BYTES: usize = 512 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -258,6 +259,7 @@ pub struct Session {
     event_bytes: usize,
     geometry_owner: Option<String>,
     geometry_owner_seen: Option<Instant>,
+    last_git_branch_refresh: Instant,
 }
 
 impl Default for Session {
@@ -304,6 +306,7 @@ impl Default for Session {
             event_bytes: 0,
             geometry_owner: None,
             geometry_owner_seen: None,
+            last_git_branch_refresh: Instant::now(),
         }
     }
 }
@@ -355,6 +358,7 @@ impl Session {
                     event_bytes: 0,
                     geometry_owner: None,
                     geometry_owner_seen: None,
+                    last_git_branch_refresh: Instant::now(),
                 })
             }
             Err(SnapshotError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -2890,6 +2894,7 @@ fn normalize_workspace_ids(snapshot: &mut SessionSnapshot) {
 
 impl Session {
     pub fn refresh_snapshot(&mut self) {
+        self.refresh_git_branches();
         for pane in &mut self.snapshot.panes {
             if let Some(current) = self.pane_manager.get(&pane.pane_id) {
                 pane.status = current.status.clone();
@@ -2950,6 +2955,34 @@ impl Session {
             }
         }
     }
+
+    fn refresh_git_branches(&mut self) {
+        let now = Instant::now();
+        if now.duration_since(self.last_git_branch_refresh) < GIT_BRANCH_REFRESH_INTERVAL {
+            return;
+        }
+        self.last_git_branch_refresh = now;
+
+        let mut changes = Vec::new();
+        for space in &mut self.snapshot.spaces {
+            for workspace in &mut space.workspaces {
+                let Some(path) = workspace.repository_path.as_deref() else {
+                    continue;
+                };
+                let branch = crate::server::git::branch(Path::new(path));
+                if workspace.branch != branch {
+                    workspace.branch = branch.clone();
+                    changes.push((workspace.workspace_id.clone(), branch));
+                }
+            }
+        }
+        for (workspace_id, branch) in changes {
+            self.record_event(
+                "workspace_updated",
+                serde_json::json!({ "workspace_id": workspace_id, "branch": branch }),
+            );
+        }
+    }
 }
 
 impl From<PaneManagerError> for String {
@@ -2964,7 +2997,7 @@ mod tests {
     use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
     use crate::pane::PaneEvent;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn active_layout_focus_ignores_transient_popup_focus() {
@@ -3325,6 +3358,28 @@ mod tests {
         let workspace = &session.snapshot().spaces[0].workspaces[0];
         assert_eq!(workspace.repository_path.as_deref(), Some("C:/repo"));
         assert_eq!(workspace.branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn git_branch_refresh_updates_workspace_and_records_event() {
+        let mut session = Session::default();
+        let workspace = &mut session.snapshot.spaces[0].workspaces[0];
+        workspace.repository_path = Some("C:/spindle/path-that-does-not-exist".into());
+        workspace.branch = Some("stale".into());
+        session.last_git_branch_refresh = Instant::now() - super::GIT_BRANCH_REFRESH_INTERVAL;
+
+        session.refresh_snapshot();
+
+        let workspace = &session.snapshot.spaces[0].workspaces[0];
+        assert_eq!(workspace.branch, None);
+        assert_eq!(
+            session.events.back().map(|event| event.event.as_str()),
+            Some("workspace_updated")
+        );
+        assert_eq!(
+            session.events.back().unwrap().payload["workspace_id"],
+            "workspace-1"
+        );
     }
 
     #[test]

@@ -88,6 +88,7 @@ fn event_hook_name(event: &Event<serde_json::Value>) -> Option<&'static str> {
         "tab_focused" => "tab.focused",
         "workspace_focused" => "workspace.focused",
         "workspace_created" => "workspace.created",
+        "workspace_updated" => "workspace.updated",
         "workspace_renamed" => "workspace.renamed",
         "workspace_closed" => "workspace.closed",
         "worktree_created" => "worktree.created",
@@ -337,6 +338,17 @@ mod tests {
             payload: serde_json::json!({ "pane_id": "pane-1", "label": "Shell" }),
         };
         assert_eq!(event_hook_name(&event), Some("pane.updated"));
+    }
+
+    #[test]
+    fn workspace_update_events_use_herdr_hook_names() {
+        let event = Event {
+            version: crate::protocol::PROTOCOL_VERSION,
+            sequence: 1,
+            event: "workspace_updated".into(),
+            payload: serde_json::json!({ "workspace_id": "workspace-1" }),
+        };
+        assert_eq!(event_hook_name(&event), Some("workspace.updated"));
     }
 
     #[test]
