@@ -916,23 +916,33 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
                     return Line::from("A ");
                 }
                 let kind = pane.agent_display_name().unwrap_or("Agent");
+                let summary = pane.tokens.get("summary").map(String::as_str);
                 let label = pane
                     .label
                     .as_deref()
                     .filter(|label| !label.is_empty())
                     .map(|label| format!("{kind} · {label}"))
                     .unwrap_or_else(|| kind.to_owned());
+                let label = match summary {
+                    Some(summary) => format!("{label} · {summary}"),
+                    None => label,
+                };
+                let state_label = pane.agent_display_state_label();
                 let context = if agent_priority_sort {
                     format!("{workspace_name}/{tab_name}")
                 } else {
                     tab_name.to_string()
                 };
-                Line::from(vec![
+                let mut spans = vec![
                     Span::raw("    "),
                     Span::styled(format!("{} ", state.sidebar_marker()), state_style),
                     Span::styled(label, label_style),
-                    Span::styled(format!(" · {context}"), tab_style),
-                ])
+                    Span::styled(format!(" · {state_label}"), state_style),
+                ];
+                if summary.is_none() {
+                    spans.push(Span::styled(format!(" · {context}"), tab_style));
+                }
+                Line::from(spans)
             }
             SidebarRow::AgentHeader => Line::from(vec![
                 Span::styled("  Agents", Style::default().add_modifier(Modifier::BOLD)),
@@ -1900,6 +1910,34 @@ mod tests {
         assert!(content.contains("priority"));
         assert!(content.contains("Agents"));
         assert!(content.find("OpenCode").unwrap() < content.find("Codex").unwrap());
+    }
+
+    #[test]
+    fn agent_sidebar_renders_custom_state_label_and_summary_token() {
+        let mut snapshot = sample_snapshot();
+        let mut pane = agent_pane("pane-1", "codex", "working");
+        pane.state_labels
+            .insert("working".into(), "Indexing".into());
+        pane.tokens.insert("summary".into(), "12 files".into());
+        snapshot.panes = vec![pane];
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let sidebar = main_areas(Rect::new(0, 0, 100, 30)).sidebar;
+        terminal
+            .draw(|frame| {
+                super::render_sidebar_with_scroll_and_sort(
+                    frame, &snapshot, sidebar, false, 0, false,
+                )
+            })
+            .unwrap();
+        let content = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(content.contains("12 files"));
     }
 
     #[test]
