@@ -1071,7 +1071,7 @@ impl Session {
             })
             .collect();
         self.record_event(
-            "workspace_moved",
+            "workspace_reordered",
             serde_json::json!({
                 "workspace_id": workspace_id,
                 "space_id": self.snapshot.spaces[space_index].space_id,
@@ -4815,7 +4815,7 @@ mod tests {
         assert_eq!(active.as_deref(), Some(second.as_str()));
         assert_eq!(result["moved"], true);
         assert!(session.events_since(0).iter().any(|event| {
-            event.event == "workspace_moved"
+            event.event == "workspace_reordered"
                 && event.payload["workspace_id"] == first
                 && event.payload["space_id"] == space_id
         }));

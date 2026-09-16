@@ -90,6 +90,7 @@ fn event_hook_name(event: &Event<serde_json::Value>) -> Option<&'static str> {
         "workspace_focused" => "workspace.focused",
         "workspace_created" => "workspace.created",
         "workspace_moved" => "workspace.moved",
+        "workspace_reordered" => "workspace.reordered",
         "workspace_updated" => "workspace.updated",
         "workspace_renamed" => "workspace.renamed",
         "workspace_closed" => "workspace.closed",
@@ -373,6 +374,17 @@ mod tests {
             payload: serde_json::json!({ "workspace_id": "workspace-1" }),
         };
         assert_eq!(event_hook_name(&event), Some("workspace.moved"));
+    }
+
+    #[test]
+    fn workspace_reorder_events_use_herdr_hook_names() {
+        let event = Event {
+            version: crate::protocol::PROTOCOL_VERSION,
+            sequence: 1,
+            event: "workspace_reordered".into(),
+            payload: serde_json::json!({ "workspace_ids": ["workspace-1"] }),
+        };
+        assert_eq!(event_hook_name(&event), Some("workspace.reordered"));
     }
 
     #[test]
