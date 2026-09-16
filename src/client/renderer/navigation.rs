@@ -906,6 +906,20 @@ mod tests {
         .unwrap()
     }
 
+    fn plain_pane(pane_id: &str) -> crate::server::session::PaneView {
+        serde_json::from_value(serde_json::json!({
+            "pane_id": pane_id,
+            "command": "powershell.exe",
+            "args": [],
+            "cwd": "C:/",
+            "status": "Running",
+            "scrollback_bytes": 0,
+            "agent": null,
+            "agent_state": null
+        }))
+        .unwrap()
+    }
+
     fn sample_snapshot() -> SessionSnapshot {
         SessionSnapshot {
             version: 1,
@@ -962,7 +976,7 @@ mod tests {
                 active_workspace_id: Some("workspace-2".into()),
             }],
             active_space_id: "space-1".into(),
-            panes: Vec::new(),
+            panes: vec![plain_pane("pane-1"), plain_pane("pane-2")],
             focused_pane_id: Some("pane-2".into()),
             popup_pane_id: None,
             popup_width: 0,
@@ -1542,6 +1556,9 @@ mod tests {
                 SplitDirection::Vertical
             };
             layout = layout.split(direction, 0.5, format!("pane-{number}"));
+        }
+        for number in 3..=8 {
+            snapshot.panes.push(plain_pane(&format!("pane-{number}")));
         }
         snapshot.spaces[0].workspaces[1].tabs[1].layout = Some(layout);
         let area = Rect::new(0, 0, 20, 6);

@@ -144,7 +144,10 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   extra parent-space row. The workspace preview accepts Herdr's `1`–`9` direct
   workspace selection keys and now cycles across all local spaces. Windows
   checks verified `Ctrl-b w`, direct `1` selection, `Ctrl-b g`,
-  search-to-workspace activation, and `Esc`. Live filter and collapsed-branch
+  search-to-workspace activation, and `Esc`. Navigate-mode up/down keys now
+  default to arrows and accept configurable `navigate_workspace_up` and
+  `navigate_workspace_down` bindings; the configured prefix also cancels the
+  preview. Live filter and collapsed-branch
   checks remain before marking parity complete.
 - [x] Keep space and workspace expansion markers open while navigator filtering
   exposes matching descendants, matching Herdr's filtered tree behavior.

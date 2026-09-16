@@ -71,6 +71,8 @@ struct Binding {
 pub struct Keymap {
     prefix: (KeyCode, KeyModifiers),
     bindings: Vec<Binding>,
+    navigate_workspace_up: (KeyCode, KeyModifiers),
+    navigate_workspace_down: (KeyCode, KeyModifiers),
 }
 
 impl Default for Keymap {
@@ -78,6 +80,8 @@ impl Default for Keymap {
         Self {
             prefix: (KeyCode::Char('b'), KeyModifiers::CONTROL),
             bindings: default_bindings(),
+            navigate_workspace_up: (KeyCode::Up, KeyModifiers::NONE),
+            navigate_workspace_down: (KeyCode::Down, KeyModifiers::NONE),
         }
     }
 }
@@ -89,6 +93,21 @@ impl Keymap {
             keymap.prefix = prefix;
         }
         for (name, values) in &config.bindings {
+            if matches!(
+                name.as_str(),
+                "navigate_workspace_up" | "navigate_workspace_down"
+            ) {
+                if let Some((code, modifiers, false)) =
+                    values.iter().find_map(|value| parse_binding(value))
+                {
+                    if name == "navigate_workspace_up" {
+                        keymap.navigate_workspace_up = (code, modifiers);
+                    } else {
+                        keymap.navigate_workspace_down = (code, modifiers);
+                    }
+                }
+                continue;
+            }
             let Some(action) = action_name(name) else {
                 continue;
             };
@@ -125,6 +144,16 @@ impl Keymap {
 
     pub fn is_prefix(&self, key: KeyEvent) -> bool {
         key.code == self.prefix.0 && key.modifiers == self.prefix.1
+    }
+
+    pub fn navigate_workspace_direction(&self, key: KeyEvent) -> Option<bool> {
+        if (key.code, key.modifiers) == self.navigate_workspace_up {
+            Some(false)
+        } else if (key.code, key.modifiers) == self.navigate_workspace_down {
+            Some(true)
+        } else {
+            None
+        }
     }
 
     pub fn action(&self, prefix_active: bool, key: KeyEvent) -> Action {

@@ -1,7 +1,7 @@
 use super::context_menu::{ContextMenu, ContextMenuAction, ContextMenuTarget};
 use super::copy_mode::{CopyMode, KeyResult};
 use super::global_menu::{Action as GlobalMenuAction, GlobalMenu, Outcome as GlobalMenuOutcome};
-use super::input::{is_prefix, Action, Keymap};
+use super::input::{Action, Keymap};
 use super::mouse::{
     clear_mouse_capture, pane_mouse_target, should_forward_pane_mouse, visible_web_url_at_point,
     CachedScrollbackView, MouseState, PaneClick, PaneMouseCapture, SplitDrag,
@@ -701,7 +701,7 @@ fn event_loop(
             continue;
         }
         if mouse_state.navigation_workspace.is_some() {
-            match workspace_picker_key(key) {
+            match workspace_picker_key(key, &keymap) {
                 WorkspacePickerKey::Cancel => mouse_state.navigation_workspace = None,
                 WorkspacePickerKey::Move(forward) => {
                     mouse_state.navigation_workspace = move_workspace_selection(
@@ -2514,13 +2514,11 @@ enum WorkspacePickerKey {
     Ignore,
 }
 
-fn workspace_picker_key(key: KeyEvent) -> WorkspacePickerKey {
-    if key.code == KeyCode::Esc || is_prefix(key) {
+fn workspace_picker_key(key: KeyEvent, keymap: &Keymap) -> WorkspacePickerKey {
+    if key.code == KeyCode::Esc || keymap.is_prefix(key) {
         WorkspacePickerKey::Cancel
-    } else if key.modifiers.is_empty() && key.code == KeyCode::Up {
-        WorkspacePickerKey::Move(false)
-    } else if key.modifiers.is_empty() && key.code == KeyCode::Down {
-        WorkspacePickerKey::Move(true)
+    } else if let Some(forward) = keymap.navigate_workspace_direction(key) {
+        WorkspacePickerKey::Move(forward)
     } else if key.modifiers.is_empty() && key.code == KeyCode::Enter {
         WorkspacePickerKey::Confirm
     } else if key.modifiers.is_empty() {
@@ -3314,12 +3312,15 @@ mod tests {
         ControlClient, PaneClick, PaneMouseCapture, SplitDirection, SplitDrag, StartupErrorAction,
         WorkspacePickerKey,
     };
+    use crate::client::input::Keymap;
+    use crate::config::Config;
     use crate::protocol::{ProtocolError, Response, PROTOCOL_VERSION};
     use crate::server::session::Session;
     use crossterm::event::{
         KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
     };
     use ratatui::layout::Rect;
+    use std::collections::BTreeMap;
     use std::time::{Duration, Instant};
 
     fn snapshot_with_mouse_pane() -> crate::server::session::SessionSnapshot {
@@ -3906,28 +3907,82 @@ mod tests {
             (KeyCode::Esc, WorkspacePickerKey::Cancel),
         ] {
             assert_eq!(
-                workspace_picker_key(KeyEvent::new(key, KeyModifiers::NONE)),
+                workspace_picker_key(KeyEvent::new(key, KeyModifiers::NONE), &Keymap::default()),
                 expected
             );
         }
         assert_eq!(
-            workspace_picker_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL,)),
+            workspace_picker_key(
+                KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL,),
+                &Keymap::default(),
+            ),
             WorkspacePickerKey::Cancel
         );
         assert_eq!(
-            workspace_picker_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE)),
+            workspace_picker_key(
+                KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE),
+                &Keymap::default(),
+            ),
             WorkspacePickerKey::Choose(0)
         );
         assert_eq!(
-            workspace_picker_key(KeyEvent::new(KeyCode::Char('9'), KeyModifiers::NONE)),
+            workspace_picker_key(
+                KeyEvent::new(KeyCode::Char('9'), KeyModifiers::NONE),
+                &Keymap::default(),
+            ),
             WorkspacePickerKey::Choose(8)
         );
         assert_eq!(
-            workspace_picker_key(KeyEvent::new(KeyCode::Char('0'), KeyModifiers::NONE)),
+            workspace_picker_key(
+                KeyEvent::new(KeyCode::Char('0'), KeyModifiers::NONE),
+                &Keymap::default(),
+            ),
             WorkspacePickerKey::Ignore
         );
         assert_eq!(
-            workspace_picker_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::CONTROL)),
+            workspace_picker_key(
+                KeyEvent::new(KeyCode::Char('1'), KeyModifiers::CONTROL),
+                &Keymap::default(),
+            ),
+            WorkspacePickerKey::Ignore
+        );
+    }
+
+    #[test]
+    fn workspace_picker_uses_configured_navigate_keys_and_prefix() {
+        let config = Config {
+            prefix: Some("ctrl+a".into()),
+            bindings: BTreeMap::from([
+                ("navigate_workspace_up".into(), vec!["k".into()]),
+                ("navigate_workspace_down".into(), vec!["j".into()]),
+            ]),
+            ..Config::default()
+        };
+        let keymap = Keymap::from_config(&config);
+
+        assert_eq!(
+            workspace_picker_key(
+                KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE),
+                &keymap,
+            ),
+            WorkspacePickerKey::Move(false)
+        );
+        assert_eq!(
+            workspace_picker_key(
+                KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE),
+                &keymap,
+            ),
+            WorkspacePickerKey::Move(true)
+        );
+        assert_eq!(
+            workspace_picker_key(
+                KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL),
+                &keymap,
+            ),
+            WorkspacePickerKey::Cancel
+        );
+        assert_eq!(
+            workspace_picker_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE), &keymap),
             WorkspacePickerKey::Ignore
         );
     }
