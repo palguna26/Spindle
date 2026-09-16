@@ -1875,7 +1875,7 @@ mod tests {
         let main = super::super::layout::main_areas_with_sidebar(area, false);
         let body = super::sidebar_body(main.sidebar);
         let max_scroll = super::sidebar_scroll_max(&snapshot, area, false);
-        assert_eq!(max_scroll, 16);
+        assert_eq!(max_scroll, 15);
         assert_eq!(
             hit_test_with_sidebar_scroll(
                 &snapshot,
@@ -1884,7 +1884,7 @@ mod tests {
                 false,
                 0,
             ),
-            Some(ClickTarget::SidebarScroll(8))
+            Some(ClickTarget::SidebarScroll(4))
         );
         let track_x = body.right() - 1;
         assert_eq!(
@@ -1920,7 +1920,7 @@ mod tests {
         let backend = TestBackend::new(80, 8);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| render_sidebar_with_scroll(frame, &snapshot, main.sidebar, false, 16))
+            .draw(|frame| render_sidebar_with_scroll(frame, &snapshot, main.sidebar, false, 15))
             .unwrap();
         let content: String = terminal
             .backend()

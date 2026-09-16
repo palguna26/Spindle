@@ -326,7 +326,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
             ),
             Span::raw(format!("  {name}  ↑/↓ choose  Enter open  Esc cancel")),
         ])
-    } else {
+    } else if !connected || panes.is_empty() {
         let focused = snapshot.focused_pane_id.as_deref().unwrap_or("none");
         Line::from(vec![
             Span::styled(" Spindle ", Style::default().fg(theme.accent)),
@@ -343,6 +343,8 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
             Span::raw(format!("  panes: {}", snapshot.panes.len())),
             Span::raw(format!("  {}", active_title(snapshot))),
         ])
+    } else {
+        return;
     };
     frame.render_widget(Paragraph::new(chrome), footer_area(frame.area()));
 }
@@ -1398,9 +1400,8 @@ mod tests {
             });
         let buffer = terminal.backend().buffer();
         let content: String = buffer.content().iter().map(|cell| cell.symbol()).collect();
-        assert!(content.contains("connected"));
-        assert!(content.contains("focused: pane-1"));
-        assert!(content.contains("panes: 1"));
+        assert!(!content.contains("focused: pane-1"));
+        assert!(!content.contains("panes: 1"));
         assert_eq!(buffer.cell((inner.x, inner.y)).unwrap().bg, Color::Cyan);
         assert_eq!(
             buffer.cell((inner.x + 3, inner.y)).unwrap().bg,

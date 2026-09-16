@@ -59,10 +59,7 @@ fn main_areas_with_sidebar_and_tab_count(
     sidebar_collapsed: bool,
     tab_count: usize,
 ) -> MainAreas {
-    let body = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .split(area)[0];
+    let body = area;
     let config = crate::config::load();
     if area.width <= config.mobile_width_threshold {
         let header_height = body.height.min(2);
@@ -412,7 +409,10 @@ pub(super) fn split_areas(area: Rect, direction: SplitDirection, ratio: f32) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::{pane_borders_for_rect, pane_inner_size_with_options, PaneRect};
+    use super::{
+        main_areas_with_sidebar_and_tab_count, pane_borders_for_rect, pane_inner_size_with_options,
+        PaneRect,
+    };
     use crate::config::PaneBorders;
     use ratatui::layout::Rect;
     use ratatui::widgets::Borders;
@@ -475,5 +475,13 @@ mod tests {
         assert_eq!(host_size.0, 19);
         assert_eq!(alternate_size.0, 20);
         assert_eq!(host_size.1, alternate_size.1);
+    }
+
+    #[test]
+    fn terminal_panes_use_the_full_height_like_herdr() {
+        let areas = main_areas_with_sidebar_and_tab_count(Rect::new(0, 0, 80, 24), false, 2);
+
+        assert_eq!(areas.panes.y, 1);
+        assert_eq!(areas.panes.height, 23);
     }
 }
