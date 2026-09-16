@@ -35,6 +35,8 @@ spindle          attach (and start when needed)
 spindle --session review  attach to a named project session
 spindle session list  list the project's named sessions
 spindle session attach review  attach to a named session
+spindle session stop review  stop a named session
+spindle session delete review  delete a named session
 spindle start    start the server
 spindle stop     stop the server
 spindle doctor   show server health and state paths
