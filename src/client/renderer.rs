@@ -2357,7 +2357,7 @@ mod tests {
         pane.display_title = Some("Review shell".into());
         assert!(pane_title_text(&pane).contains("Review shell"));
         assert_eq!(
-            pane_title_with_config(&pane, &crate::config::Config::default()).spans[0]
+            super::pane_title_with_config(&pane, &crate::config::Config::default()).spans[0]
                 .style
                 .fg,
             Some(Color::Rgb(249, 226, 175))
