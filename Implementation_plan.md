@@ -28,6 +28,10 @@ Latest structure milestone: agent lifecycle detection is separated into
 manager still owns pane I/O and delegates startup grace, idle confirmation,
 and process-exit confirmation to that module.
 
+Latest TUI milestone: the live-pane renderer now keeps the status chrome
+visible after panes are attached. This follows Herdr's explicit UI area
+handling in `src/ui/widgets.rs` and is covered by a connected-pane render test.
+
 Latest API milestone: `report_agent` and `release_agent` are available through
 the pane CLI and control protocol. Hook reports retain source and sequence
 authority so stale updates are ignored and process/screen polling cannot
