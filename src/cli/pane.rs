@@ -1912,7 +1912,7 @@ fn pane_resize_options(project: &Project, args: &[String]) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|report-agent-session|report-metadata|release-agent|wait-output|split|resize>");
+    println!("Usage: spindle pane <list|current|get|focus|neighbor|edges|layout|process-info|input|rename|stop|restart|zoom|close|send-text|send-keys|run|read|swap|move|report-agent|report-agent-session|report-metadata|release-agent|clear-agent-authority|wait-output|split|resize>");
     println!("  list [--workspace <id>]  list panes in a workspace");
     println!("  current [<id>]   show the focused or requested pane");
     println!("  get <id>         show a pane as JSON");
@@ -1946,6 +1946,7 @@ fn print_help() {
     println!("  report-agent-session <id> --source ID --agent LABEL (--agent-session-id ID|--agent-session-path PATH) [--seq N]  report session identity");
     println!("  report-metadata <id> --source ID [--display-agent LABEL|--clear-display-agent] [--title TEXT|--clear-title] [--state-label STATE=TEXT|--clear-state-labels] [--token KEY=VALUE|--clear-token KEY] [--ttl-ms N] [--seq N]  report display metadata");
     println!("  release-agent <id> --source ID --agent LABEL [--seq N]  release hook authority");
+    println!("  clear-agent-authority <id> [--source ID] [--seq N]  clear hook ownership");
     println!("  wait-output <id> (--match TEXT | --regex PATTERN) [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--raw]  wait for output");
     println!("  split <direction> [command args...] | [--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus|--no-focus]  split with a new pane");
     println!("  resize <id> <delta> | --direction left|right|up|down [--amount FLOAT] [--pane ID|--current]  resize the pane layout");
