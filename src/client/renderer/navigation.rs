@@ -223,11 +223,12 @@ pub fn workspace_drop_target(
 pub fn tab_drop_target(
     snapshot: &SessionSnapshot,
     area: Rect,
+    collapsed: bool,
     source_tab_id: &str,
     x: u16,
     y: u16,
 ) -> Option<(String, String, usize)> {
-    let main = super::layout::main_areas_with_sidebar(area, false);
+    let main = super::layout::main_areas_with_sidebar(area, collapsed);
     if !contains(main.tabs, x, y) {
         return None;
     }
@@ -936,7 +937,7 @@ fn contains(area: Rect, x: u16, y: u16) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::super::layout::main_areas;
+    use super::super::layout::{main_areas, main_areas_with_sidebar};
     use super::super::layout::{pane_rectangles, pane_sizes, split_areas, split_handles};
     use super::{
         agent_state_priority, hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
@@ -981,14 +982,25 @@ mod tests {
         let tabs = main_areas(area).tabs;
         let second_tab_x = tabs.x + tabs.width / 2 + tabs.width / 4;
         assert_eq!(
-            tab_drop_target(&snapshot, area, "tab-2", second_tab_x, tabs.y),
+            tab_drop_target(&snapshot, area, false, "tab-2", second_tab_x, tabs.y),
             Some(("workspace-2".into(), "tab-3".into(), 2))
         );
         let first_tab_x = tabs.x + tabs.width / 4;
         assert_eq!(
-            tab_drop_target(&snapshot, area, "tab-3", first_tab_x, tabs.y),
+            tab_drop_target(&snapshot, area, false, "tab-3", first_tab_x, tabs.y),
             Some(("workspace-2".into(), "tab-2".into(), 0))
         );
+        let collapsed_tabs = main_areas_with_sidebar(area, true).tabs;
+        let collapsed_second_x = collapsed_tabs.x + collapsed_tabs.width * 3 / 4;
+        assert!(tab_drop_target(
+            &snapshot,
+            area,
+            true,
+            "tab-2",
+            collapsed_second_x,
+            collapsed_tabs.y,
+        )
+        .is_some());
     }
 
     #[test]

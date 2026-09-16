@@ -1651,9 +1651,14 @@ fn handle_mouse(
     {
         let drag = mouse_state.tab_drag.take().expect("tab drag exists");
         if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
-            if let Some((workspace_id, target_tab_id, insert_index)) =
-                renderer::tab_drop_target(snapshot, area, &drag.tab_id, mouse.column, mouse.row)
-            {
+            if let Some((workspace_id, target_tab_id, insert_index)) = renderer::tab_drop_target(
+                snapshot,
+                area,
+                mouse_state.sidebar_collapsed,
+                &drag.tab_id,
+                mouse.column,
+                mouse.row,
+            ) {
                 if workspace_id == drag.workspace_id && target_tab_id != drag.tab_id {
                     request_action(
                         client,
