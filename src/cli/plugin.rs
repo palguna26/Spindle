@@ -570,6 +570,18 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         .unwrap_or(PopupSize::Cells(12))
         .resolve(terminal_size.1)
         .max(4);
+    let popup_width_spec = requested_width
+        .as_deref()
+        .map(PopupSize::parse_cli)
+        .transpose()
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, format!("--width {error}")))?
+        .or(pane.width);
+    let popup_height_spec = requested_height
+        .as_deref()
+        .map(PopupSize::parse_cli)
+        .transpose()
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, format!("--height {error}")))?
+        .or(pane.height);
     let Some(command) = pane.command.first() else {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -718,6 +730,8 @@ fn pane_open(args: &[String]) -> io::Result<()> {
         "rows": if placement == "popup" { popup_height.saturating_sub(2).max(4) } else { 24 },
         "popup": placement == "popup",
         "overlay": placement == "overlay",
+        "popup_width_spec": if placement == "popup" { popup_width_spec } else { None },
+        "popup_height_spec": if placement == "popup" { popup_height_spec } else { None },
     });
     let response = if placement == "split" {
         let mut split_payload = create_payload;

@@ -1687,6 +1687,8 @@ mod tests {
             popup_pane_id: None,
             popup_width: 0,
             popup_height: 0,
+            popup_width_spec: None,
+            popup_height_spec: None,
             overlay_pane_id: None,
             overlay_previous_focus: None,
             overlay_previous_zoomed: false,

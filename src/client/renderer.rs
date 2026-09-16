@@ -280,7 +280,13 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
     }
     if let Some(popup_id) = snapshot.popup_pane_id.as_deref() {
         if let Some(pane) = snapshot.panes.iter().find(|pane| pane.pane_id == popup_id) {
-            let popup = popup_rect(main.panes, snapshot.popup_width, snapshot.popup_height);
+            let popup = popup_rect_with_specs(
+                main.panes,
+                snapshot.popup_width,
+                snapshot.popup_height,
+                snapshot.popup_width_spec,
+                snapshot.popup_height_spec,
+            );
             frame.render_widget(Clear, popup);
             let border = Block::default()
                 .borders(Borders::ALL)
@@ -921,14 +927,24 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     }
 }
 
-pub(crate) fn popup_rect(area: Rect, width: u16, height: u16) -> Rect {
-    let width = if width == 0 {
+pub(crate) fn popup_rect_with_specs(
+    area: Rect,
+    width: u16,
+    height: u16,
+    width_spec: Option<crate::popup_size::PopupSize>,
+    height_spec: Option<crate::popup_size::PopupSize>,
+) -> Rect {
+    let width = if let Some(spec) = width_spec {
+        spec.resolve(area.width)
+    } else if width == 0 {
         (area.width / 2).max(4)
     } else {
         width
     }
     .min(area.width);
-    let height = if height == 0 {
+    let height = if let Some(spec) = height_spec {
+        spec.resolve(area.height)
+    } else if height == 0 {
         (area.height / 2).max(4)
     } else {
         height
@@ -1300,6 +1316,8 @@ mod tests {
             popup_pane_id: None,
             popup_width: 0,
             popup_height: 0,
+            popup_width_spec: None,
+            popup_height_spec: None,
             overlay_pane_id: None,
             overlay_previous_focus: None,
             overlay_previous_zoomed: false,

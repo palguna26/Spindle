@@ -30,6 +30,10 @@ pub struct CreatePaneRequest {
     pub popup: bool,
     #[serde(default)]
     pub overlay: bool,
+    #[serde(default)]
+    pub(crate) popup_width_spec: Option<crate::popup_size::PopupSize>,
+    #[serde(default)]
+    pub(crate) popup_height_spec: Option<crate::popup_size::PopupSize>,
 }
 
 #[derive(Debug)]
@@ -301,6 +305,10 @@ pub struct SessionSnapshot {
     #[serde(default)]
     pub popup_height: u16,
     #[serde(default)]
+    pub(crate) popup_width_spec: Option<crate::popup_size::PopupSize>,
+    #[serde(default)]
+    pub(crate) popup_height_spec: Option<crate::popup_size::PopupSize>,
+    #[serde(default)]
     pub overlay_pane_id: Option<String>,
     #[serde(default)]
     pub overlay_previous_focus: Option<String>,
@@ -376,6 +384,8 @@ impl Default for Session {
                 popup_pane_id: None,
                 popup_width: 0,
                 popup_height: 0,
+                popup_width_spec: None,
+                popup_height_spec: None,
                 overlay_pane_id: None,
                 overlay_previous_focus: None,
                 overlay_previous_zoomed: false,
@@ -406,6 +416,8 @@ impl Session {
                 let popup_pane_id = snapshot.popup_pane_id.take();
                 snapshot.popup_width = 0;
                 snapshot.popup_height = 0;
+                snapshot.popup_width_spec = None;
+                snapshot.popup_height_spec = None;
                 let overlay_pane_id = snapshot.overlay_pane_id.take();
                 snapshot.overlay_previous_focus = None;
                 snapshot.overlay_previous_zoomed = false;
@@ -778,6 +790,8 @@ impl Session {
             self.snapshot.popup_pane_id = Some(pane_id.clone());
             self.snapshot.popup_width = request.cols;
             self.snapshot.popup_height = request.rows;
+            self.snapshot.popup_width_spec = request.popup_width_spec;
+            self.snapshot.popup_height_spec = request.popup_height_spec;
         } else {
             let tab = self.active_tab_mut()?;
             let previous_zoomed = tab.zoomed;
@@ -2732,6 +2746,8 @@ impl Session {
         self.snapshot.popup_pane_id = None;
         self.snapshot.popup_width = 0;
         self.snapshot.popup_height = 0;
+        self.snapshot.popup_width_spec = None;
+        self.snapshot.popup_height_spec = None;
         self.sync_focus_to_active_tab()?;
         self.record_event("pane_closed", serde_json::json!({ "pane_id": pane_id }));
         Ok(serde_json::json!({ "pane_id": pane_id, "closed_popup": true }))
@@ -4095,6 +4111,8 @@ mod tests {
                 env: Default::default(),
                 popup: false,
                 overlay: false,
+                popup_width_spec: None,
+                popup_height_spec: None,
             })
             .unwrap()["pane_id"]
             .as_str()
@@ -4174,6 +4192,8 @@ mod tests {
             rows: 24,
             popup: false,
             overlay: false,
+            popup_width_spec: None,
+            popup_height_spec: None,
         });
 
         assert!(result.is_err(), "must try to create a replacement shell");

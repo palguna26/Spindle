@@ -125,10 +125,12 @@ pub(super) fn pane_mouse_target(
             .map(|capture| (capture.pane_id.clone(), capture.rect));
     }
     if let Some(popup_id) = snapshot.popup_pane_id.as_deref() {
-        let popup = super::renderer::popup_rect(
+        let popup = super::renderer::popup_rect_with_specs(
             super::renderer::pane_content_area_for_snapshot(snapshot, area, sidebar_collapsed),
             snapshot.popup_width,
             snapshot.popup_height,
+            snapshot.popup_width_spec,
+            snapshot.popup_height_spec,
         );
         let inner = Rect::new(
             popup.x.saturating_add(1),
@@ -178,10 +180,12 @@ pub(super) fn pane_terminal_area(
 ) -> Option<Rect> {
     let config = crate::config::load();
     if snapshot.popup_pane_id.as_deref() == Some(pane_id) {
-        let popup = super::renderer::popup_rect(
+        let popup = super::renderer::popup_rect_with_specs(
             super::renderer::pane_content_area_for_snapshot(snapshot, area, sidebar_collapsed),
             snapshot.popup_width,
             snapshot.popup_height,
+            snapshot.popup_width_spec,
+            snapshot.popup_height_spec,
         );
         return Some(Rect::new(
             popup.x.saturating_add(1),

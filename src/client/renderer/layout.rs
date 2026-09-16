@@ -165,7 +165,7 @@ pub(crate) fn pane_rectangles(snapshot: &SessionSnapshot, area: Rect) -> Vec<Pan
 pub(crate) fn pane_sizes(snapshot: &SessionSnapshot, area: Rect) -> Vec<PaneSize> {
     let panes = pane_rectangles(snapshot, area);
     let config = crate::config::load();
-    panes
+    let mut sizes = panes
         .into_iter()
         .map(|pane| {
             let alternate_screen = snapshot
@@ -191,7 +191,25 @@ pub(crate) fn pane_sizes(snapshot: &SessionSnapshot, area: Rect) -> Vec<PaneSize
                 rows,
             }
         })
-        .collect()
+        .collect::<Vec<_>>();
+    if let Some(popup_id) = snapshot.popup_pane_id.as_ref() {
+        let popup = super::popup_rect_with_specs(
+            area,
+            snapshot.popup_width,
+            snapshot.popup_height,
+            snapshot.popup_width_spec,
+            snapshot.popup_height_spec,
+        );
+        let inner = ratatui::widgets::Block::default()
+            .borders(ratatui::widgets::Borders::ALL)
+            .inner(popup);
+        sizes.push(PaneSize {
+            pane_id: popup_id.clone(),
+            cols: inner.width,
+            rows: inner.height,
+        });
+    }
+    sizes
 }
 
 pub(crate) fn split_handles(snapshot: &SessionSnapshot, area: Rect) -> Vec<SplitHandle> {
