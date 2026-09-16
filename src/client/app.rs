@@ -1442,7 +1442,7 @@ fn event_loop(
                 record_action_error(&mut action_error, "create workspace", result);
             }
             Action::RenameActiveWorkspace => {
-                rename_prompt = Some(RenamePrompt::new(RenameTarget::Workspace));
+                rename_prompt = Some(prompt_for_target(RenameTarget::Workspace, &snapshot));
             }
             Action::DeleteActiveWorkspace => {
                 rename_prompt = Some(RenamePrompt::new(RenameTarget::DeleteWorkspace));
@@ -1454,7 +1454,11 @@ fn event_loop(
             | Action::DeleteActiveSpace
             | Action::SwitchWorkspaceByName
             | Action::PluginAction
-            | Action::CustomCommand(_) => {}
+            | Action::CustomCommand(_) => {
+                if let Some(target) = rename_target(pressed) {
+                    rename_prompt = Some(prompt_for_target(target, &snapshot));
+                }
+            }
         }
         prefix_active = false;
     }
@@ -2601,7 +2605,36 @@ fn prompt_for_target(target: RenameTarget, snapshot: &SessionSnapshot) -> Rename
     if target == RenameTarget::CreateTab {
         RenamePrompt::new_tab(next_tab_name(snapshot))
     } else {
-        RenamePrompt::new(target)
+        let input = match target {
+            RenameTarget::Pane => snapshot
+                .focused_pane_id
+                .as_deref()
+                .and_then(|id| snapshot.panes.iter().find(|pane| pane.pane_id == id))
+                .and_then(|pane| pane.label.clone())
+                .unwrap_or_default(),
+            RenameTarget::Tab => {
+                let tab_id = active_tab_id(snapshot);
+                active_workspace(snapshot)
+                    .and_then(|workspace| {
+                        tab_id
+                            .as_deref()
+                            .and_then(|id| workspace.tabs.iter().find(|tab| tab.tab_id == id))
+                    })
+                    .map(|tab| tab.name.clone())
+                    .unwrap_or_default()
+            }
+            RenameTarget::Workspace => active_workspace(snapshot)
+                .map(|workspace| workspace.name.clone())
+                .unwrap_or_default(),
+            RenameTarget::Space => snapshot
+                .spaces
+                .iter()
+                .find(|space| space.space_id == snapshot.active_space_id)
+                .map(|space| space.name.clone())
+                .unwrap_or_default(),
+            _ => String::new(),
+        };
+        RenamePrompt::with_input(target, input, false)
     }
 }
 
@@ -3871,6 +3904,23 @@ mod tests {
         assert_eq!(
             rename_target(Action::NewTab),
             Some(super::RenameTarget::CreateTab)
+        );
+    }
+
+    #[test]
+    fn rename_prompts_start_with_the_current_herdr_labels() {
+        let snapshot = Session::default().snapshot().clone();
+        assert_eq!(
+            super::prompt_for_target(super::RenameTarget::Workspace, &snapshot).input,
+            "Current project"
+        );
+        assert_eq!(
+            super::prompt_for_target(super::RenameTarget::Tab, &snapshot).input,
+            "Main"
+        );
+        assert_eq!(
+            super::prompt_for_target(super::RenameTarget::CreateTab, &snapshot).input,
+            "2"
         );
     }
 

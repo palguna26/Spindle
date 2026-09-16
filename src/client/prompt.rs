@@ -28,18 +28,18 @@ pub struct RenamePrompt {
 
 impl RenamePrompt {
     pub fn new(target: RenameTarget) -> Self {
-        Self {
-            target,
-            input: String::new(),
-            replace_on_type: false,
-        }
+        Self::with_input(target, String::new(), false)
     }
 
     pub fn new_tab(default_name: String) -> Self {
+        Self::with_input(RenameTarget::CreateTab, default_name, true)
+    }
+
+    pub fn with_input(target: RenameTarget, input: String, replace_on_type: bool) -> Self {
         Self {
-            target: RenameTarget::CreateTab,
-            input: default_name,
-            replace_on_type: true,
+            target,
+            input,
+            replace_on_type,
         }
     }
 
