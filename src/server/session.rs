@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{Duration, Instant};
 
 const GEOMETRY_LEASE: Duration = Duration::from_secs(1);
@@ -116,6 +117,48 @@ fn default_rows() -> u16 {
     24
 }
 
+fn path_is_linked_worktree(path: &str) -> bool {
+    let Ok(output) = Command::new("git")
+        .args(["-C", path, "rev-parse", "--git-dir"])
+        .output()
+    else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let git_dir = String::from_utf8_lossy(&output.stdout).replace('\\', "/");
+    git_dir.trim().contains("/.git/worktrees/")
+}
+
+fn worktree_group_key(path: &str) -> Option<String> {
+    let output = Command::new("git")
+        .args(["-C", path, "rev-parse", "--git-common-dir"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let common_dir = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if common_dir.is_empty() {
+        return None;
+    }
+    let common_path = Path::new(&common_dir);
+    let common_path = if common_path.is_absolute() {
+        common_path.to_owned()
+    } else {
+        Path::new(path).join(common_path)
+    };
+    Some(
+        common_path
+            .canonicalize()
+            .unwrap_or(common_path)
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_ascii_lowercase(),
+    )
+}
+
 fn history_path(session_path: &Path) -> PathBuf {
     session_path
         .parent()
@@ -192,6 +235,10 @@ pub struct WorkspaceView {
     pub repository_path: Option<String>,
     #[serde(default)]
     pub branch: Option<String>,
+    #[serde(default)]
+    pub is_linked_worktree: bool,
+    #[serde(default)]
+    pub worktree_group: Option<String>,
     pub tabs: Vec<TabView>,
     pub active_tab_id: String,
 }
@@ -270,6 +317,8 @@ impl Default for Session {
                         name: "Current project".into(),
                         repository_path: None,
                         branch: None,
+                        is_linked_worktree: false,
+                        worktree_group: None,
                         tabs: vec![TabView {
                             tab_id: "tab-1".into(),
                             name: "Main".into(),
@@ -419,6 +468,14 @@ impl Session {
             if workspace.branch.is_none() {
                 workspace.branch = branch;
             }
+            workspace.is_linked_worktree = workspace
+                .repository_path
+                .as_deref()
+                .is_some_and(path_is_linked_worktree);
+            workspace.worktree_group = workspace
+                .repository_path
+                .as_deref()
+                .and_then(worktree_group_key);
         }
     }
 
@@ -760,11 +817,19 @@ impl Session {
             .find(|space| space.space_id == self.snapshot.active_space_id)
             .ok_or_else(|| "active space does not exist".to_string())?;
         let tab_id = format!("tab-{}-1", workspace_id);
+        let is_linked_worktree = repository_path
+            .as_deref()
+            .is_some_and(crate::server::session::path_is_linked_worktree);
+        let worktree_group = repository_path
+            .as_deref()
+            .and_then(crate::server::session::worktree_group_key);
         space.workspaces.push(WorkspaceView {
             workspace_id: workspace_id.clone(),
             name,
             repository_path,
             branch,
+            is_linked_worktree,
+            worktree_group,
             tabs: vec![TabView {
                 tab_id: tab_id.clone(),
                 name: "Main".into(),
@@ -801,6 +866,8 @@ impl Session {
                 name: "Current project".into(),
                 repository_path: None,
                 branch: None,
+                is_linked_worktree: false,
+                worktree_group: None,
                 tabs: vec![TabView {
                     tab_id: tab_id.clone(),
                     name: "Main".into(),
@@ -1369,6 +1436,8 @@ impl Session {
                 name: new_workspace_name,
                 repository_path: None,
                 branch: None,
+                is_linked_worktree: false,
+                worktree_group: None,
                 tabs: vec![TabView {
                     tab_id: tab_id.clone(),
                     name: new_tab_name,
@@ -1808,31 +1877,30 @@ impl Session {
         source_pane_id: &str,
         target_pane_id: &str,
     ) -> Result<Value, String> {
-        let locate = |session: &Session, pane_id: &str| {
-            session
-                .snapshot
-                .spaces
-                .iter()
-                .enumerate()
-                .find_map(|(space_index, space)| {
-                    space
-                        .workspaces
-                        .iter()
-                        .enumerate()
-                        .find_map(|(workspace_index, workspace)| {
-                            workspace
-                                .tabs
-                                .iter()
-                                .enumerate()
-                                .find_map(|(tab_index, tab)| {
-                                    tab.layout
-                                        .as_ref()
-                                        .filter(|layout| layout.pane_ids().contains(&pane_id))
-                                        .map(|_| (space_index, workspace_index, tab_index))
-                                })
-                        })
-                })
-        };
+        let locate =
+            |session: &Session, pane_id: &str| {
+                session
+                    .snapshot
+                    .spaces
+                    .iter()
+                    .enumerate()
+                    .find_map(|(space_index, space)| {
+                        space.workspaces.iter().enumerate().find_map(
+                            |(workspace_index, workspace)| {
+                                workspace
+                                    .tabs
+                                    .iter()
+                                    .enumerate()
+                                    .find_map(|(tab_index, tab)| {
+                                        tab.layout
+                                            .as_ref()
+                                            .filter(|layout| layout.pane_ids().contains(&pane_id))
+                                            .map(|_| (space_index, workspace_index, tab_index))
+                                    })
+                            },
+                        )
+                    })
+            };
         let source_location = locate(self, source_pane_id)
             .ok_or_else(|| format!("pane '{source_pane_id}' does not exist"))?;
         let target_location = locate(self, target_pane_id)
@@ -1851,7 +1919,8 @@ impl Session {
         self.snapshot.active_space_id = space_id;
         self.snapshot.spaces[space_index].active_workspace_id = Some(workspace_id);
         self.snapshot.spaces[space_index].workspaces[workspace_index].active_tab_id = tab_id;
-        let tab = &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
+        let tab =
+            &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
         let layout = tab
             .layout
             .as_mut()
@@ -1905,7 +1974,8 @@ impl Session {
         self.snapshot.active_space_id = space_id;
         self.snapshot.spaces[space_index].active_workspace_id = Some(workspace_id);
         self.snapshot.spaces[space_index].workspaces[workspace_index].active_tab_id = tab_id;
-        let tab = &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
+        let tab =
+            &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
         tab.focused_pane_id = Some(pane_id.into());
         tab.zoomed = !tab.zoomed;
         let zoomed = tab.zoomed;
@@ -2060,7 +2130,8 @@ impl Session {
         self.snapshot.active_space_id = space_id;
         self.snapshot.spaces[space_index].active_workspace_id = Some(workspace_id);
         self.snapshot.spaces[space_index].workspaces[workspace_index].active_tab_id = tab_id;
-        let tab = &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
+        let tab =
+            &mut self.snapshot.spaces[space_index].workspaces[workspace_index].tabs[tab_index];
         let layout = tab
             .layout
             .as_mut()
@@ -3471,7 +3542,10 @@ mod tests {
         session.rename_pane("pane-1", "Shell".into()).unwrap();
         assert_eq!(session.snapshot.panes[0].label.as_deref(), Some("Shell"));
         assert_eq!(
-            session.events_since(0).last().map(|event| event.event.as_str()),
+            session
+                .events_since(0)
+                .last()
+                .map(|event| event.event.as_str()),
             Some("pane_updated")
         );
         session.rename_pane("pane-1", " ".into()).unwrap();
@@ -3887,10 +3961,11 @@ mod tests {
         let mut session = Session::default();
         session.create_space("Other project".into()).unwrap();
         let tab = &mut session.snapshot.spaces[1].workspaces[0].tabs[0];
-        tab.layout = Some(
-            LayoutNode::pane("one")
-                .split(crate::model::layout::Direction::Horizontal, 0.5, "two"),
-        );
+        tab.layout = Some(LayoutNode::pane("one").split(
+            crate::model::layout::Direction::Horizontal,
+            0.5,
+            "two",
+        ));
         session.switch_space("space-1").unwrap();
 
         session.resize_pane("one", 0.1).unwrap();
@@ -3929,10 +4004,11 @@ mod tests {
         let mut session = Session::default();
         session.create_space("Other project".into()).unwrap();
         let tab = &mut session.snapshot.spaces[1].workspaces[0].tabs[0];
-        tab.layout = Some(
-            LayoutNode::pane("one")
-                .split(crate::model::layout::Direction::Horizontal, 0.5, "two"),
-        );
+        tab.layout = Some(LayoutNode::pane("one").split(
+            crate::model::layout::Direction::Horizontal,
+            0.5,
+            "two",
+        ));
         tab.focused_pane_id = Some("two".into());
         session.switch_space("space-1").unwrap();
 

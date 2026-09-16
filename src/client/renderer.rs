@@ -1091,6 +1091,8 @@ mod tests {
                     name: "Project".into(),
                     repository_path: None,
                     branch: None,
+                    is_linked_worktree: false,
+                    worktree_group: None,
                     tabs: vec![TabView {
                         tab_id: "tab-1".into(),
                         name: "Main".into(),

@@ -5,6 +5,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
+use std::collections::HashSet;
 
 use super::layout::{pane_rectangles, split_handles};
 
@@ -330,6 +331,10 @@ enum SidebarRow<'a> {
         space_id: &'a str,
         workspace_id: &'a str,
         name: &'a str,
+        branch: Option<&'a str>,
+        is_linked_worktree: bool,
+        indented: bool,
+        last_child: bool,
     },
     Agent {
         space_id: &'a str,
@@ -350,11 +355,51 @@ fn sidebar_rows(snapshot: &SessionSnapshot, agent_priority_sort: bool) -> Vec<Si
             space_id: &space.space_id,
             name: &space.name,
         });
+        let mut emitted_groups = HashSet::new();
+        let mut ordered_workspaces = Vec::new();
         for workspace in &space.workspaces {
+            let Some(group) = workspace.worktree_group.as_deref() else {
+                ordered_workspaces.push((workspace, false, false));
+                continue;
+            };
+            if !emitted_groups.insert(group) {
+                continue;
+            }
+            let members: Vec<_> = space
+                .workspaces
+                .iter()
+                .filter(|candidate| candidate.worktree_group.as_deref() == Some(group))
+                .collect();
+            let Some(parent) = members
+                .iter()
+                .find(|candidate| !candidate.is_linked_worktree)
+            else {
+                ordered_workspaces.push((workspace, false, false));
+                continue;
+            };
+            if members.len() < 2 {
+                ordered_workspaces.push((workspace, false, false));
+                continue;
+            }
+            ordered_workspaces.push((*parent, false, false));
+            let children: Vec<_> = members
+                .iter()
+                .filter(|candidate| candidate.workspace_id != parent.workspace_id)
+                .copied()
+                .collect();
+            for (index, child) in children.iter().enumerate() {
+                ordered_workspaces.push((*child, true, index + 1 == children.len()));
+            }
+        }
+        for (workspace, indented, last_child) in ordered_workspaces {
             rows.push(SidebarRow::Workspace {
                 space_id: &space.space_id,
                 workspace_id: &workspace.workspace_id,
                 name: &workspace.name,
+                branch: workspace.branch.as_deref(),
+                is_linked_worktree: workspace.is_linked_worktree,
+                indented,
+                last_child,
             });
             for tab in &workspace.tabs {
                 let pane_ids = tab
@@ -491,6 +536,10 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
                 space_id,
                 workspace_id,
                 name,
+                branch,
+                is_linked_worktree,
+                indented,
+                last_child,
             } => {
                 let previewed =
                     navigation_workspace.is_some_and(|(selected_space, selected_workspace)| {
@@ -513,9 +562,18 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
                     };
                 }
                 let preview_style = Style::default().fg(Color::White).bg(Color::DarkGray);
+                let indent = if *indented {
+                    if *last_child {
+                        "  └─ "
+                    } else {
+                        "  ├─ "
+                    }
+                } else {
+                    "  "
+                };
                 let mut spans = vec![
                     Span::styled(
-                        "  ",
+                        indent,
                         if previewed {
                             preview_style
                         } else {
@@ -537,8 +595,19 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation(
                             }),
                     ),
                 ];
+                let display_name = if *is_linked_worktree {
+                    format!(
+                        "↳ {}",
+                        branch
+                            .and_then(|branch| branch.strip_prefix("worktree/"))
+                            .or(*branch)
+                            .unwrap_or(name)
+                    )
+                } else {
+                    (*name).to_owned()
+                };
                 spans.push(Span::styled(
-                    (*name).to_owned(),
+                    display_name,
                     if previewed {
                         preview_style.add_modifier(Modifier::BOLD)
                     } else {
@@ -837,6 +906,8 @@ mod tests {
                         name: "Current project".into(),
                         repository_path: None,
                         branch: None,
+                        is_linked_worktree: false,
+                        worktree_group: None,
                         tabs: vec![TabView {
                             tab_id: "tab-1".into(),
                             name: "Main".into(),
@@ -851,6 +922,8 @@ mod tests {
                         name: "Docs".into(),
                         repository_path: None,
                         branch: None,
+                        is_linked_worktree: false,
+                        worktree_group: None,
                         tabs: vec![
                             TabView {
                                 tab_id: "tab-2".into(),
@@ -1165,6 +1238,30 @@ mod tests {
         assert!(content.contains("Current project"));
         assert!(content.contains("Docs"));
         assert!(content.contains("Activity"));
+    }
+
+    #[test]
+    fn sidebar_marks_linked_worktree_children() {
+        let mut snapshot = sample_snapshot();
+        snapshot.spaces[0].workspaces[0].worktree_group = Some("repo".into());
+        let workspace = &mut snapshot.spaces[0].workspaces[1];
+        workspace.branch = Some("worktree/feature".into());
+        workspace.is_linked_worktree = true;
+        workspace.worktree_group = Some("repo".into());
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let sidebar = main_areas(Rect::new(0, 0, 100, 30)).sidebar;
+        terminal
+            .draw(|frame| render_sidebar(frame, &snapshot, sidebar))
+            .unwrap();
+        let content = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(content.contains("└─ ● ↳ feature"));
     }
 
     #[test]
