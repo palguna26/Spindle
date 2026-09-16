@@ -259,7 +259,7 @@ fn print_help() {
     println!("  tab list        list tabs in the active workspace");
     println!("  tab create      create a tab in the active workspace");
     println!("  tab get/focus/move/rename/close  manage tabs by ID");
-    println!("  pane list/current/get/focus/neighbor/edges/layout/process-info/input/rename/stop/restart/zoom/close/send-text/send-keys/run/read/swap/move/wait-output/split/resize  manage panes");
+    println!("  pane list/current/get/focus/neighbor/edges/layout/process-info/input/rename/stop/restart/zoom/close/send-text/send-keys/run/read/swap/move/report-agent/report-agent-session/release-agent/wait-output/split/resize  manage panes");
     println!("  agent list/get/focus/start/wait/read/send-keys/prompt/rename <target>  inspect and control agents");
     println!("Options:");
     println!("  --help, -h       show this help");

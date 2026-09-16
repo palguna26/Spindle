@@ -45,6 +45,7 @@ fn help_forms_print_usage_without_project_setup() {
         let help = String::from_utf8(output.stdout).unwrap();
         assert!(help.contains("Usage: spindle"));
         assert!(help.contains("--version"));
+        assert!(help.contains("report-agent-session"));
         assert!(!root.join("local-app-data").exists());
         fs::remove_dir_all(root).unwrap();
     }
