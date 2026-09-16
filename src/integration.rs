@@ -25,7 +25,7 @@ impl Target {
 
     fn path(self) -> PathBuf {
         match self {
-            Self::Codex => home_dir().join(".codex").join("hooks.json"),
+            Self::Codex => home_dir().join(".codex").join("herdr-agent-state.ps1"),
             Self::Opencode => home_dir()
                 .join(".config")
                 .join("opencode")
@@ -133,10 +133,7 @@ mod tests {
 
     #[test]
     fn target_paths_match_agent_layouts() {
-        assert!(
-            Target::Codex.path().ends_with(".codex\\hooks.json")
-                || Target::Codex.path().ends_with(".codex/hooks.json")
-        );
+        assert!(Target::Codex.path().ends_with("herdr-agent-state.ps1"));
         assert!(Target::Opencode.path().ends_with("spindle-agent-state.js"));
     }
 }
