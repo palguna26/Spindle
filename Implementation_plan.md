@@ -448,6 +448,9 @@ approved design changes it.
   resize control operations; like Herdr, all are unset by default.
   Configured `last_pane` now remembers the previous focused pane across tabs and
   workspaces and focuses it when still available, matching Herdr's global target.
+  `[ui] right_click_passthrough_modifier` now accepts Herdr's empty/off,
+  ctrl/control, alt/option, cmd/command/super, meta, hyper, and combinations;
+  a matching right-click is forwarded to the pane with the modifier stripped.
   Narrow terminals now use Herdr's compact workspace/tab single-column mobile
   header; its `switch` control and the `Ctrl-b w`/`Ctrl-b b` navigation actions open a
   full-screen switcher with workspace, tab, create, search, and menu actions;
