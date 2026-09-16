@@ -73,6 +73,11 @@ enum Matcher {
     KimiCurrentApproval,
     KimiQuestion,
     KimiLegacyApproval,
+    MakiPermission,
+    MakiPlanComplete,
+    MakiStatusSpinner,
+    MakiStatusIdle,
+    MakiPromptIdle,
 }
 
 const CODEX_RULES: &[Rule] = &[
@@ -600,6 +605,39 @@ const KIMI_RULES: &[Rule] = &[
     },
 ];
 
+const MAKI_RULES: &[Rule] = &[
+    Rule {
+        priority: 980,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::MakiPermission,
+    },
+    Rule {
+        priority: 970,
+        state: AgentState::Blocked,
+        region: Region::WholeRecent,
+        matcher: Matcher::MakiPlanComplete,
+    },
+    Rule {
+        priority: 900,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(1),
+        matcher: Matcher::MakiStatusSpinner,
+    },
+    Rule {
+        priority: 850,
+        state: AgentState::Idle,
+        region: Region::BottomNonEmpty(1),
+        matcher: Matcher::MakiStatusIdle,
+    },
+    Rule {
+        priority: 840,
+        state: AgentState::Idle,
+        region: Region::BottomNonEmpty(3),
+        matcher: Matcher::MakiPromptIdle,
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -662,6 +700,10 @@ pub(crate) fn detect_kiro(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_kimi(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, KIMI_RULES)
+}
+
+pub(crate) fn detect_maki(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, MAKI_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -1043,6 +1085,38 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                     .iter()
                     .any(|signal| text.contains(signal))
         }
+        Matcher::MakiPermission => {
+            text.contains("permission required")
+                && (text.contains("y allow") && text.contains("n deny")
+                    || text.contains("confirm allow")
+                    || text.contains("confirm deny")
+                    || (text.contains("enter deny") && text.contains("esc cancel")))
+        }
+        Matcher::MakiPlanComplete => {
+            text.contains("plan complete")
+                && text.contains("enter confirm")
+                && (text.contains("space toggle parallel") || text.contains("edit plan"))
+        }
+        Matcher::MakiStatusSpinner => {
+            Regex::new(
+                r"(?i)^( (?:[\u{2800}-\u{28ff}]|\u{00e2}\u{00a0}[\u{2039}\u{2122}])){1,2} \[(BUILD|PLAN|BASH)\]",
+            )
+                .is_ok_and(|regex| regex.is_match(text))
+        }
+        Matcher::MakiStatusIdle => {
+            Regex::new(r"(?i)^ \[(BUILD|PLAN|BASH)\]")
+                .is_ok_and(|regex| regex.is_match(text))
+        }
+        Matcher::MakiPromptIdle => {
+            text.lines().any(|line| {
+                line.starts_with("❯ ") || line.starts_with("\u{00e2}\u{009d}\u{00af} ")
+            })
+                && !text.contains("queue another prompt")
+                && !Regex::new(
+                    r"^( (?:[\u{2800}-\u{28ff}]|\u{00e2}\u{00a0}[\u{2039}\u{2122}])){1,2} ",
+                )
+                    .is_ok_and(|regex| text.lines().any(|line| regex.is_match(line)))
+        }
     }
 }
 
@@ -1118,7 +1192,7 @@ mod tests {
     use super::{
         detect_amp, detect_antigravity, detect_cline, detect_codex, detect_copilot, detect_cursor,
         detect_devin, detect_droid, detect_gemini, detect_hermes, detect_kilo, detect_kimi,
-        detect_kiro, detect_opencode, detect_pi, detect_qoder, DetectionInput,
+        detect_kiro, detect_maki, detect_opencode, detect_pi, detect_qoder, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -1248,6 +1322,41 @@ mod tests {
             osc_title: "",
             _osc_progress: "",
         })
+    }
+
+    fn detect_maki_state(screen: &str) -> Option<AgentState> {
+        detect_maki(DetectionInput {
+            screen,
+            osc_title: "",
+            _osc_progress: "",
+        })
+    }
+
+    #[test]
+    fn maki_manifest_matches_herdr_rules() {
+        assert_eq!(
+            detect_maki_state("Permission required\nY allow\nN deny"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_maki_state("Plan complete\nEnter confirm\nEdit plan"),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_maki_state(" ⠋ [BUILD] status"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_maki_state(" ⠋ ⠙ [PLAN] status"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(detect_maki_state(" [BASH] status"), Some(AgentState::Idle));
+        assert_eq!(
+            detect_maki_state("Panel\n❯ Type here"),
+            Some(AgentState::Idle)
+        );
+        assert_eq!(detect_maki_state("Panel\n❯ Queue another prompt"), None);
+        assert_eq!(detect_maki_state("ordinary output"), None);
     }
 
     #[test]

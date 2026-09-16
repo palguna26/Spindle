@@ -15,9 +15,9 @@ use agents::{
     devin_is_working, devin_permission_required, gemini_permission_required, grok_state,
     hermes_is_idle, hermes_is_priority_working, hermes_is_working, hermes_permission_required,
     hermes_title_blocked, kilo_permission_required, kimi_is_working, kimi_permission_required,
-    kiro_is_idle, maki_state, muse_should_skip_state_update, muse_state,
-    opencode_interrupt_hint_working, opencode_permission_required, opencode_progress_bar_working,
-    pi_is_working, qodercli_is_working, qodercli_permission_required, qwen_state,
+    kiro_is_idle, muse_should_skip_state_update, muse_state, opencode_interrupt_hint_working,
+    opencode_permission_required, opencode_progress_bar_working, pi_is_working,
+    qodercli_is_working, qodercli_permission_required, qwen_state,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -299,6 +299,15 @@ pub(crate) fn detect_state_with_osc(
             return state;
         }
     }
+    if agent == AgentKind::Maki {
+        if let Some(state) = manifest::detect_maki(manifest::DetectionInput {
+            screen,
+            osc_title: title,
+            _osc_progress: osc_progress,
+        }) {
+            return state;
+        }
+    }
     let title_lower = title.to_ascii_lowercase();
     let recent = recent_nonempty_lines(screen, 20).to_ascii_lowercase();
     let bottom_fourteen = recent_nonempty_lines(screen, 14).to_ascii_lowercase();
@@ -314,7 +323,13 @@ pub(crate) fn detect_state_with_osc(
         return grok_state(screen, title, osc_progress);
     }
     if agent == AgentKind::Maki {
-        return maki_state(screen);
+        if let Some(state) = manifest::detect_maki(manifest::DetectionInput {
+            screen,
+            osc_title: title,
+            _osc_progress: osc_progress,
+        }) {
+            return state;
+        }
     }
     if agent == AgentKind::Muse {
         return muse_state(screen);
