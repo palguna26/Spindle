@@ -1728,6 +1728,7 @@ fn handle_mouse(
         if renderer::agent_sidebar_scroll_region(
             area,
             mouse_state.sidebar_collapsed,
+            mouse_state.sidebar_section_split,
             mouse.column,
             mouse.row,
         ) {
@@ -1737,6 +1738,7 @@ fn handle_mouse(
                 mouse_state.sidebar_collapsed,
                 mouse_state.agent_priority_sort,
                 &mouse_state.collapsed_worktree_groups,
+                mouse_state.sidebar_section_split,
             );
             mouse_state.agent_sidebar_scroll = if mouse.kind == MouseEventKind::ScrollUp {
                 mouse_state.agent_sidebar_scroll.saturating_sub(1)
@@ -1832,6 +1834,7 @@ fn handle_mouse(
                 &mouse_state.collapsed_worktree_groups,
                 mouse_state.tab_scroll,
                 mouse_state.agent_sidebar_scroll,
+                mouse_state.sidebar_section_split,
             );
             let agent_pane = if let Some(renderer::ClickTarget::Agent {
                 space_id,
@@ -1963,6 +1966,7 @@ fn handle_mouse(
             mouse.row,
             mouse_state.agent_priority_sort,
             &mouse_state.collapsed_worktree_groups,
+            mouse_state.sidebar_section_split,
         ) {
             mouse_state.agent_sidebar_scroll_drag = Some(grab_row_offset);
             return Ok(());
@@ -2012,6 +2016,7 @@ fn handle_mouse(
                 &mouse_state.collapsed_worktree_groups,
                 mouse_state.tab_scroll,
                 mouse_state.agent_sidebar_scroll,
+                mouse_state.sidebar_section_split,
             )
         {
             if let Some(workspace) = active_workspace(snapshot) {
@@ -2090,6 +2095,7 @@ fn handle_mouse(
             mouse_state.agent_sidebar_scroll_drag.unwrap_or_default(),
             mouse_state.agent_priority_sort,
             &mouse_state.collapsed_worktree_groups,
+            mouse_state.sidebar_section_split,
         );
         if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
             mouse_state.agent_sidebar_scroll_drag = None;
@@ -2312,6 +2318,7 @@ fn handle_mouse(
         &mouse_state.collapsed_worktree_groups,
         mouse_state.tab_scroll,
         mouse_state.agent_sidebar_scroll,
+        mouse_state.sidebar_section_split,
     ) else {
         return Ok(());
     };
