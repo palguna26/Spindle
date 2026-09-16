@@ -1656,10 +1656,6 @@ fn active_title(snapshot: &SessionSnapshot) -> String {
         .unwrap_or_else(|| "No active session".into())
 }
 
-fn pane_title(pane: &crate::server::session::PaneView) -> Line<'static> {
-    pane_title_with_config(pane, &crate::config::load())
-}
-
 fn pane_title_with_config(
     pane: &crate::server::session::PaneView,
     config: &crate::config::Config,
@@ -1741,10 +1737,9 @@ mod tests {
     use super::super::input::Keymap;
     use super::super::selection::TextSelection;
     use super::{
-        active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, popup_title,
-        render, render_action_error, render_help, render_onboarding, render_palette,
-        render_prefix_mode, render_selection, render_startup_error, render_with_connection,
-        status_color,
+        active_title, pane_content_area, pane_rectangles, pane_title_text, popup_title, render,
+        render_action_error, render_help, render_onboarding, render_palette, render_prefix_mode,
+        render_selection, render_startup_error, render_with_connection, status_color,
     };
     use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
@@ -2362,7 +2357,9 @@ mod tests {
         pane.display_title = Some("Review shell".into());
         assert!(pane_title_text(&pane).contains("Review shell"));
         assert_eq!(
-            pane_title(&pane).spans[0].style.fg,
+            pane_title_with_config(&pane, &crate::config::Config::default()).spans[0]
+                .style
+                .fg,
             Some(Color::Rgb(249, 226, 175))
         );
         pane.agent_state = Some(crate::detect::AgentState::Idle);
