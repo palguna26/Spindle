@@ -140,7 +140,9 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups(
         }
         let visual_row =
             usize::from(y.saturating_sub(body.y)).saturating_add(sidebar_scroll.min(max_scroll));
-        let (row, _) = visual_rows.get(visual_row)?;
+        let (Some(row), _) = visual_rows.get(visual_row)? else {
+            return None;
+        };
         return rows.get(*row).map(|row| match row {
             SidebarRow::Space { space_id, .. } => ClickTarget::Space(space_id.to_string()),
             SidebarRow::Workspace {
@@ -242,7 +244,10 @@ pub fn workspace_drop_target_with_groups(
     let max_scroll = visual_rows.len().saturating_sub(usize::from(body.height));
     let visual_row =
         usize::from(y.saturating_sub(body.y)).saturating_add(sidebar_scroll.min(max_scroll));
-    let row = visual_rows.get(visual_row).map(|(row, _)| *row)?;
+    let (Some(row), _) = visual_rows.get(visual_row)? else {
+        return None;
+    };
+    let row = *row;
     let SidebarRow::Workspace {
         space_id,
         workspace_id,
@@ -563,7 +568,7 @@ fn sidebar_visual_rows(
     rows: &[SidebarRow<'_>],
     collapsed: bool,
     config: &crate::config::SidebarConfig,
-) -> Vec<(usize, usize)> {
+) -> Vec<(Option<usize>, usize)> {
     rows.iter()
         .enumerate()
         .flat_map(|(index, row)| {
@@ -578,7 +583,18 @@ fn sidebar_visual_rows(
                     _ => 1,
                 }
             };
-            (0..height).map(move |line| (index, line))
+            let gap = if collapsed {
+                0
+            } else {
+                match row {
+                    SidebarRow::Workspace { .. } => config.spaces.row_gap,
+                    SidebarRow::Agent { .. } => config.agents.row_gap,
+                    _ => 0,
+                }
+            };
+            (0..height)
+                .map(move |line| (Some(index), line))
+                .chain((0..gap).map(|_| (None, 0)))
         })
         .collect()
 }
@@ -1003,122 +1019,127 @@ pub(super) fn render_sidebar_with_scroll_sort_and_navigation_and_groups(
         .iter()
         .skip(start)
         .take(usize::from(body.height))
-        .map(|(row_index, line_index)| match &rows[*row_index] {
-            SidebarRow::Space { space_id, name } => {
-                let active = *space_id == snapshot.active_space_id;
-                if collapsed {
-                    return Line::from(if active { "S " } else { "s " });
-                }
-                let marker = if active { "● " } else { "○ " };
-                Line::from(vec![
-                    Span::styled(
-                        marker,
-                        Style::default().fg(if active { Color::Cyan } else { Color::DarkGray }),
-                    ),
-                    Span::styled(
-                        (*name).to_owned(),
-                        Style::default().add_modifier(Modifier::BOLD),
-                    ),
-                ])
-            }
-            SidebarRow::Workspace {
-                space_id,
-                workspace_id,
-                name,
-                branch,
-                tokens,
-                agent_state,
-                is_linked_worktree,
-                indented,
-                last_child,
-            } => {
-                let previewed =
-                    navigation_workspace.is_some_and(|(selected_space, selected_workspace)| {
-                        selected_space == *space_id && selected_workspace == *workspace_id
-                    });
-                let space = snapshot
-                    .spaces
-                    .iter()
-                    .find(|space| space.space_id == *space_id);
-                let active = *space_id == snapshot.active_space_id
-                    && space.is_some_and(|space| {
-                        space.active_workspace_id.as_deref() == Some(*workspace_id)
-                    });
-                if collapsed {
-                    let line = if active { "W " } else { "w " };
-                    return if previewed {
-                        Line::styled(line, Style::default().fg(Color::Black).bg(Color::Cyan))
-                    } else {
-                        Line::from(line)
-                    };
-                }
-                let indent = if *indented {
-                    if *last_child {
-                        "  └─ "
-                    } else {
-                        "  ├─ "
+        .map(|(row_index, line_index)| {
+            let Some(row_index) = row_index else {
+                return Line::default();
+            };
+            match &rows[*row_index] {
+                SidebarRow::Space { space_id, name } => {
+                    let active = *space_id == snapshot.active_space_id;
+                    if collapsed {
+                        return Line::from(if active { "S " } else { "s " });
                     }
-                } else {
-                    "  "
-                };
-                let display_name = if *is_linked_worktree {
-                    format!(
-                        "↳ {}",
-                        branch
-                            .and_then(|branch| branch.strip_prefix("worktree/"))
-                            .or(*branch)
-                            .unwrap_or(name)
-                    )
-                } else {
-                    (*name).to_owned()
-                };
-                let row = sidebar_config
-                    .spaces
-                    .rows
-                    .get(*line_index)
-                    .cloned()
-                    .unwrap_or_default();
-                let line = render_space_token_row(
-                    &row,
-                    &display_name,
-                    branch.filter(|_| !*is_linked_worktree),
-                    *agent_state,
+                    let marker = if active { "● " } else { "○ " };
+                    Line::from(vec![
+                        Span::styled(
+                            marker,
+                            Style::default().fg(if active { Color::Cyan } else { Color::DarkGray }),
+                        ),
+                        Span::styled(
+                            (*name).to_owned(),
+                            Style::default().add_modifier(Modifier::BOLD),
+                        ),
+                    ])
+                }
+                SidebarRow::Workspace {
+                    space_id,
+                    workspace_id,
+                    name,
+                    branch,
                     tokens,
-                    active,
-                    indent,
-                );
-                let line = append_summary(line, tokens);
-                if previewed {
-                    line.style(Style::default().bg(Color::DarkGray))
-                } else {
-                    line
+                    agent_state,
+                    is_linked_worktree,
+                    indented,
+                    last_child,
+                } => {
+                    let previewed =
+                        navigation_workspace.is_some_and(|(selected_space, selected_workspace)| {
+                            selected_space == *space_id && selected_workspace == *workspace_id
+                        });
+                    let space = snapshot
+                        .spaces
+                        .iter()
+                        .find(|space| space.space_id == *space_id);
+                    let active = *space_id == snapshot.active_space_id
+                        && space.is_some_and(|space| {
+                            space.active_workspace_id.as_deref() == Some(*workspace_id)
+                        });
+                    if collapsed {
+                        let line = if active { "W " } else { "w " };
+                        return if previewed {
+                            Line::styled(line, Style::default().fg(Color::Black).bg(Color::Cyan))
+                        } else {
+                            Line::from(line)
+                        };
+                    }
+                    let indent = if *indented {
+                        if *last_child {
+                            "  └─ "
+                        } else {
+                            "  ├─ "
+                        }
+                    } else {
+                        "  "
+                    };
+                    let display_name = if *is_linked_worktree {
+                        format!(
+                            "↳ {}",
+                            branch
+                                .and_then(|branch| branch.strip_prefix("worktree/"))
+                                .or(*branch)
+                                .unwrap_or(name)
+                        )
+                    } else {
+                        (*name).to_owned()
+                    };
+                    let row = sidebar_config
+                        .spaces
+                        .rows
+                        .get(*line_index)
+                        .cloned()
+                        .unwrap_or_default();
+                    let line = render_space_token_row(
+                        &row,
+                        &display_name,
+                        branch.filter(|_| !*is_linked_worktree),
+                        *agent_state,
+                        tokens,
+                        active,
+                        indent,
+                    );
+                    let line = append_summary(line, tokens);
+                    if previewed {
+                        line.style(Style::default().bg(Color::DarkGray))
+                    } else {
+                        line
+                    }
                 }
-            }
-            SidebarRow::Agent {
-                pane,
-                tab_name,
-                workspace_name,
-                ..
-            } => {
-                let focused = snapshot.focused_pane_id.as_deref() == Some(&pane.pane_id);
-                if collapsed {
-                    return Line::from("A ");
+                SidebarRow::Agent {
+                    pane,
+                    tab_name,
+                    workspace_name,
+                    ..
+                } => {
+                    let focused = snapshot.focused_pane_id.as_deref() == Some(&pane.pane_id);
+                    if collapsed {
+                        return Line::from("A ");
+                    }
+                    let row = sidebar_config
+                        .agents
+                        .rows_for_agent(pane.agent)
+                        .get(*line_index)
+                        .cloned()
+                        .unwrap_or_default();
+                    append_summary(
+                        render_agent_token_row(&row, pane, tab_name, workspace_name, focused),
+                        &pane.tokens,
+                    )
                 }
-                let row = sidebar_config
-                    .agents
-                    .rows_for_agent(pane.agent)
-                    .get(*line_index)
-                    .cloned()
-                    .unwrap_or_default();
-                append_summary(
-                    render_agent_token_row(&row, pane, tab_name, workspace_name, focused),
-                    &pane.tokens,
-                )
+                SidebarRow::AgentHeader => Line::from(vec![
+                    Span::styled("  Agents", Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(" · priority", Style::default().fg(Color::DarkGray)),
+                ]),
             }
-            SidebarRow::AgentHeader => Line::from(vec![
-                Span::styled("  Agents", Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled(" · priority", Style::default().fg(Color::DarkGray)),
-            ]),
         })
         .collect::<Vec<_>>();
     frame.render_widget(
@@ -2203,6 +2224,17 @@ mod tests {
         assert!(content.contains("Current project"));
         assert!(content.contains("gpt-5"));
         assert!(content.contains("main"));
+    }
+
+    #[test]
+    fn sidebar_row_gaps_are_scrollable_but_not_clickable() {
+        let snapshot = sample_snapshot();
+        let rows = super::sidebar_rows_with_collapsed(&snapshot, false, &HashSet::new());
+        let mut config = crate::config::SidebarConfig::default();
+        config.spaces.row_gap = 2;
+        let visual = super::sidebar_visual_rows(&rows, false, &config);
+        assert!(visual.iter().any(|(row, _)| row.is_none()));
+        assert_eq!(visual.iter().filter(|(row, _)| row.is_none()).count(), 4);
     }
 
     #[test]
