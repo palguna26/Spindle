@@ -136,6 +136,16 @@ fn initial_sidebar_collapsed(
         .unwrap_or(config.sidebar_start_collapsed)
 }
 
+fn should_draw_host_cursor(mode: crate::config::HostCursorMode) -> bool {
+    match mode {
+        crate::config::HostCursorMode::Auto => {
+            crate::platform::should_draw_host_cursor_by_default()
+        }
+        crate::config::HostCursorMode::Native => false,
+        crate::config::HostCursorMode::Drawn => true,
+    }
+}
+
 fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     client: &ControlClient,
@@ -348,7 +358,8 @@ fn event_loop(
             .as_ref()
             .and_then(|pane_id| mouse_state.scroll_offsets.get(pane_id))
             .is_some_and(|offset| *offset > 0);
-        let show_host_cursor = mouse_state.copy_mode.is_none()
+        let show_host_cursor = should_draw_host_cursor(config.host_cursor)
+            && mouse_state.copy_mode.is_none()
             && !focused_pane_scrolled
             && mouse_state.selection.is_none()
             && !palette_open

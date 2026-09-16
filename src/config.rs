@@ -35,6 +35,16 @@ struct UiConfig {
     prompt_new_workspace_name: bool,
     copy_on_select: bool,
     mouse_capture: bool,
+    host_cursor: HostCursorMode,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum HostCursorMode {
+    #[default]
+    Auto,
+    Native,
+    Drawn,
 }
 
 impl Default for UiConfig {
@@ -49,6 +59,7 @@ impl Default for UiConfig {
             prompt_new_workspace_name: false,
             copy_on_select: true,
             mouse_capture: true,
+            host_cursor: HostCursorMode::Auto,
         }
     }
 }
@@ -161,6 +172,7 @@ pub struct Config {
     pub(crate) prompt_new_workspace_name: bool,
     pub(crate) copy_on_select: bool,
     pub(crate) mouse_capture: bool,
+    pub(crate) host_cursor: HostCursorMode,
 }
 
 impl Default for Config {
@@ -183,6 +195,7 @@ impl Default for Config {
             prompt_new_workspace_name: false,
             copy_on_select: true,
             mouse_capture: true,
+            host_cursor: HostCursorMode::Auto,
         }
     }
 }
@@ -247,6 +260,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
         copy_on_select: file.ui.copy_on_select,
         mouse_capture: file.ui.mouse_capture,
+        host_cursor: file.ui.host_cursor,
     }
 }
 
@@ -301,6 +315,7 @@ prompt_new_tab_name = true
 prompt_new_workspace_name = false
 copy_on_select = true
 mouse_capture = true
+host_cursor = "auto"
 "#
 }
 
@@ -380,7 +395,7 @@ fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> S
 
 #[cfg(test)]
 mod tests {
-    use super::{load_from, upsert_section_key, Config, NotificationDelivery};
+    use super::{load_from, upsert_section_key, Config, HostCursorMode, NotificationDelivery};
 
     #[test]
     fn loads_herdr_style_key_bindings() {
@@ -511,6 +526,16 @@ mod tests {
             std::env::temp_dir().join(format!("spindle-mouse-capture-{}.toml", std::process::id()));
         std::fs::write(&path, "[ui]\nmouse_capture = false\n").unwrap();
         assert!(!load_from(&path).mouse_capture);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn host_cursor_modes_match_herdr_names_and_default() {
+        assert_eq!(Config::default().host_cursor, HostCursorMode::Auto);
+        let path =
+            std::env::temp_dir().join(format!("spindle-host-cursor-{}.toml", std::process::id()));
+        std::fs::write(&path, "[ui]\nhost_cursor = \"drawn\"\n").unwrap();
+        assert_eq!(load_from(&path).host_cursor, HostCursorMode::Drawn);
         std::fs::remove_file(path).unwrap();
     }
 

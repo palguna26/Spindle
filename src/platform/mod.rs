@@ -25,3 +25,8 @@ pub(crate) fn play_notification_sound(_sound: NotificationSound) -> std::io::Res
 
 #[cfg(windows)]
 pub(crate) use windows::play_notification_sound;
+
+#[cfg(not(windows))]
+pub(crate) use fallback::should_draw_host_cursor_by_default;
+#[cfg(windows)]
+pub(crate) use windows::should_draw_host_cursor_by_default;

@@ -47,6 +47,10 @@ pub(crate) fn show_desktop_notification(title: &str, body: Option<&str>) -> io::
         })?
 }
 
+pub(crate) fn should_draw_host_cursor_by_default() -> bool {
+    true
+}
+
 fn show_on_thread(
     title: &str,
     body: &str,
