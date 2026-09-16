@@ -91,6 +91,12 @@ pub(super) fn run(args: &[String]) -> io::Result<()> {
         [command, target] if command == "uninstall" && target == "kilo" => {
             print_messages(crate::integration::uninstall_kilo()?)
         }
+        [command, target] if command == "install" && target == "hermes" => {
+            print_messages(crate::integration::install_hermes()?)
+        }
+        [command, target] if command == "uninstall" && target == "hermes" => {
+            print_messages(crate::integration::uninstall_hermes()?)
+        }
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -135,6 +141,8 @@ fn print_help() {
     eprintln!("       spindle integration uninstall grok");
     eprintln!("       spindle integration install kilo");
     eprintln!("       spindle integration uninstall kilo");
+    eprintln!("       spindle integration install hermes");
+    eprintln!("       spindle integration uninstall hermes");
 }
 
 fn print_messages(messages: Vec<String>) -> io::Result<()> {

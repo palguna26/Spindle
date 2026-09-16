@@ -29,6 +29,9 @@ const GROK_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const GROK_CONFIG_NAME: &str = "spindle.json";
 const KILO_PLUGIN_ASSET: &str = include_str!("integration/assets/kilo-agent-state.js");
 const KILO_PLUGIN_NAME: &str = "spindle-agent-state.js";
+const HERMES_PLUGIN_INIT: &str = include_str!("integration/assets/hermes/__init__.py");
+const HERMES_PLUGIN_MANIFEST: &str = include_str!("integration/assets/hermes/plugin.yaml");
+const HERMES_PLUGIN_NAME: &str = "spindle-agent-state";
 const CLAUDE_HOOK_ASSET: &str = include_str!("integration/assets/claude-agent-state.ps1");
 const CLAUDE_HOOK_NAME: &str = "spindle-agent-state.ps1";
 const PI_EXTENSION_ASSET: &str = include_str!("integration/assets/pi-agent-state.ts");
@@ -57,10 +60,11 @@ pub(crate) enum Target {
     Qwen,
     Grok,
     Kilo,
+    Hermes,
 }
 
 impl Target {
-    pub(crate) const ALL: [Self; 14] = [
+    pub(crate) const ALL: [Self; 15] = [
         Self::Pi,
         Self::Omp,
         Self::Claude,
@@ -75,6 +79,7 @@ impl Target {
         Self::Qwen,
         Self::Grok,
         Self::Kilo,
+        Self::Hermes,
     ];
 
     fn label(self) -> &'static str {
@@ -93,6 +98,7 @@ impl Target {
             Self::Qwen => "qwen",
             Self::Grok => "grok",
             Self::Kilo => "kilo",
+            Self::Hermes => "hermes",
         }
     }
 
@@ -120,6 +126,10 @@ impl Target {
             Self::Qwen => qwen_dir().join("hooks").join(QWEN_HOOK_NAME),
             Self::Grok => grok_dir().join("hooks").join(GROK_HOOK_NAME),
             Self::Kilo => kilo_dir().join("plugin").join(KILO_PLUGIN_NAME),
+            Self::Hermes => hermes_dir()
+                .join("plugins")
+                .join(HERMES_PLUGIN_NAME)
+                .join("__init__.py"),
         }
     }
 
@@ -691,6 +701,61 @@ pub(crate) fn uninstall_kilo() -> std::io::Result<Vec<String>> {
     )])
 }
 
+pub(crate) fn install_hermes() -> std::io::Result<Vec<String>> {
+    let dir = hermes_dir();
+    if !dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "hermes config directory not found at {}. install hermes agent first",
+            dir.display()
+        )));
+    }
+    let plugin_dir = dir.join("plugins").join(HERMES_PLUGIN_NAME);
+    std::fs::create_dir_all(&plugin_dir)?;
+    std::fs::write(plugin_dir.join("__init__.py"), HERMES_PLUGIN_INIT)?;
+    std::fs::write(plugin_dir.join("plugin.yaml"), HERMES_PLUGIN_MANIFEST)?;
+    let config_path = dir.join("config.yaml");
+    let existing = if config_path.is_file() {
+        std::fs::read_to_string(&config_path)?
+    } else {
+        String::new()
+    };
+    let updated = enable_hermes_plugin(&existing);
+    if updated != existing {
+        std::fs::write(&config_path, updated)?;
+    }
+    Ok(vec![
+        format!(
+            "installed hermes integration plugin to {}",
+            plugin_dir.display()
+        ),
+        format!("ensured hermes config at {}", config_path.display()),
+    ])
+}
+
+pub(crate) fn uninstall_hermes() -> std::io::Result<Vec<String>> {
+    let dir = hermes_dir();
+    let plugin_dir = dir.join("plugins").join(HERMES_PLUGIN_NAME);
+    let config_path = dir.join("config.yaml");
+    let removed = remove_dir_if_exists(&plugin_dir)?;
+    let mut changed = false;
+    if config_path.is_file() {
+        let existing = std::fs::read_to_string(&config_path)?;
+        let updated = disable_hermes_plugin(&existing);
+        changed = updated != existing;
+        if changed {
+            std::fs::write(&config_path, updated)?;
+        }
+    }
+    Ok(vec![format!(
+        "{} hermes integration",
+        if removed || changed {
+            "removed"
+        } else {
+            "did not find"
+        }
+    )])
+}
+
 pub(crate) fn install_opencode() -> std::io::Result<Vec<String>> {
     let dir = opencode_dir();
     if !dir.is_dir() {
@@ -1186,6 +1251,56 @@ fn kilo_dir() -> PathBuf {
                 .map(PathBuf::from)
         })
         .unwrap_or_else(|| home_dir().join(".config").join("kilo"))
+}
+
+fn hermes_dir() -> PathBuf {
+    env::var_os("HERMES_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            env::var_os("LOCALAPPDATA")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+                .map(|p| p.join("hermes"))
+                .unwrap_or_else(|| home_dir().join(".hermes"))
+        })
+}
+
+fn enable_hermes_plugin(content: &str) -> String {
+    if content
+        .lines()
+        .any(|line| line.trim() == "- spindle-agent-state")
+    {
+        return content.to_owned();
+    }
+    let mut result = content.trim_end_matches(['\r', '\n']).to_owned();
+    if !result.is_empty() {
+        result.push('\n');
+    }
+    result.push_str("plugins:\n  enabled:\n    - spindle-agent-state\n");
+    result
+}
+fn disable_hermes_plugin(content: &str) -> String {
+    let mut lines = content
+        .lines()
+        .filter(|line| line.trim() != "- spindle-agent-state")
+        .collect::<Vec<_>>();
+    while lines.last().is_some_and(|line| line.trim().is_empty()) {
+        lines.pop();
+    }
+    let mut result = lines.join("\n");
+    if content.ends_with('\n') && !result.is_empty() {
+        result.push('\n');
+    }
+    result
+}
+fn remove_dir_if_exists(path: &std::path::Path) -> std::io::Result<bool> {
+    if path.is_dir() {
+        std::fs::remove_dir_all(path)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 fn qwen_command(path: &std::path::Path) -> String {
@@ -1851,6 +1966,7 @@ mod tests {
         assert_eq!(Target::Qwen.label(), "qwen");
         assert_eq!(Target::Grok.label(), "grok");
         assert_eq!(Target::Kilo.label(), "kilo");
+        assert_eq!(Target::Hermes.label(), "hermes");
     }
 
     #[test]
@@ -1868,6 +1984,7 @@ mod tests {
         assert!(Target::Qwen.path().ends_with("spindle-agent-session.ps1"));
         assert!(Target::Grok.path().ends_with("spindle-agent-state.ps1"));
         assert!(Target::Kilo.path().ends_with("spindle-agent-state.js"));
+        assert!(Target::Hermes.path().ends_with("__init__.py"));
     }
 
     #[test]
