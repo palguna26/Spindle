@@ -1,8 +1,14 @@
 use std::io;
+use std::mem::{size_of, zeroed};
 use std::ptr::null_mut;
 use std::time::Duration;
 
 use windows_sys::Win32::System::Diagnostics::Debug::MessageBeep;
+use windows_sys::Win32::System::JobObjects::{
+    IsProcessInJob, JobObjectExtendedLimitInformation, QueryInformationJobObject,
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+};
+use windows_sys::Win32::System::Threading::GetCurrentProcess;
 use windows_sys::Win32::UI::Shell::{
     Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_TIP, NIIF_INFO, NIIF_NOSOUND, NIM_ADD, NIM_DELETE,
     NIM_MODIFY, NOTIFYICONDATAW,
@@ -14,7 +20,145 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use super::NotificationSound;
 
 pub(crate) fn launch_server_daemon(command: &mut std::process::Command) -> io::Result<u32> {
-    command.spawn().map(|child| child.id())
+    if !current_job_kills_processes_on_close()? {
+        return command.spawn().map(|child| child.id());
+    }
+    launch_server_daemon_with_wmi(command)
+}
+
+fn current_job_kills_processes_on_close() -> io::Result<bool> {
+    let mut in_job = 0;
+    if unsafe { IsProcessInJob(GetCurrentProcess(), null_mut(), &mut in_job) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if in_job == 0 {
+        return Ok(false);
+    }
+    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { zeroed() };
+    if unsafe {
+        QueryInformationJobObject(
+            null_mut(),
+            JobObjectExtendedLimitInformation,
+            &mut limits as *mut _ as *mut std::ffi::c_void,
+            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            null_mut(),
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(limits.BasicLimitInformation.LimitFlags & JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE != 0)
+}
+
+fn launch_server_daemon_with_wmi(command: &std::process::Command) -> io::Result<u32> {
+    #[allow(non_camel_case_types)]
+    #[derive(serde::Deserialize)]
+    struct Win32_Process;
+    #[derive(serde::Serialize)]
+    #[allow(non_camel_case_types)]
+    struct Win32_ProcessStartup {
+        #[serde(rename = "CreateFlags")]
+        create_flags: u32,
+        #[serde(rename = "EnvironmentVariables")]
+        environment_variables: Vec<String>,
+    }
+    #[derive(serde::Serialize)]
+    struct CreateInput {
+        #[serde(rename = "CommandLine")]
+        command_line: String,
+        #[serde(rename = "CurrentDirectory")]
+        current_directory: String,
+        #[serde(rename = "ProcessStartupInformation")]
+        process_startup_information: Win32_ProcessStartup,
+    }
+    #[derive(serde::Deserialize)]
+    struct CreateOutput {
+        #[serde(rename = "ProcessId")]
+        process_id: Option<u32>,
+        #[serde(rename = "ReturnValue")]
+        return_value: u32,
+    }
+    let current_directory = command
+        .get_current_dir()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let mut environment = std::collections::BTreeMap::<String, String>::new();
+    for (key, value) in std::env::vars() {
+        environment.insert(key, value);
+    }
+    for (key, value) in command.get_envs() {
+        let key = key.to_string_lossy().into_owned();
+        match value {
+            Some(value) => {
+                environment.insert(key, value.to_string_lossy().into_owned());
+            }
+            None => {
+                environment.remove(&key);
+            }
+        }
+    }
+    let input = CreateInput {
+        command_line: windows_command_line(command)?,
+        current_directory: current_directory.to_string_lossy().into_owned(),
+        process_startup_information: Win32_ProcessStartup {
+            create_flags: windows_sys::Win32::System::Threading::DETACHED_PROCESS,
+            environment_variables: environment
+                .into_iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect(),
+        },
+    };
+    let connection = wmi::WMIConnection::new()
+        .map_err(|error| io::Error::other(format!("failed to connect to WMI: {error}")))?;
+    let output: CreateOutput = connection
+        .exec_class_method::<Win32_Process, _>("Create", &input)
+        .map_err(|error| io::Error::other(format!("WMI process creation failed: {error}")))?;
+    if output.return_value != 0 {
+        return Err(io::Error::other(format!(
+            "WMI process creation returned error {}",
+            output.return_value
+        )));
+    }
+    output
+        .process_id
+        .ok_or_else(|| io::Error::other("WMI process creation returned no process id"))
+}
+
+fn windows_command_line(command: &std::process::Command) -> io::Result<String> {
+    std::iter::once(command.get_program())
+        .chain(command.get_args())
+        .map(|value| {
+            let value = value
+                .to_str()
+                .ok_or_else(|| io::Error::other("server command contains invalid Unicode"))?;
+            Ok(quote_windows_arg(value))
+        })
+        .collect::<io::Result<Vec<_>>>()
+        .map(|parts| parts.join(" "))
+}
+
+fn quote_windows_arg(value: &str) -> String {
+    if !value.is_empty() && !value.chars().any(|ch| " \t\"".contains(ch)) {
+        return value.to_owned();
+    }
+    let mut quoted = String::from("\"");
+    let mut slashes = 0;
+    for ch in value.chars() {
+        if ch == '\\' {
+            slashes += 1;
+        } else if ch == '"' {
+            quoted.push_str(&"\\".repeat(slashes * 2 + 1));
+            quoted.push(ch);
+            slashes = 0;
+        } else {
+            quoted.push_str(&"\\".repeat(slashes));
+            quoted.push(ch);
+            slashes = 0;
+        }
+    }
+    quoted.push_str(&"\\".repeat(slashes * 2));
+    quoted.push('"');
+    quoted
 }
 
 pub(crate) fn play_notification_sound(sound: NotificationSound) -> io::Result<bool> {
