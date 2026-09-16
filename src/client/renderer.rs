@@ -139,7 +139,7 @@ impl ThemePalette {
             .as_deref()
             .unwrap_or("catppuccin")
             .to_ascii_lowercase();
-        match name.as_str() {
+        let mut colors = match name.as_str() {
             "catppuccin" => (
                 Color::Rgb(166, 227, 161),
                 Color::Rgb(249, 226, 175),
@@ -238,7 +238,18 @@ impl ThemePalette {
                 Color::Rgb(102, 221, 204),
             ),
             _ => (Color::Green, Color::Yellow, Color::Red, Color::Cyan),
+        };
+        for (slot, value) in [
+            (&mut colors.0, config.theme_custom_green.as_deref()),
+            (&mut colors.1, config.theme_custom_yellow.as_deref()),
+            (&mut colors.2, config.theme_custom_red.as_deref()),
+            (&mut colors.3, config.theme_custom_teal.as_deref()),
+        ] {
+            if let Some(value) = value.and_then(parse_theme_color) {
+                *slot = value;
+            }
         }
+        colors
     }
 
     pub(super) fn pane_status_color(config: &crate::config::Config, status: &PaneStatus) -> Color {
@@ -1828,6 +1839,29 @@ mod tests {
                 &PaneStatus::Completed { exit_code: 0 }
             ),
             Color::Rgb(139, 233, 253)
+        );
+    }
+
+    #[test]
+    fn custom_semantic_status_colors_override_herdr_theme() {
+        let config = crate::config::Config {
+            theme_name: Some("dracula".into()),
+            theme_custom_green: Some("#010203".into()),
+            theme_custom_yellow: Some("#040506".into()),
+            theme_custom_red: Some("#070809".into()),
+            theme_custom_teal: Some("#0a0b0c".into()),
+            ..crate::config::Config::default()
+        };
+        assert_eq!(
+            super::ThemePalette::agent_status_color(
+                &config,
+                crate::detect::AgentDisplayState::Idle,
+            ),
+            Color::Rgb(1, 2, 3)
+        );
+        assert_eq!(
+            super::ThemePalette::pane_status_color(&config, &PaneStatus::Running),
+            Color::Rgb(4, 5, 6)
         );
     }
 

@@ -203,6 +203,10 @@ struct ThemeCustomConfig {
     overlay1: Option<String>,
     text: Option<String>,
     subtext0: Option<String>,
+    green: Option<String>,
+    yellow: Option<String>,
+    red: Option<String>,
+    teal: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -306,6 +310,10 @@ pub struct Config {
     pub(crate) theme_custom_overlay1: Option<String>,
     pub(crate) theme_custom_text: Option<String>,
     pub(crate) theme_custom_subtext0: Option<String>,
+    pub(crate) theme_custom_green: Option<String>,
+    pub(crate) theme_custom_yellow: Option<String>,
+    pub(crate) theme_custom_red: Option<String>,
+    pub(crate) theme_custom_teal: Option<String>,
     pub notifications_enabled: bool,
     pub(crate) notification_delivery: NotificationDelivery,
     pub(crate) notification_delay_seconds: u64,
@@ -353,6 +361,10 @@ impl Default for Config {
             theme_custom_overlay1: None,
             theme_custom_text: None,
             theme_custom_subtext0: None,
+            theme_custom_green: None,
+            theme_custom_yellow: None,
+            theme_custom_red: None,
+            theme_custom_teal: None,
             notifications_enabled: true,
             notification_delivery: NotificationDelivery::Herdr,
             notification_delay_seconds: 1,
@@ -444,6 +456,10 @@ pub fn load_from(path: &std::path::Path) -> Config {
         theme_custom_overlay1: file.theme.custom.overlay1,
         theme_custom_text: file.theme.custom.text,
         theme_custom_subtext0: file.theme.custom.subtext0,
+        theme_custom_green: file.theme.custom.green,
+        theme_custom_yellow: file.theme.custom.yellow,
+        theme_custom_red: file.theme.custom.red,
+        theme_custom_teal: file.theme.custom.teal,
         theme_name: file.theme.name,
         notifications_enabled: file.notifications.enabled,
         notification_delivery: file.notifications.delivery,
@@ -583,6 +599,12 @@ delete_workspace = "prefix+shift+d"
 
 [theme]
 name = "terminal"
+
+[theme.custom]
+# green = "rgb(166, 227, 161)"
+# yellow = "rgb(249, 226, 175)"
+# red = "rgb(243, 139, 168)"
+# teal = "rgb(148, 226, 213)"
 
 [notifications]
 enabled = true
@@ -810,7 +832,7 @@ mod tests {
         ));
         std::fs::write(
             &path,
-            "[theme.custom]\nsidebar_bg = \"#101112\"\nactive_row_bg = \"rgb(4, 5, 6)\"\nselection_bg = \"#070809\"\nsurface0 = \"#0a0b0c\"\noverlay0 = \"#0d0e0f\"\noverlay1 = \"#101112\"\ntext = \"#131415\"\nsubtext0 = \"#161718\"\n",
+            "[theme.custom]\nsidebar_bg = \"#101112\"\nactive_row_bg = \"rgb(4, 5, 6)\"\nselection_bg = \"#070809\"\nsurface0 = \"#0a0b0c\"\noverlay0 = \"#0d0e0f\"\noverlay1 = \"#101112\"\ntext = \"#131415\"\nsubtext0 = \"#161718\"\ngreen = \"#192021\"\nyellow = \"#222324\"\nred = \"#252627\"\nteal = \"#28292a\"\n",
         )
         .unwrap();
         let config = load_from(&path);
@@ -825,6 +847,10 @@ mod tests {
         assert_eq!(config.theme_custom_overlay1.as_deref(), Some("#101112"));
         assert_eq!(config.theme_custom_text.as_deref(), Some("#131415"));
         assert_eq!(config.theme_custom_subtext0.as_deref(), Some("#161718"));
+        assert_eq!(config.theme_custom_green.as_deref(), Some("#192021"));
+        assert_eq!(config.theme_custom_yellow.as_deref(), Some("#222324"));
+        assert_eq!(config.theme_custom_red.as_deref(), Some("#252627"));
+        assert_eq!(config.theme_custom_teal.as_deref(), Some("#28292a"));
         std::fs::remove_file(path).unwrap();
     }
 
