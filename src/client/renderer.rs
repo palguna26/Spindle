@@ -46,7 +46,7 @@ struct ThemePalette {
 
 impl ThemePalette {
     fn from_name(name: Option<&str>) -> Self {
-        match name.unwrap_or("terminal").to_ascii_lowercase().as_str() {
+        match name.unwrap_or("catppuccin").to_ascii_lowercase().as_str() {
             "catppuccin" => Self {
                 accent: Color::Rgb(203, 166, 247),
                 focused_border: Color::Rgb(245, 224, 220),
@@ -1266,6 +1266,14 @@ mod tests {
         assert_eq!(
             super::ThemePalette::from_name(Some("catppuccin-latte")).accent,
             Color::Rgb(136, 57, 239)
+        );
+    }
+
+    #[test]
+    fn missing_theme_uses_herdr_catppuccin_default() {
+        assert_eq!(
+            super::ThemePalette::from_name(None).accent,
+            Color::Rgb(203, 166, 247)
         );
     }
 

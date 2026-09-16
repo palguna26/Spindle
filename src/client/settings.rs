@@ -162,7 +162,7 @@ impl Settings {
 
 fn selected_for(section: Section, config: &crate::config::Config) -> usize {
     let value = match section {
-        Section::Theme => config.theme_name.as_deref().unwrap_or("terminal"),
+        Section::Theme => config.theme_name.as_deref().unwrap_or("catppuccin"),
         Section::Notifications => match config.notification_delivery {
             crate::config::NotificationDelivery::Off => "off",
             crate::config::NotificationDelivery::Herdr => "herdr",
