@@ -351,8 +351,8 @@ working, and idle rules. Qwen’s title, locale confirmation, dialog, cancel,
 OSC-progress, and composer rules are also covered. Claude’s live-turn,
 background-agent/MCP, transcript/model-picker, prompt-box, permission, and
 OSC title/progress rules are also covered.
-Other agent detectors remain on
-compatibility functions until migrated to the shared evaluator.
+Compatibility functions remain only as fallbacks for legacy layouts and
+terminal-encoding variants.
 
 Theme surface parity note: `[theme.custom] sidebar_bg` and `active_row_bg` now
 apply to the live sidebar background and focused/preview rows, following
