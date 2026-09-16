@@ -524,6 +524,10 @@ Reference areas: Herdr `src/main.rs`, `src/config/`, `src/terminal/`,
 Use the reference repository's user docs to confirm the behavior before each
 port.
 
+The bundled control schema now advertises the implemented `report_agent`,
+`report_agent_session`, and `release_agent` operations; the API schema test
+checks the session-report entry.
+
 ## Verification gates
 
 For every code commit:
