@@ -517,6 +517,17 @@ impl Session {
             .collect()
     }
 
+    pub fn record_worktree_event(&mut self, event: &str, payload: Value) -> Result<Value, String> {
+        if !matches!(
+            event,
+            "worktree_created" | "worktree_opened" | "worktree_removed"
+        ) {
+            return Err(format!("unsupported worktree event: {event}"));
+        }
+        self.record_event(event, payload);
+        Ok(serde_json::json!({ "event": event }))
+    }
+
     pub fn event_gap(&self, sequence: u64) -> bool {
         if self.snapshot.event_sequence <= sequence {
             return false;
@@ -4260,6 +4271,24 @@ mod tests {
         assert_eq!(session.events[1].sequence, 2);
         assert_eq!(session.events[2].event, "pane_agent_status_changed");
         assert_eq!(session.events[2].payload["agent_status"], "working");
+    }
+
+    #[test]
+    fn worktree_events_are_recorded_for_plugin_delivery() {
+        let mut session = Session::default();
+        session
+            .record_worktree_event(
+                "worktree_created",
+                serde_json::json!({
+                    "workspace_id": "workspace-2",
+                    "path": "C:/repo-feature",
+                    "branch": "feature",
+                }),
+            )
+            .unwrap();
+        assert_eq!(session.events.len(), 1);
+        assert_eq!(session.events[0].event, "worktree_created");
+        assert_eq!(session.events[0].payload["branch"], "feature");
     }
 
     #[test]

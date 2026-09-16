@@ -250,7 +250,7 @@ fn worktree_create(project: &Project, args: &[String]) -> io::Result<()> {
         &root,
         &["worktree", "add", "-b", &branch, &path_string, &base],
     )?;
-    let result = open_workspace(
+    let workspace_id = open_workspace(
         project,
         snapshot.as_ref(),
         &path,
@@ -258,10 +258,19 @@ fn worktree_create(project: &Project, args: &[String]) -> io::Result<()> {
         options.label.as_deref(),
         options.focus,
     );
-    if result.is_err() {
+    if workspace_id.is_err() {
         let _ = git_run_vec(&root, &["worktree", "remove", "--force", &path_string]);
     }
-    result
+    let workspace_id = workspace_id?;
+    record_worktree_event(
+        project,
+        "worktree_created",
+        &workspace_id,
+        &path,
+        Some(&branch),
+        false,
+        false,
+    )
 }
 
 fn worktree_open(project: &Project, args: &[String]) -> io::Result<()> {
@@ -278,13 +287,22 @@ fn worktree_open(project: &Project, args: &[String]) -> io::Result<()> {
                 || options.branch.as_deref() == record.branch.as_deref()
         })
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "worktree was not found"))?;
-    open_workspace(
+    let workspace_id = open_workspace(
         project,
         snapshot.as_ref(),
         Path::new(&record.path),
         record.branch.as_deref(),
         options.label.as_deref(),
         options.focus,
+    )?;
+    record_worktree_event(
+        project,
+        "worktree_opened",
+        &workspace_id,
+        Path::new(&record.path),
+        record.branch.as_deref(),
+        false,
+        false,
     )
 }
 
@@ -332,6 +350,15 @@ fn worktree_remove(project: &Project, args: &[String]) -> io::Result<()> {
                 .unwrap_or_else(|| "workspace removal failed".into()),
         ));
     }
+    record_worktree_event(
+        project,
+        "worktree_removed",
+        &workspace_id,
+        &path,
+        workspace.branch.as_deref(),
+        false,
+        options.force,
+    )?;
     println!("removed worktree: {}", path.display());
     Ok(())
 }
@@ -443,7 +470,7 @@ fn open_workspace(
     branch: Option<&str>,
     label: Option<&str>,
     focus: bool,
-) -> io::Result<()> {
+) -> io::Result<String> {
     if super::ping_server(project).is_err() {
         super::start_server(project)?;
     }
@@ -520,7 +547,46 @@ fn open_workspace(
         }))
         .map_err(io::Error::other)?
     );
-    Ok(())
+    response
+        .payload
+        .as_ref()
+        .and_then(|payload| payload.get("workspace_id"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| io::Error::other("server returned no workspace ID"))
+}
+
+fn record_worktree_event(
+    project: &Project,
+    event: &str,
+    workspace_id: &str,
+    path: &Path,
+    branch: Option<&str>,
+    already_open: bool,
+    forced: bool,
+) -> io::Result<()> {
+    let response = super::send_command_with_payload(
+        project,
+        "record_worktree_event",
+        serde_json::json!({
+            "event": event,
+            "workspace_id": workspace_id,
+            "path": path,
+            "branch": branch,
+            "already_open": already_open,
+            "forced": forced,
+        }),
+    )?;
+    if response.ok {
+        Ok(())
+    } else {
+        Err(io::Error::other(
+            response
+                .error
+                .map(|error| error.message)
+                .unwrap_or_else(|| "worktree event recording failed".into()),
+        ))
+    }
 }
 
 fn repo_name(root: &Path) -> String {

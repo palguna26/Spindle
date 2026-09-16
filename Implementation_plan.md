@@ -183,7 +183,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   enabled plugins now also run Herdr-style `[[startup]]` hooks once after the
   server endpoints are ready, with isolated failures and startup context /
   environment variables;
-  Herdr-style manifest event hooks now support `pane.created`, `pane.focused`,
+  Herdr-style manifest event hooks now support `worktree.created`,
+  `worktree.opened`, `worktree.removed`, `pane.created`, `pane.focused`,
   `pane.closed`, `pane.updated`, `pane.exited`, `pane.moved`, `pane.agent_detected`, `pane.agent_status_changed`, `layout.updated`, `tab.created`, `tab.focused`, `tab.closed`, `workspace.focused`, `workspace.created`, `workspace.renamed`, and `workspace.closed`, delivered from the server event history with the
   triggering event and active session context; other Herdr event kinds remain
   to be ported;

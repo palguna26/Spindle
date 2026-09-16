@@ -90,6 +90,9 @@ fn event_hook_name(event: &Event<serde_json::Value>) -> Option<&'static str> {
         "workspace_created" => "workspace.created",
         "workspace_renamed" => "workspace.renamed",
         "workspace_closed" => "workspace.closed",
+        "worktree_created" => "worktree.created",
+        "worktree_opened" => "worktree.opened",
+        "worktree_removed" => "worktree.removed",
         "pane_focused" => "pane.focused",
         "pane_moved" => "pane.moved",
         "pane_updated" => "pane.updated",
@@ -133,6 +136,9 @@ fn launch_event(
     context["source"] = serde_json::json!("event");
     context["event"] = serde_json::json!(hook_name);
     context["event_payload"] = event.payload.clone();
+    if hook_name.starts_with("worktree.") {
+        context["worktree"] = event.payload.clone();
+    }
     let context = context.to_string();
     let args = argv.iter().skip(1).cloned().collect::<Vec<_>>();
     let child = crate::plugin_command::command_for_argv_in_dir(program, &args, root)
@@ -331,5 +337,22 @@ mod tests {
             payload: serde_json::json!({ "pane_id": "pane-1", "label": "Shell" }),
         };
         assert_eq!(event_hook_name(&event), Some("pane.updated"));
+    }
+
+    #[test]
+    fn worktree_events_use_herdr_hook_names() {
+        for (event, hook) in [
+            ("worktree_created", "worktree.created"),
+            ("worktree_opened", "worktree.opened"),
+            ("worktree_removed", "worktree.removed"),
+        ] {
+            let event = Event {
+                version: crate::protocol::PROTOCOL_VERSION,
+                sequence: 1,
+                event: event.into(),
+                payload: serde_json::json!({ "path": "C:/repo" }),
+            };
+            assert_eq!(event_hook_name(&event), Some(hook));
+        }
     }
 }

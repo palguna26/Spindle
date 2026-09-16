@@ -68,6 +68,20 @@ struct WorkspaceRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct WorktreeEventRequest {
+    event: String,
+    #[serde(default)]
+    workspace_id: Option<String>,
+    path: String,
+    #[serde(default)]
+    branch: Option<String>,
+    #[serde(default)]
+    already_open: bool,
+    #[serde(default)]
+    forced: bool,
+}
+
+#[derive(Debug, Deserialize)]
 struct IdNameRequest {
     id: String,
     name: String,
@@ -330,6 +344,27 @@ pub(crate) fn response_for_with_interactive(
             };
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| session.delete_space(&payload.id))
+        }
+        "record_worktree_event" => {
+            let payload: WorktreeEventRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.record_worktree_event(
+                    &payload.event,
+                    json!({
+                        "workspace_id": payload.workspace_id,
+                        "path": payload.path,
+                        "branch": payload.branch,
+                        "already_open": payload.already_open,
+                        "forced": payload.forced,
+                    }),
+                )
+            })
         }
         "get_snapshot" => {
             let mut session = session.lock().expect("session lock poisoned");
