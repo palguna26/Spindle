@@ -20,7 +20,7 @@ pub use navigation::{
     hit_test_with_sidebar_scroll_and_sort, sidebar_scroll_max, sidebar_scroll_max_with_sort,
     sidebar_scroll_offset_from_drag_row, sidebar_scroll_offset_from_drag_row_with_sort,
     sidebar_scroll_region, sidebar_scroll_thumb_grab_offset,
-    sidebar_scroll_thumb_grab_offset_with_sort, ClickTarget,
+    sidebar_scroll_thumb_grab_offset_with_sort, workspace_drop_target, ClickTarget,
 };
 pub use navigator::{hit_test_navigator, render_navigator, Hit as NavigatorHit};
 use ratatui::layout::Rect;

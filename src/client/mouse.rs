@@ -21,6 +21,11 @@ pub(super) struct PaneMouseCapture {
     pub(super) button: MouseButton,
 }
 
+pub(super) struct WorkspaceDrag {
+    pub(super) space_id: String,
+    pub(super) workspace_id: String,
+}
+
 #[derive(Default)]
 pub(super) struct MouseState {
     pub(super) sidebar_collapsed: bool,
@@ -29,6 +34,7 @@ pub(super) struct MouseState {
     pub(super) sidebar_scroll_drag: Option<u16>,
     pub(super) preferences_path: std::path::PathBuf,
     pub(super) split_drag: Option<SplitDrag>,
+    pub(super) workspace_drag: Option<WorkspaceDrag>,
     pub(super) pane_capture: Option<PaneMouseCapture>,
     pub(super) selection: Option<TextSelection>,
     pub(super) last_click: Option<PaneClick>,

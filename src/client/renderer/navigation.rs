@@ -163,6 +163,61 @@ pub fn hit_test_with_sidebar_scroll_and_sort(
     None
 }
 
+/// Returns the same-space insertion slot represented by a workspace row.
+/// The index follows Herdr's `insert_index` convention. Dropping on a later
+/// row places the source after that row; dropping on an earlier row places it
+/// before that row.
+pub fn workspace_drop_target(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    sidebar_scroll: usize,
+    source_workspace_id: &str,
+    x: u16,
+    y: u16,
+) -> Option<(String, String, usize)> {
+    if collapsed {
+        return None;
+    }
+    let sidebar = super::layout::main_areas_with_sidebar(area, collapsed).sidebar;
+    let body = sidebar_body(sidebar);
+    if !contains(body, x, y) {
+        return None;
+    }
+    let rows = sidebar_rows(snapshot, false);
+    let max_scroll = rows.len().saturating_sub(usize::from(body.height));
+    let row = usize::from(y.saturating_sub(body.y)).saturating_add(sidebar_scroll.min(max_scroll));
+    let SidebarRow::Workspace {
+        space_id,
+        workspace_id,
+        ..
+    } = rows.get(row)?
+    else {
+        return None;
+    };
+    let workspaces = &snapshot
+        .spaces
+        .iter()
+        .find(|space| space.space_id == *space_id)?
+        .workspaces;
+    let target_position = workspaces
+        .iter()
+        .position(|workspace| workspace.workspace_id == *workspace_id)?;
+    let source_position = workspaces
+        .iter()
+        .position(|workspace| workspace.workspace_id == source_workspace_id)?;
+    let insert_index = if source_position < target_position {
+        target_position.saturating_add(1)
+    } else {
+        target_position
+    };
+    Some((
+        (*space_id).to_owned(),
+        (*workspace_id).to_owned(),
+        insert_index,
+    ))
+}
+
 pub fn sidebar_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -> usize {
     sidebar_scroll_max_with_sort(snapshot, area, collapsed, false)
 }
@@ -854,7 +909,7 @@ mod tests {
     use super::{
         agent_state_priority, hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
         hit_test_with_sidebar_scroll_and_sort, render_sidebar, render_sidebar_with_collapsed,
-        render_sidebar_with_scroll, render_tabs, ClickTarget,
+        render_sidebar_with_scroll, render_tabs, workspace_drop_target, ClickTarget,
     };
     use crate::model::layout::{Direction as SplitDirection, LayoutNode};
     use crate::server::session::{SessionSnapshot, SpaceView, TabView, WorkspaceView};
@@ -870,6 +925,20 @@ mod tests {
             "Spaces"
         );
         assert!(super::sidebar_title(Rect::new(0, 0, 40, 30), true, true).contains("priority"));
+    }
+
+    #[test]
+    fn workspace_drop_target_uses_herdr_insert_index_order() {
+        let snapshot = sample_snapshot();
+        let area = Rect::new(0, 0, 100, 30);
+        assert_eq!(
+            workspace_drop_target(&snapshot, area, false, 0, "workspace-2", 4, 2),
+            Some(("space-1".into(), "workspace-1".into(), 0))
+        );
+        assert_eq!(
+            workspace_drop_target(&snapshot, area, false, 0, "workspace-1", 4, 3),
+            Some(("space-1".into(), "workspace-2".into(), 2))
+        );
     }
 
     #[test]

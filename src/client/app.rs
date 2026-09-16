@@ -4,7 +4,7 @@ use super::global_menu::{Action as GlobalMenuAction, GlobalMenu, Outcome as Glob
 use super::input::{Action, Keymap};
 use super::mouse::{
     clear_mouse_capture, pane_mouse_target, should_forward_pane_mouse, visible_web_url_at_point,
-    CachedScrollbackView, MouseState, PaneClick, PaneMouseCapture, SplitDrag,
+    CachedScrollbackView, MouseState, PaneClick, PaneMouseCapture, SplitDrag, WorkspaceDrag,
 };
 use super::navigator::{Navigator, Outcome as NavigatorOutcome, Target as NavigatorTarget};
 use super::palette::{move_selection, Command};
@@ -1500,6 +1500,23 @@ fn handle_mouse(
             mouse_state.sidebar_scroll_drag = Some(grab_row_offset);
             return Ok(());
         }
+        if let Some(renderer::ClickTarget::Workspace {
+            space_id,
+            workspace_id,
+        }) = renderer::hit_test_with_sidebar_scroll_and_sort(
+            snapshot,
+            area,
+            mouse,
+            mouse_state.sidebar_collapsed,
+            mouse_state.sidebar_scroll,
+            mouse_state.agent_priority_sort,
+        ) {
+            mouse_state.workspace_drag = Some(WorkspaceDrag {
+                space_id,
+                workspace_id,
+            });
+            return Ok(());
+        }
         let pane_area =
             renderer::pane_content_area_with_sidebar(area, mouse_state.sidebar_collapsed);
         if let Some(handle) = renderer::split_handles(snapshot, pane_area)
@@ -1555,6 +1572,56 @@ fn handle_mouse(
         );
         if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
             mouse_state.sidebar_scroll_drag = None;
+        }
+        return Ok(());
+    }
+    if matches!(
+        mouse.kind,
+        MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
+    ) && mouse_state.workspace_drag.is_some()
+    {
+        let drag = mouse_state
+            .workspace_drag
+            .take()
+            .expect("workspace drag exists");
+        if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
+            if let Some((space_id, target_workspace_id, insert_index)) =
+                renderer::workspace_drop_target(
+                    snapshot,
+                    area,
+                    mouse_state.sidebar_collapsed,
+                    mouse_state.sidebar_scroll,
+                    &drag.workspace_id,
+                    mouse.column,
+                    mouse.row,
+                )
+            {
+                if space_id == drag.space_id && target_workspace_id != drag.workspace_id {
+                    request_action(
+                        client,
+                        "mouse-move-workspace",
+                        "move_workspace",
+                        json!({ "id": drag.workspace_id, "insert_index": insert_index }),
+                        "move workspace",
+                    )?;
+                    return Ok(());
+                }
+            }
+            request_action(
+                client,
+                "mouse-switch-workspace-space",
+                "switch_space",
+                json!({ "id": drag.space_id }),
+                "switch space",
+            )?;
+            request_action(
+                client,
+                "mouse-switch-workspace",
+                "switch_workspace",
+                json!({ "id": drag.workspace_id }),
+                "switch workspace",
+            )?;
+            ensure_active_default_pane(client, terminal_size)?;
         }
         return Ok(());
     }

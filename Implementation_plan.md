@@ -124,6 +124,8 @@ Reference: Herdr `src/ui.rs`, `src/ui/sidebar.rs`, `src/ui/panes.rs`, and
   scrollbar track or dragging its thumb, following Herdr's grab-offset behavior.
 - [x] Drag split borders to resize, updating both the saved layout and PTY
   dimensions.
+- [x] Drag workspace rows in the sidebar to reorder them with Herdr's
+  insertion-index semantics; a click without a move still switches workspace.
 - [x] Right-click workspaces, tabs, and panes for context-specific actions.
 - [x] Support pane split, close, rename, zoom/focus actions from menus where
   the matching Herdr action exists, including swapping a clicked pane with the
