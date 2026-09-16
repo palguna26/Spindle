@@ -77,6 +77,11 @@ with the entrypoint context when a pane is opened.
 Numeric manifest `width` and `height` values now set popup dimensions, with
 explicit CLI values taking precedence.
 
+Latest integration structure milestone: agent configuration path discovery is
+isolated in `src/integration/paths.rs`, following Herdr's dedicated
+`src/integration/env.rs` module. Installers remain behaviorally unchanged and
+the full test suite still passes.
+
 ## 0. Establish the parity matrix
 
 - [ ] Compare Herdr's README, quick-start, keyboard guide, CLI guide, and
