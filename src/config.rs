@@ -448,6 +448,12 @@ impl Default for Config {
 }
 
 pub fn path() -> PathBuf {
+    if let Some(path) = config_path_override(
+        std::env::var_os("SPINDLE_CONFIG_PATH"),
+        std::env::var_os("HERDR_CONFIG_PATH"),
+    ) {
+        return path;
+    }
     if let Ok(app_data) = std::env::var("APPDATA") {
         return PathBuf::from(app_data).join("Spindle").join("config.toml");
     }
@@ -459,6 +465,16 @@ pub fn path() -> PathBuf {
             .join("config.toml");
     }
     std::env::temp_dir().join("Spindle").join("config.toml")
+}
+
+fn config_path_override(
+    spindle: Option<std::ffi::OsString>,
+    herdr: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    spindle
+        .filter(|path| !path.is_empty())
+        .or_else(|| herdr.filter(|path| !path.is_empty()))
+        .map(PathBuf::from)
 }
 
 pub fn load() -> Config {
@@ -788,8 +804,9 @@ fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> S
 #[cfg(test)]
 mod tests {
     use super::{
-        load_from, upsert_section_key, upsert_top_level_bool, Config, HostCursorMode, NewCwd,
-        NotificationDelivery, PaneBorders, ShellMode, SidebarCollapsedMode, TabBarPosition,
+        config_path_override, load_from, upsert_section_key, upsert_top_level_bool, Config,
+        HostCursorMode, NewCwd, NotificationDelivery, PaneBorders, ShellMode, SidebarCollapsedMode,
+        TabBarPosition,
     };
     use crossterm::event::KeyModifiers;
 
@@ -1249,6 +1266,19 @@ mod tests {
         std::fs::write(&path, "[theme]\nname = \"nord\"\n").unwrap();
         assert_eq!(load_from(&path).onboarding, None);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn config_path_override_prefers_spindle_and_accepts_herdr() {
+        assert_eq!(
+            config_path_override(Some("C:/spindle.toml".into()), Some("C:/herdr.toml".into())),
+            Some(std::path::PathBuf::from("C:/spindle.toml"))
+        );
+        assert_eq!(
+            config_path_override(None, Some("C:/herdr.toml".into())),
+            Some(std::path::PathBuf::from("C:/herdr.toml"))
+        );
+        assert_eq!(config_path_override(Some("".into()), None), None);
     }
 
     #[test]
