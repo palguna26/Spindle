@@ -117,6 +117,34 @@ impl ThemePalette {
             },
         }
     }
+
+    fn from_config(config: &crate::config::Config) -> Self {
+        let mut palette = Self::from_name(config.theme_name.as_deref());
+        if let Some(value) = config.theme_custom_accent.as_deref() {
+            palette.accent = parse_theme_color(value).unwrap_or(palette.accent);
+        }
+        palette
+    }
+}
+
+fn parse_theme_color(value: &str) -> Option<Color> {
+    let value = value.trim();
+    let hex = value.strip_prefix('#')?;
+    match hex.len() {
+        3 => {
+            let digits = hex
+                .chars()
+                .map(|digit| digit.to_digit(16).map(|value| (value * 17) as u8))
+                .collect::<Option<Vec<_>>>()?;
+            Some(Color::Rgb(digits[0], digits[1], digits[2]))
+        }
+        6 => Some(Color::Rgb(
+            u8::from_str_radix(&hex[0..2], 16).ok()?,
+            u8::from_str_radix(&hex[2..4], 16).ok()?,
+            u8::from_str_radix(&hex[4..6], 16).ok()?,
+        )),
+        _ => None,
+    }
 }
 
 pub fn render(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
@@ -231,7 +259,7 @@ pub fn render_with_sidebar_scroll_and_cursor_and_agent_sort_and_navigation_and_g
     collapsed_groups: &HashSet<String>,
     scroll_offsets: &HashMap<String, usize>,
 ) {
-    let theme = ThemePalette::from_name(crate::config::load().theme_name.as_deref());
+    let theme = ThemePalette::from_config(&crate::config::load());
     let main = layout::main_areas_for_snapshot(snapshot, frame.area(), sidebar_collapsed);
     mobile::render_header(frame, main.mobile_header, snapshot);
     navigation::render_sidebar_with_scroll_sort_and_navigation_and_groups(
@@ -1238,6 +1266,24 @@ mod tests {
         assert_eq!(
             super::ThemePalette::from_name(Some("catppuccin-latte")).accent,
             Color::Rgb(136, 57, 239)
+        );
+    }
+
+    #[test]
+    fn custom_theme_accent_overrides_the_base_theme() {
+        let mut config = crate::config::Config {
+            theme_name: Some("nord".into()),
+            theme_custom_accent: Some("#010203".into()),
+            ..crate::config::Config::default()
+        };
+        assert_eq!(
+            super::ThemePalette::from_config(&config).accent,
+            Color::Rgb(1, 2, 3)
+        );
+        config.theme_custom_accent = Some("#bad".into());
+        assert_eq!(
+            super::ThemePalette::from_config(&config).accent,
+            Color::Rgb(187, 170, 221)
         );
     }
 
