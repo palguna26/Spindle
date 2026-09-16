@@ -401,6 +401,11 @@ Terminal verification is still pending.
   Windows PowerShell session hook under `.claude/hooks`, registers the nested
   `SessionStart` hook in `settings.json`, preserves unrelated hook entries,
   and reports Claude session identity through Spindle's pane protocol.
+
+- [x] Add the Pi integration. Install/uninstall now manages the Pi extension
+  under the Herdr-compatible `.pi/agent/extensions` layout. The extension
+  tracks root-session start, active work, settled state, and blocked requests
+  through Spindle's pane report protocol.
   are implemented; plain working-to-idle transitions now use Herdr's 100 ms
   recheck, three confirmations, and 700 ms cap. Newly detected agents remain
   unknown for Herdr's three-second startup grace so stale prior-screen text is
