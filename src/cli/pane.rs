@@ -1094,9 +1094,30 @@ fn read_line_limit(source: ReadSource, requested: Option<usize>) -> Option<usize
 }
 
 struct WaitOptions {
-    needle: String,
+    matcher: WaitMatcher,
     timeout: Duration,
     lines: Option<usize>,
+}
+
+enum WaitMatcher {
+    Literal(String),
+    Regex(regex::Regex),
+}
+
+impl WaitMatcher {
+    fn matches(&self, text: &str) -> bool {
+        match self {
+            Self::Literal(needle) => text.contains(needle),
+            Self::Regex(pattern) => pattern.is_match(text),
+        }
+    }
+
+    fn description(&self) -> String {
+        match self {
+            Self::Literal(needle) => format!("{needle:?}"),
+            Self::Regex(pattern) => format!("regex {:?}", pattern.as_str()),
+        }
+    }
 }
 
 fn pane_wait_output(project: &Project, id: &str, args: &[String]) -> io::Result<()> {
@@ -1115,7 +1136,7 @@ fn pane_wait_output(project: &Project, id: &str, args: &[String]) -> io::Result<
                     format!("pane '{id}' does not exist"),
                 )
             })?;
-        if pane.screen.contains(&options.needle) {
+        if options.matcher.matches(&pane.screen) {
             if let Some(lines) = options.lines {
                 let content: Vec<_> = pane.screen.lines().collect();
                 let start = content.len().saturating_sub(lines);
@@ -1129,8 +1150,8 @@ fn pane_wait_output(project: &Project, id: &str, args: &[String]) -> io::Result<
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 format!(
-                    "timed out waiting for '{id}' to contain {:?}",
-                    options.needle
+                    "timed out waiting for '{id}' to contain {}",
+                    options.matcher.description()
                 ),
             ));
         }
@@ -1180,7 +1201,7 @@ fn strip_ansi(text: &str) -> String {
 }
 
 fn parse_wait_options(args: &[String]) -> Result<WaitOptions, String> {
-    let mut needle = None;
+    let mut matcher = None;
     let mut timeout = Duration::from_secs(10);
     let mut lines = None;
     let mut index = 0;
@@ -1190,7 +1211,24 @@ fn parse_wait_options(args: &[String]) -> Result<WaitOptions, String> {
                 let Some(value) = args.get(index + 1) else {
                     return Err("missing value for --match".into());
                 };
-                needle = Some(value.clone());
+                if matcher.is_some() {
+                    return Err("--match and --regex are mutually exclusive".into());
+                }
+                matcher = Some(WaitMatcher::Literal(value.clone()));
+                index += 2;
+            }
+            "--regex" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --regex".into());
+                };
+                if matcher.is_some() {
+                    return Err("--match and --regex are mutually exclusive".into());
+                }
+                matcher = Some(
+                    regex::Regex::new(value)
+                        .map(WaitMatcher::Regex)
+                        .map_err(|error| format!("invalid regex: {error}"))?,
+                );
                 index += 2;
             }
             "--timeout" => {
@@ -1217,13 +1255,11 @@ fn parse_wait_options(args: &[String]) -> Result<WaitOptions, String> {
             other => return Err(format!("unknown option: {other}")),
         }
     }
-    let Some(needle) = needle else {
-        return Err(
-            "usage: spindle pane wait-output <id> --match TEXT [--timeout MS] [--lines N]".into(),
-        );
+    let Some(matcher) = matcher else {
+        return Err("usage: spindle pane wait-output <id> (--match TEXT | --regex PATTERN) [--timeout MS] [--lines N]".into());
     };
     Ok(WaitOptions {
-        needle,
+        matcher,
         timeout,
         lines,
     })
@@ -1585,7 +1621,7 @@ fn print_help() {
     println!(
         "  move <id> --new-tab [--label TEXT] | --tab ID [--pane ID] [--split right|down]  move a pane"
     );
-    println!("  wait-output <id> --match TEXT [--timeout MS] [--lines N]  wait for output");
+    println!("  wait-output <id> (--match TEXT | --regex PATTERN) [--timeout MS] [--lines N]  wait for output");
     println!("  split <direction> [command args...] | [--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus|--no-focus]  split with a new pane");
     println!("  resize <id> <delta> | --direction left|right|up|down [--amount FLOAT] [--pane ID|--current]  resize the pane layout");
 }
@@ -1653,9 +1689,28 @@ mod tests {
             "3".into(),
         ];
         let options = super::parse_wait_options(&args).unwrap();
-        assert_eq!(options.needle, "ready");
+        assert!(matches!(
+            options.matcher,
+            super::WaitMatcher::Literal(ref needle) if needle == "ready"
+        ));
         assert_eq!(options.timeout, Duration::from_millis(250));
         assert_eq!(options.lines, Some(3));
+    }
+
+    #[test]
+    fn wait_output_supports_herdr_regex_matching_and_exclusivity() {
+        let options =
+            super::parse_wait_options(&["--regex".into(), "ready-[0-9]+".into()]).unwrap();
+        assert!(options.matcher.matches("ready-42"));
+        assert!(!options.matcher.matches("ready-no-number"));
+        assert!(super::parse_wait_options(&[
+            "--match".into(),
+            "ready".into(),
+            "--regex".into(),
+            "ready.*".into(),
+        ])
+        .is_err());
+        assert!(super::parse_wait_options(&["--regex".into(), "[".into()]).is_err());
     }
 
     #[test]
