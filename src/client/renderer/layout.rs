@@ -42,7 +42,13 @@ pub(crate) fn sidebar_area(area: Rect, sidebar_collapsed: bool) -> Rect {
 }
 
 pub(super) fn main_areas_with_sidebar(area: Rect, sidebar_collapsed: bool) -> MainAreas {
-    main_areas_with_sidebar_and_tab_count(area, sidebar_collapsed, usize::MAX)
+    let config = crate::config::load();
+    main_areas_with_sidebar_and_tab_count(
+        area,
+        sidebar_collapsed,
+        usize::MAX,
+        config.tab_bar_position,
+    )
 }
 
 pub(super) fn main_areas_for_snapshot(
@@ -51,13 +57,30 @@ pub(super) fn main_areas_for_snapshot(
     sidebar_collapsed: bool,
 ) -> MainAreas {
     let tab_count = active_workspace(snapshot).map_or(0, |workspace| workspace.tabs.len());
-    main_areas_with_sidebar_and_tab_count(area, sidebar_collapsed, tab_count)
+    let config = crate::config::load();
+    main_areas_with_sidebar_and_tab_count(
+        area,
+        sidebar_collapsed,
+        tab_count,
+        config.tab_bar_position,
+    )
+}
+
+pub(super) fn main_areas_for_snapshot_with_tab_bar_position(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    sidebar_collapsed: bool,
+    tab_bar_position: crate::config::TabBarPosition,
+) -> MainAreas {
+    let tab_count = active_workspace(snapshot).map_or(0, |workspace| workspace.tabs.len());
+    main_areas_with_sidebar_and_tab_count(area, sidebar_collapsed, tab_count, tab_bar_position)
 }
 
 fn main_areas_with_sidebar_and_tab_count(
     area: Rect,
     sidebar_collapsed: bool,
     tab_count: usize,
+    tab_bar_position: crate::config::TabBarPosition,
 ) -> MainAreas {
     let body = area;
     let config = crate::config::load();
@@ -94,14 +117,19 @@ fn main_areas_with_sidebar_and_tab_count(
         .split(body);
     let right = columns[1];
     let tab_bar_hidden = config.hide_tab_bar_when_single_tab && tab_count == 1;
+    let tab_height = if tab_bar_hidden { 0 } else { 1 };
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(if tab_bar_hidden { 0 } else { 1 }),
-            Constraint::Min(1),
-        ])
+        .constraints(match tab_bar_position {
+            crate::config::TabBarPosition::Top => {
+                [Constraint::Length(tab_height), Constraint::Min(1)]
+            }
+            crate::config::TabBarPosition::Bottom => {
+                [Constraint::Min(1), Constraint::Length(tab_height)]
+            }
+        })
         .split(right);
-    let (tabs, panes) = match config.tab_bar_position {
+    let (tabs, panes) = match tab_bar_position {
         crate::config::TabBarPosition::Top => (rows[0], rows[1]),
         crate::config::TabBarPosition::Bottom => (rows[1], rows[0]),
     };
@@ -479,7 +507,12 @@ mod tests {
 
     #[test]
     fn terminal_panes_use_the_full_height_like_herdr() {
-        let areas = main_areas_with_sidebar_and_tab_count(Rect::new(0, 0, 80, 24), false, 2);
+        let areas = main_areas_with_sidebar_and_tab_count(
+            Rect::new(0, 0, 80, 24),
+            false,
+            2,
+            crate::config::TabBarPosition::Top,
+        );
 
         assert_eq!(areas.panes.y, 1);
         assert_eq!(areas.panes.height, 23);

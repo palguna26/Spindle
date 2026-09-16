@@ -426,10 +426,15 @@ fn event_loop(
                     );
                 }
                 if resize_mode {
-                    renderer::render_resize_mode(frame);
+                    renderer::render_resize_mode(frame, &snapshot, mouse_state.sidebar_collapsed);
                 }
                 if prefix_active {
-                    renderer::render_prefix_mode(frame, &keymap);
+                    renderer::render_prefix_mode(
+                        frame,
+                        &keymap,
+                        &snapshot,
+                        mouse_state.sidebar_collapsed,
+                    );
                 }
                 if let Some(selection) = &mouse_state.selection {
                     renderer::render_selection_with_sidebar(

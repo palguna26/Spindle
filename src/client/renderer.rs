@@ -557,7 +557,10 @@ pub(crate) fn render_copy_mode(
                 Span::styled(exit.0, key_style),
                 Span::styled(exit.1, base_style),
             ]);
-            frame.render_widget(Paragraph::new(hint), footer_area(frame.area()));
+            frame.render_widget(
+                Paragraph::new(hint),
+                mode_bar_area(snapshot, frame.area(), sidebar_collapsed),
+            );
             return;
         }
         let match_status = mode
@@ -593,14 +596,22 @@ pub(crate) fn render_copy_mode(
             Span::styled(exit.1, base_style),
         ])
     };
-    frame.render_widget(Paragraph::new(hint), footer_area(frame.area()));
+    frame.render_widget(
+        Paragraph::new(hint),
+        mode_bar_area(snapshot, frame.area(), sidebar_collapsed),
+    );
 }
 
 fn footer_area(area: Rect) -> Rect {
     Rect::new(area.x, area.bottom().saturating_sub(1), area.width, 1)
 }
 
-pub(crate) fn render_prefix_mode(frame: &mut Frame<'_>, keymap: &Keymap) {
+pub(crate) fn render_prefix_mode(
+    frame: &mut Frame<'_>,
+    keymap: &Keymap,
+    snapshot: &SessionSnapshot,
+    sidebar_collapsed: bool,
+) {
     let key_style = Style::default()
         .fg(Color::Cyan)
         .add_modifier(ratatui::style::Modifier::BOLD);
@@ -619,7 +630,34 @@ pub(crate) fn render_prefix_mode(frame: &mut Frame<'_>, keymap: &Keymap) {
         Span::styled(keymap.binding_label(Action::Help), key_style),
         Span::styled(" keybinds", base_style),
     ]);
-    frame.render_widget(Paragraph::new(line), footer_area(frame.area()));
+    frame.render_widget(
+        Paragraph::new(line),
+        mode_bar_area(snapshot, frame.area(), sidebar_collapsed),
+    );
+}
+
+fn mode_bar_area(snapshot: &SessionSnapshot, area: Rect, sidebar_collapsed: bool) -> Rect {
+    let config = crate::config::load();
+    mode_bar_area_with_position(snapshot, area, sidebar_collapsed, config.tab_bar_position)
+}
+
+fn mode_bar_area_with_position(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    sidebar_collapsed: bool,
+    tab_bar_position: crate::config::TabBarPosition,
+) -> Rect {
+    let main = layout::main_areas_for_snapshot_with_tab_bar_position(
+        snapshot,
+        area,
+        sidebar_collapsed,
+        tab_bar_position,
+    );
+    if matches!(tab_bar_position, crate::config::TabBarPosition::Bottom) && !main.tabs.is_empty() {
+        main.tabs
+    } else {
+        footer_area(area)
+    }
 }
 
 pub fn render_palette(frame: &mut Frame<'_>, selected: usize) {
@@ -834,9 +872,12 @@ pub fn render_notification(frame: &mut Frame<'_>, message: &str) {
     );
 }
 
-pub(crate) fn render_resize_mode(frame: &mut Frame<'_>) {
-    let area = frame.area();
-    let bar = Rect::new(0, area.height.saturating_sub(1), area.width, 1);
+pub(crate) fn render_resize_mode(
+    frame: &mut Frame<'_>,
+    snapshot: &SessionSnapshot,
+    sidebar_collapsed: bool,
+) {
+    let bar = mode_bar_area(snapshot, frame.area(), sidebar_collapsed);
     frame.render_widget(
         Paragraph::new(" RESIZE  h/j/k/l or arrows · Enter/Esc exit")
             .style(Style::default().fg(Color::Black).bg(Color::Yellow)),
@@ -1278,7 +1319,10 @@ mod tests {
         let backend = TestBackend::new(160, 8);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| render_prefix_mode(frame, &Keymap::default()))
+            .draw(|frame| {
+                let session = Session::default();
+                render_prefix_mode(frame, &Keymap::default(), session.snapshot(), false);
+            })
             .unwrap();
         let content: String = terminal
             .backend()
@@ -1291,6 +1335,21 @@ mod tests {
         assert!(content.contains("cancel"));
         assert!(content.contains("workspace nav"));
         assert!(content.contains("keybinds"));
+    }
+
+    #[test]
+    fn bottom_tab_mode_bar_uses_the_tab_row_like_herdr() {
+        let session = Session::default();
+        let area = Rect::new(0, 0, 160, 8);
+        let bar = super::mode_bar_area_with_position(
+            session.snapshot(),
+            area,
+            false,
+            crate::config::TabBarPosition::Bottom,
+        );
+
+        assert_eq!(bar.y, 7);
+        assert_eq!(bar.height, 1);
     }
 
     #[test]
