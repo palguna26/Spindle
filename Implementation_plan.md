@@ -58,6 +58,10 @@ forms, with safe fallback for invalid values.
 Modal surfaces now use Herdr-style theme panel backgrounds, with a
 `[theme.custom] panel_bg` override.
 
+Sidebar rendering now also honors Herdr's `[theme.custom] sidebar_bg` and
+`active_row_bg` surface tokens for the sidebar background and focused/preview
+rows.
+
 An unset theme now defaults to Herdr's Catppuccin palette in both rendering
 and the settings overlay.
 
