@@ -20,8 +20,9 @@ pub(crate) use layout::{
 };
 use navigation::render_tabs_with_scroll;
 pub use navigation::{
-    agent_sidebar_scroll_max, agent_sidebar_scroll_region, hit_test, hit_test_with_sidebar,
-    hit_test_with_sidebar_scroll, hit_test_with_sidebar_scroll_and_sort,
+    agent_sidebar_scroll_max, agent_sidebar_scroll_offset_from_drag_row,
+    agent_sidebar_scroll_region, agent_sidebar_scroll_thumb_grab_offset, hit_test,
+    hit_test_with_sidebar, hit_test_with_sidebar_scroll, hit_test_with_sidebar_scroll_and_sort,
     hit_test_with_sidebar_scroll_and_sort_and_groups,
     hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll, render_tab_drop_indicator,
     render_tab_drop_indicator_with_scroll, render_workspace_drop_indicator, sidebar_scroll_max,

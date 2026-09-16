@@ -1942,6 +1942,7 @@ fn handle_mouse(
     }
     if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
         mouse_state.sidebar_scroll_drag = None;
+        mouse_state.agent_sidebar_scroll_drag = None;
         mouse_state.sidebar_section_split_drag = false;
         if renderer::sidebar_section_divider(
             renderer::sidebar_area(area, mouse_state.sidebar_collapsed),
@@ -1951,6 +1952,19 @@ fn handle_mouse(
             mouse.row,
         ) {
             mouse_state.sidebar_section_split_drag = true;
+            return Ok(());
+        }
+        if let Some(grab_row_offset) = renderer::agent_sidebar_scroll_thumb_grab_offset(
+            snapshot,
+            renderer::sidebar_area(area, mouse_state.sidebar_collapsed),
+            mouse_state.sidebar_collapsed,
+            mouse_state.agent_sidebar_scroll,
+            mouse.column,
+            mouse.row,
+            mouse_state.agent_priority_sort,
+            &mouse_state.collapsed_worktree_groups,
+        ) {
+            mouse_state.agent_sidebar_scroll_drag = Some(grab_row_offset);
             return Ok(());
         }
         if let Some(grab_row_offset) =
@@ -2061,6 +2075,24 @@ fn handle_mouse(
         if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
             mouse_state.sidebar_section_split_drag = false;
             store_client_preferences(mouse_state);
+        }
+        return Ok(());
+    }
+    if matches!(
+        mouse.kind,
+        MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
+    ) && mouse_state.agent_sidebar_scroll_drag.is_some()
+    {
+        mouse_state.agent_sidebar_scroll = renderer::agent_sidebar_scroll_offset_from_drag_row(
+            snapshot,
+            renderer::sidebar_area(area, mouse_state.sidebar_collapsed),
+            mouse.row,
+            mouse_state.agent_sidebar_scroll_drag.unwrap_or_default(),
+            mouse_state.agent_priority_sort,
+            &mouse_state.collapsed_worktree_groups,
+        );
+        if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
+            mouse_state.agent_sidebar_scroll_drag = None;
         }
         return Ok(());
     }

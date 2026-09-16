@@ -563,6 +563,83 @@ pub fn agent_sidebar_scroll_region(area: Rect, collapsed: bool, x: u16, y: u16) 
     contains(panel, x, y)
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn agent_sidebar_scroll_thumb_grab_offset(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    scroll: usize,
+    x: u16,
+    y: u16,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+) -> Option<u16> {
+    if !agent_sidebar_scroll_region(area, collapsed, x, y) {
+        return None;
+    }
+    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
+    let agents = rows
+        .iter()
+        .copied()
+        .filter(|row| matches!(row, SidebarRow::Agent { .. }))
+        .collect::<Vec<_>>();
+    let sections = crate::client::sidebar::sections(sidebar_body(area), 0.5);
+    let body = Rect::new(
+        sections.agents.x,
+        sections.agents.y.saturating_add(2),
+        sections.agents.width,
+        sections.agents.height.saturating_sub(2),
+    );
+    let visual_rows = sidebar_visual_rows(&agents, false, &crate::config::load().sidebar);
+    let max_scroll = visual_rows.len().saturating_sub(usize::from(body.height));
+    if max_scroll == 0 || body.width <= 1 || x != body.right().saturating_sub(1) {
+        return None;
+    }
+    let (thumb_top, thumb_height) =
+        sidebar_scrollbar_thumb(body, scroll.min(max_scroll), max_scroll, visual_rows.len())?;
+    let row = y.saturating_sub(body.y);
+    (row >= thumb_top && row < thumb_top.saturating_add(thumb_height)).then_some(row - thumb_top)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn agent_sidebar_scroll_offset_from_drag_row(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    row: u16,
+    grab_row_offset: u16,
+    agent_priority_sort: bool,
+    collapsed_groups: &HashSet<String>,
+) -> usize {
+    let rows = sidebar_rows_with_collapsed(snapshot, agent_priority_sort, collapsed_groups);
+    let agents = rows
+        .iter()
+        .copied()
+        .filter(|row| matches!(row, SidebarRow::Agent { .. }))
+        .collect::<Vec<_>>();
+    let sections = crate::client::sidebar::sections(sidebar_body(area), 0.5);
+    let body = Rect::new(
+        sections.agents.x,
+        sections.agents.y.saturating_add(2),
+        sections.agents.width,
+        sections.agents.height.saturating_sub(2),
+    );
+    let visual_rows = sidebar_visual_rows(&agents, false, &crate::config::load().sidebar).len();
+    let max_scroll = visual_rows.saturating_sub(usize::from(body.height));
+    let Some((_, thumb_height)) = sidebar_scrollbar_thumb(body, 0, max_scroll, visual_rows) else {
+        return 0;
+    };
+    let max_thumb_top = usize::from(body.height).saturating_sub(usize::from(thumb_height));
+    if max_thumb_top == 0 {
+        return 0;
+    }
+    let row_offset = usize::from(
+        row.clamp(body.y, body.bottom().saturating_sub(1))
+            .saturating_sub(body.y),
+    );
+    let desired_top = row_offset.saturating_sub(usize::from(grab_row_offset));
+    rounded_ratio(desired_top.min(max_thumb_top), max_scroll, max_thumb_top).min(max_scroll)
+}
+
 pub fn sidebar_section_divider(
     area: Rect,
     collapsed: bool,
