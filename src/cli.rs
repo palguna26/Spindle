@@ -112,7 +112,7 @@ pub fn run() -> io::Result<()> {
         args.remove(0);
         Some(name)
     } else {
-        None
+        selected_session_from_environment()
     };
     let command = args.first().cloned().unwrap_or_else(|| "attach".into());
     let command_args = args.get(1..).unwrap_or(&[]);
@@ -426,6 +426,20 @@ fn validate_session_name(name: &str) -> io::Result<()> {
     Ok(())
 }
 
+fn selected_session_from_environment() -> Option<String> {
+    selected_session_from_values(
+        std::env::var("SPINDLE_SESSION").ok().as_deref(),
+        std::env::var("HERDR_SESSION").ok().as_deref(),
+    )
+}
+
+fn selected_session_from_values(spindle: Option<&str>, herdr: Option<&str>) -> Option<String> {
+    spindle
+        .filter(|name| !name.trim().is_empty())
+        .or_else(|| herdr.filter(|name| !name.trim().is_empty()))
+        .map(str::to_owned)
+}
+
 fn stop_server(project: &Project) -> io::Result<()> {
     let response = send_command(project, "stop_server")?;
     if !response.ok {
@@ -519,7 +533,9 @@ impl Project {
 
 #[cfg(test)]
 mod tests {
-    use super::{endpoint_status_label, project_id, validate_session_name};
+    use super::{
+        endpoint_status_label, project_id, selected_session_from_values, validate_session_name,
+    };
     use std::path::Path;
 
     #[test]
@@ -551,5 +567,21 @@ mod tests {
         assert!(validate_session_name("review-1").is_ok());
         assert!(validate_session_name("feature\\work").is_err());
         assert!(validate_session_name("..").is_err());
+    }
+
+    #[test]
+    fn session_environment_prefers_spindle_and_falls_back_to_herdr() {
+        assert_eq!(
+            selected_session_from_values(None, Some("legacy")).as_deref(),
+            Some("legacy")
+        );
+        assert_eq!(
+            selected_session_from_values(Some("review"), Some("legacy")).as_deref(),
+            Some("review")
+        );
+        assert_eq!(
+            selected_session_from_values(Some(" "), Some("legacy")).as_deref(),
+            Some("legacy")
+        );
     }
 }
