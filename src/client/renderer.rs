@@ -689,6 +689,30 @@ pub fn render_help(frame: &mut Frame<'_>, keymap: &Keymap) {
     );
 }
 
+pub fn render_onboarding(frame: &mut Frame<'_>) {
+    let area = centered_rect(80, 80, frame.area());
+    let content = vec![
+        Line::from("Welcome to Spindle"),
+        Line::from("Persistent PowerShell sessions with a mouse-first layout."),
+        Line::from(""),
+        Line::from("Click panes, tabs, and workspaces. Right-click for actions."),
+        Line::from(""),
+        Line::from("Ctrl-b opens Spindle controls; Ctrl-b ? shows every shortcut."),
+        Line::from(""),
+        Line::from("Press Enter to continue."),
+    ];
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(content).wrap(Wrap { trim: true }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Welcome")
+                .border_style(Style::default().fg(Color::Cyan)),
+        ),
+        area,
+    );
+}
+
 pub fn render_startup_error(frame: &mut Frame<'_>, error: &str) {
     let area = centered_rect(72, 42, frame.area());
     let content = vec![
@@ -1063,8 +1087,8 @@ mod tests {
     use super::super::selection::TextSelection;
     use super::{
         active_title, pane_content_area, pane_rectangles, pane_title, pane_title_text, popup_title,
-        render, render_action_error, render_help, render_palette, render_selection,
-        render_startup_error, render_with_connection, status_color,
+        render, render_action_error, render_help, render_onboarding, render_palette,
+        render_selection, render_startup_error, render_with_connection, status_color,
     };
     use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
@@ -1200,6 +1224,24 @@ mod tests {
         assert!(content.contains("drag thumb"));
         assert!(content.contains("Ctrl-click visible web URLs"));
         assert!(content.contains("palette"), "help contents: {content}");
+    }
+
+    #[test]
+    fn onboarding_overlay_explains_the_first_controls() {
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(render_onboarding).unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(content.contains("Welcome to Spindle"));
+        assert!(content.contains("Ctrl-b"));
+        assert!(content.contains("controls"));
+        assert!(content.contains("Press Enter to continue"));
     }
 
     #[test]

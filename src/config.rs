@@ -18,6 +18,8 @@ pub(crate) const THEME_NAMES: &[&str] = &[
 #[derive(Debug, Deserialize, Default)]
 struct FileConfig {
     #[serde(default)]
+    onboarding: Option<bool>,
+    #[serde(default)]
     keys: KeysConfig,
     #[serde(default)]
     theme: ThemeConfig,
@@ -248,6 +250,7 @@ pub(crate) struct CustomCommand {
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub(crate) onboarding: Option<bool>,
     pub(crate) sidebar: SidebarConfig,
     pub prefix: Option<String>,
     pub bindings: BTreeMap<String, Vec<String>>,
@@ -283,6 +286,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            onboarding: None,
             sidebar: SidebarConfig::default(),
             prefix: None,
             bindings: BTreeMap::new(),
@@ -346,6 +350,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         return Config::default();
     }
     Config {
+        onboarding: file.onboarding,
         sidebar: file.ui.sidebar,
         prefix: file.keys.prefix,
         bindings: file
@@ -396,6 +401,47 @@ pub fn load_from(path: &std::path::Path) -> Config {
         ),
         redraw_on_focus_gained: file.ui.redraw_on_focus_gained,
     }
+}
+
+pub(crate) fn complete_onboarding() -> Result<(), String> {
+    let config_path = path();
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create config directory: {error}"))?;
+    }
+    let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+    std::fs::write(
+        &config_path,
+        upsert_top_level_bool(&content, "onboarding", false),
+    )
+    .map_err(|error| format!("failed to save onboarding setting: {error}"))
+}
+
+pub(crate) fn upsert_top_level_bool(content: &str, key: &str, value: bool) -> String {
+    let replacement = format!("{key} = {value}");
+    let mut lines: Vec<String> = content.lines().map(str::to_owned).collect();
+    let mut replaced = false;
+    for line in &mut lines {
+        if line
+            .split_once('=')
+            .is_some_and(|(name, _)| name.trim() == key)
+        {
+            *line = replacement.clone();
+            replaced = true;
+        }
+    }
+    if !replaced {
+        let insert_at = lines
+            .iter()
+            .position(|line| line.trim_start().starts_with('['))
+            .unwrap_or(lines.len());
+        lines.insert(insert_at, replacement);
+    }
+    let mut updated = lines.join("\n");
+    if content.ends_with('\n') {
+        updated.push('\n');
+    }
+    updated
 }
 
 fn parse_right_click_passthrough_modifier(value: &str) -> Option<KeyModifiers> {
@@ -573,8 +619,8 @@ fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> S
 #[cfg(test)]
 mod tests {
     use super::{
-        load_from, upsert_section_key, Config, HostCursorMode, NotificationDelivery, PaneBorders,
-        SidebarCollapsedMode, TabBarPosition,
+        load_from, upsert_section_key, upsert_top_level_bool, Config, HostCursorMode,
+        NotificationDelivery, PaneBorders, SidebarCollapsedMode, TabBarPosition,
     };
     use crossterm::event::KeyModifiers;
 
@@ -926,6 +972,25 @@ mod tests {
         assert!(updated.contains("name = \"nord\""));
         assert!(updated.contains("prefix = \"ctrl+b\""));
         assert!(updated.contains("[notifications]"));
+    }
+
+    #[test]
+    fn missing_onboarding_setting_matches_herdr_first_run_default() {
+        assert_eq!(Config::default().onboarding, None);
+        let path =
+            std::env::temp_dir().join(format!("spindle-onboarding-{}.toml", std::process::id()));
+        std::fs::write(&path, "[theme]\nname = \"nord\"\n").unwrap();
+        assert_eq!(load_from(&path).onboarding, None);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn onboarding_completion_preserves_existing_config_sections() {
+        let content = "[theme]\nname = \"nord\"\n\n[ui]\nmouse_capture = true\n";
+        let updated = upsert_top_level_bool(content, "onboarding", false);
+        assert!(updated.starts_with("onboarding = false\n"));
+        assert!(updated.contains("[theme]\nname = \"nord\""));
+        assert!(updated.contains("[ui]\nmouse_capture = true"));
     }
 
     #[test]

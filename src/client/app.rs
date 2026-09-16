@@ -169,6 +169,7 @@ fn event_loop(
     let mut settings: Option<Settings> = None;
     let mut rename_prompt: Option<RenamePrompt> = None;
     let mut context_menu: Option<ContextMenu> = None;
+    let mut onboarding_open = crate::config::load().onboarding.unwrap_or(true);
     let mut help_open = false;
     let mut last_pane_sizes = None;
     let mut mouse_state = MouseState {
@@ -449,7 +450,9 @@ fn event_loop(
                 if let Some(navigator) = &navigator {
                     renderer::render_navigator(frame, &snapshot, navigator);
                 }
-                if help_open {
+                if onboarding_open {
+                    renderer::render_onboarding(frame);
+                } else if help_open {
                     renderer::render_help(frame, &keymap);
                 }
                 if let Some(prompt) = &rename_prompt {
@@ -717,6 +720,15 @@ fn event_loop(
                     break;
                 }
                 StartupErrorAction::Ignore => {}
+            }
+            continue;
+        }
+        if onboarding_open {
+            if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
+                onboarding_open = false;
+                if let Err(error) = crate::config::complete_onboarding() {
+                    status_notice = Some((error, Instant::now() + ACTION_ERROR_DURATION));
+                }
             }
             continue;
         }
