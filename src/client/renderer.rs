@@ -125,6 +125,40 @@ impl ThemePalette {
         }
         palette
     }
+
+    pub(super) fn panel_bg(config: &crate::config::Config) -> Color {
+        if let Some(value) = config.theme_custom_panel_bg.as_deref() {
+            if let Some(color) = parse_theme_color(value) {
+                return color;
+            }
+        }
+        match config
+            .theme_name
+            .as_deref()
+            .unwrap_or("catppuccin")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "catppuccin" => Color::Rgb(24, 24, 37),
+            "catppuccin-latte" => Color::Rgb(239, 241, 245),
+            "dracula" => Color::Rgb(40, 42, 54),
+            "gruvbox" => Color::Rgb(40, 40, 40),
+            "gruvbox-light" => Color::Rgb(251, 241, 199),
+            "nord" => Color::Rgb(46, 52, 64),
+            "tokyo-night" | "tokyonight" => Color::Rgb(26, 27, 38),
+            "tokyo-night-day" | "tokyo-day" | "tokyonight-day" => Color::Rgb(225, 226, 231),
+            "one-dark" => Color::Rgb(40, 44, 52),
+            "one-light" => Color::Rgb(250, 250, 250),
+            "solarized" => Color::Rgb(0, 43, 54),
+            "solarized-light" => Color::Rgb(253, 246, 227),
+            "kanagawa" => Color::Rgb(31, 31, 40),
+            "kanagawa-lotus" => Color::Rgb(248, 246, 240),
+            "rose-pine" => Color::Rgb(25, 23, 36),
+            "rose-pine-dawn" => Color::Rgb(250, 244, 237),
+            "vesper" => Color::Rgb(16, 16, 16),
+            _ => Color::Reset,
+        }
+    }
 }
 
 fn parse_theme_color(value: &str) -> Option<Color> {
@@ -767,6 +801,7 @@ fn mode_bar_area_with_position(
 
 pub fn render_palette(frame: &mut Frame<'_>, selected: usize) {
     let area = centered_rect(60, 70, frame.area());
+    let panel_bg = ThemePalette::panel_bg(&crate::config::load());
     let commands = crate::client::palette::Command::ALL;
     let visible_rows = usize::from(area.height.saturating_sub(2));
     let start = selected.saturating_add(1).saturating_sub(visible_rows);
@@ -781,17 +816,20 @@ pub fn render_palette(frame: &mut Frame<'_>, selected: usize) {
         })
         .collect::<Vec<_>>();
     frame.render_widget(
-        Paragraph::new(rows).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Command palette (↑/↓, Enter, Esc)"),
-        ),
+        Paragraph::new(rows)
+            .style(Style::default().bg(panel_bg))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Command palette (↑/↓, Enter, Esc)"),
+            ),
         area,
     );
 }
 
 pub fn render_help(frame: &mut Frame<'_>, keymap: &Keymap) {
     let area = centered_rect(72, 90, frame.area());
+    let panel_bg = ThemePalette::panel_bg(&crate::config::load());
     let rows = [
         "Mouse",
         "Click sidebar, tabs, or panes to switch or focus.",
@@ -847,17 +885,20 @@ pub fn render_help(frame: &mut Frame<'_>, keymap: &Keymap) {
     );
     frame.render_widget(Clear, area);
     frame.render_widget(
-        Paragraph::new(rows).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Spindle help — mouse and keyboard"),
-        ),
+        Paragraph::new(rows)
+            .style(Style::default().bg(panel_bg))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Spindle help — mouse and keyboard"),
+            ),
         area,
     );
 }
 
 pub fn render_onboarding(frame: &mut Frame<'_>) {
     let area = onboarding_area(frame.area());
+    let panel_bg = ThemePalette::panel_bg(&crate::config::load());
     let content = vec![
         Line::from("Welcome to Spindle"),
         Line::from("Persistent PowerShell sessions with a mouse-first layout."),
@@ -870,12 +911,15 @@ pub fn render_onboarding(frame: &mut Frame<'_>) {
     ];
     frame.render_widget(Clear, area);
     frame.render_widget(
-        Paragraph::new(content).wrap(Wrap { trim: true }).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Welcome")
-                .border_style(Style::default().fg(Color::Cyan)),
-        ),
+        Paragraph::new(content)
+            .style(Style::default().bg(panel_bg))
+            .wrap(Wrap { trim: true })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Welcome")
+                    .border_style(Style::default().fg(Color::Cyan)),
+            ),
         area,
     );
 }
@@ -1341,6 +1385,16 @@ mod tests {
             super::ThemePalette::from_config(&config).accent,
             Color::Rgb(136, 192, 208)
         );
+    }
+
+    #[test]
+    fn custom_theme_panel_background_overrides_the_base_theme() {
+        let config = crate::config::Config {
+            theme_name: Some("nord".into()),
+            theme_custom_panel_bg: Some("rgb(1, 2, 3)".into()),
+            ..crate::config::Config::default()
+        };
+        assert_eq!(super::ThemePalette::panel_bg(&config), Color::Rgb(1, 2, 3));
     }
 
     #[test]

@@ -183,6 +183,7 @@ struct ThemeConfig {
 #[serde(default)]
 struct ThemeCustomConfig {
     accent: Option<String>,
+    panel_bg: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -277,6 +278,7 @@ pub struct Config {
     pub(crate) custom_commands: Vec<CustomCommand>,
     pub theme_name: Option<String>,
     pub(crate) theme_custom_accent: Option<String>,
+    pub(crate) theme_custom_panel_bg: Option<String>,
     pub notifications_enabled: bool,
     pub(crate) notification_delivery: NotificationDelivery,
     pub(crate) notification_delay_seconds: u64,
@@ -314,6 +316,7 @@ impl Default for Config {
             custom_commands: Vec::new(),
             theme_name: None,
             theme_custom_accent: None,
+            theme_custom_panel_bg: None,
             notifications_enabled: true,
             notification_delivery: NotificationDelivery::Herdr,
             notification_delay_seconds: 1,
@@ -395,6 +398,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
             })
             .collect(),
         theme_custom_accent: file.theme.custom.accent,
+        theme_custom_panel_bg: file.theme.custom.panel_bg,
         theme_name: file.theme.name,
         notifications_enabled: file.notifications.enabled,
         notification_delivery: file.notifications.delivery,
@@ -738,6 +742,16 @@ mod tests {
         std::fs::write(&path, "[theme.custom]\naccent = \"#010203\"\n").unwrap();
         let config = load_from(&path);
         assert_eq!(config.theme_custom_accent.as_deref(), Some("#010203"));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_herdr_custom_theme_panel_background() {
+        let path =
+            std::env::temp_dir().join(format!("spindle-theme-panel-{}.toml", std::process::id()));
+        std::fs::write(&path, "[theme.custom]\npanel_bg = \"#101112\"\n").unwrap();
+        let config = load_from(&path);
+        assert_eq!(config.theme_custom_panel_bg.as_deref(), Some("#101112"));
         std::fs::remove_file(path).unwrap();
     }
 
