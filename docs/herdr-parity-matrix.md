@@ -332,3 +332,6 @@ OpenCode working-state parity note: the detector now follows Herdr's case-insens
 Theme surface parity note: `[theme.custom] sidebar_bg` and `active_row_bg` now
 apply to the live sidebar background and focused/preview rows, following
 Herdr's `src/config/theme.rs` and `src/client/shell/sidebar.rs`.
+
+Navigator selection now uses Herdr's `[theme.custom] selection_bg` token on
+desktop and mobile switcher layouts.
