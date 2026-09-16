@@ -1078,6 +1078,74 @@ impl Session {
         Ok(serde_json::json!({ "tab_id": tab_id }))
     }
 
+    pub fn move_tab_anywhere(
+        &mut self,
+        tab_id: &str,
+        insert_index: usize,
+    ) -> Result<Value, String> {
+        let Some((space_index, workspace_index, tab_index)) = self
+            .snapshot
+            .spaces
+            .iter()
+            .enumerate()
+            .find_map(|(space_index, space)| {
+                space
+                    .workspaces
+                    .iter()
+                    .enumerate()
+                    .find_map(|(workspace_index, workspace)| {
+                        workspace
+                            .tabs
+                            .iter()
+                            .position(|tab| tab.tab_id == tab_id)
+                            .map(|tab_index| (space_index, workspace_index, tab_index))
+                    })
+            })
+        else {
+            return Err(format!("tab '{tab_id}' does not exist"));
+        };
+
+        let workspace = &mut self.snapshot.spaces[space_index].workspaces[workspace_index];
+        if insert_index > workspace.tabs.len() {
+            return Err(format!(
+                "insert index {insert_index} is out of bounds for {} tabs",
+                workspace.tabs.len()
+            ));
+        }
+        let target_index = if tab_index < insert_index {
+            insert_index.saturating_sub(1)
+        } else {
+            insert_index
+        }
+        .min(workspace.tabs.len().saturating_sub(1));
+        if tab_index == target_index {
+            return Ok(serde_json::json!({
+                "tab_id": tab_id,
+                "workspace_id": workspace.workspace_id,
+                "insert_index": insert_index,
+                "moved": false,
+            }));
+        }
+
+        let moved = workspace.tabs.remove(tab_index);
+        workspace.tabs.insert(target_index, moved);
+        let workspace_id = workspace.workspace_id.clone();
+        self.record_event(
+            "tab_moved",
+            serde_json::json!({
+                "tab_id": tab_id,
+                "workspace_id": workspace_id,
+                "insert_index": insert_index,
+            }),
+        );
+        Ok(serde_json::json!({
+            "tab_id": tab_id,
+            "workspace_id": workspace_id,
+            "insert_index": insert_index,
+            "moved": true,
+        }))
+    }
+
     pub fn move_pane_to_new_tab(&mut self, pane_id: &str, name: String) -> Result<Value, String> {
         self.move_pane_to_new_tab_with_focus(pane_id, name, true)
     }
@@ -4561,5 +4629,42 @@ mod tests {
         assert!(!pane.application_cursor);
         assert!(!pane.bracketed_paste);
         assert!(pane.right_click_passthrough);
+    }
+
+    #[test]
+    fn moving_a_tab_reorders_it_without_changing_focus() {
+        let mut session = Session::default();
+        let first = session.snapshot.spaces[0].workspaces[0].tabs[0]
+            .tab_id
+            .clone();
+        let second = session.create_tab("Second".into()).unwrap()["tab_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let third = session.create_tab("Third".into()).unwrap()["tab_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        session.switch_tab_anywhere(&second).unwrap();
+        let focused = session.snapshot.spaces[0].workspaces[0]
+            .active_tab_id
+            .clone();
+
+        let result = session.move_tab_anywhere(&first, 3).unwrap();
+        let workspace = &session.snapshot.spaces[0].workspaces[0];
+        let ids: Vec<_> = workspace
+            .tabs
+            .iter()
+            .map(|tab| tab.tab_id.as_str())
+            .collect();
+        let workspace_id = workspace.workspace_id.clone();
+        assert_eq!(ids, vec![second.as_str(), third.as_str(), first.as_str()]);
+        assert_eq!(workspace.active_tab_id, focused);
+        assert_eq!(result["moved"], true);
+        assert!(session.events_since(0).iter().any(|event| {
+            event.event == "tab_moved"
+                && event.payload["tab_id"] == first
+                && event.payload["workspace_id"] == workspace_id
+        }));
     }
 }

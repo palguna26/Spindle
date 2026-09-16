@@ -23,6 +23,12 @@ struct IdRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct TabMoveRequest {
+    id: String,
+    insert_index: usize,
+}
+
+#[derive(Debug, Deserialize)]
 struct WorkspaceDeleteRequest {
     id: String,
     #[serde(default)]
@@ -649,6 +655,18 @@ pub(crate) fn response_for_with_interactive(
             let mut session = session.lock().expect("session lock poisoned");
             save_after(&mut session, |session| {
                 session.switch_tab_anywhere(&payload.id)
+            })
+        }
+        "move_tab" => {
+            let payload: TabMoveRequest = match serde_json::from_value(request.payload) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return request_error(request.request_id, "invalid_payload", error.to_string())
+                }
+            };
+            let mut session = session.lock().expect("session lock poisoned");
+            save_after(&mut session, |session| {
+                session.move_tab_anywhere(&payload.id, payload.insert_index)
             })
         }
         "rename_tab" => {

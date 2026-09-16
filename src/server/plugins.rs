@@ -83,6 +83,7 @@ fn event_hook_name(event: &Event<serde_json::Value>) -> Option<&'static str> {
     match event.event.as_str() {
         "pane_created" => "pane.created",
         "tab_created" => "tab.created",
+        "tab_moved" => "tab.moved",
         "tab_closed" => "tab.closed",
         "tab_renamed" => "tab.renamed",
         "tab_focused" => "tab.focused",
@@ -327,6 +328,17 @@ mod tests {
             payload: serde_json::json!({ "tab_id": "tab-1" }),
         };
         assert_eq!(event_hook_name(&event), Some("tab.renamed"));
+    }
+
+    #[test]
+    fn tab_move_events_use_herdr_hook_names() {
+        let event = Event {
+            version: crate::protocol::PROTOCOL_VERSION,
+            sequence: 1,
+            event: "tab_moved".into(),
+            payload: serde_json::json!({ "tab_id": "tab-1" }),
+        };
+        assert_eq!(event_hook_name(&event), Some("tab.moved"));
     }
 
     #[test]
