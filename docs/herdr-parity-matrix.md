@@ -338,3 +338,7 @@ desktop and mobile switcher layouts.
 
 Navigator panels now use the selected Herdr `panel_bg` surface on desktop and
 mobile layouts.
+
+Tab-strip rendering now follows Herdr's surface treatment: inactive tabs use
+`surface0`, while the active tab uses the accent-filled state; the
+`[theme.custom] surface0` override is supported.
