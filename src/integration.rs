@@ -6,7 +6,9 @@ use jsonc_parser::ParseOptions;
 use serde::Serialize;
 use serde_json::{json, Value};
 
+mod file_ops;
 mod paths;
+use self::file_ops::*;
 use self::paths::*;
 
 const CODEX_HOOK_ASSET: &str = include_str!("integration/assets/codex-agent-state.ps1");
@@ -1251,15 +1253,6 @@ fn disable_hermes_plugin(content: &str) -> String {
     }
     result
 }
-fn remove_dir_if_exists(path: &std::path::Path) -> std::io::Result<bool> {
-    if path.is_dir() {
-        std::fs::remove_dir_all(path)?;
-        Ok(true)
-    } else {
-        Ok(false)
-    }
-}
-
 fn qwen_command(path: &std::path::Path) -> String {
     format!("{} session", direct_hook_command(path))
 }
@@ -1694,23 +1687,6 @@ fn remove_simple_cursor_hook(
     Ok(before != entries.len())
 }
 
-fn read_json_object(path: &std::path::Path, label: &str) -> std::io::Result<Value> {
-    if !path.is_file() {
-        return Ok(json!({}));
-    }
-    let value =
-        serde_json::from_str::<Value>(&std::fs::read_to_string(path)?).map_err(|error| {
-            std::io::Error::other(format!("failed to parse {}: {error}", path.display()))
-        })?;
-    if !value.is_object() {
-        return Err(std::io::Error::other(format!(
-            "{label} at {} must be a JSON object",
-            path.display()
-        )));
-    }
-    Ok(value)
-}
-
 fn copilot_events() -> [&'static str; 1] {
     ["SessionStart"]
 }
@@ -1887,15 +1863,6 @@ fn codex_hook_command(path: &std::path::Path) -> String {
         "powershell -NoProfile -ExecutionPolicy Bypass -File \"{}\" session",
         path.display().to_string().replace('"', "\\\"")
     )
-}
-
-fn remove_file_if_exists(path: &std::path::Path) -> std::io::Result<bool> {
-    if path.is_file() {
-        std::fs::remove_file(path)?;
-        Ok(true)
-    } else {
-        Ok(false)
-    }
 }
 
 #[cfg(test)]
