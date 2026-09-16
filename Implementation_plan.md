@@ -687,6 +687,9 @@ the installed and expected managed-hook marker versions. This follows Herdr's
 `src/integration/registry.rs` status model and lets users identify stale
 integrations before reinstalling them.
 
+Antigravity CLI availability now follows Herdr's installed command name (`agy`)
+while keeping Spindle's clearer `antigravity-cli` target label.
+
 ## Verification gates
 
 For every code commit:
