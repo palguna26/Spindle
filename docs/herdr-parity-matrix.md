@@ -46,6 +46,9 @@ with config and renderer coverage.
 Spindle now uses Herdr's Catppuccin palette when no theme is configured, and
 the settings overlay selects that same default.
 
+The selected theme accent now drives the visible sidebar, tabs, mobile header,
+navigator, and drag indicators; broader palette tokens remain to be ported.
+
 Notification parity now includes `spindle notification show <title>` with
 Herdr-compatible `--body`, `--position`, and `--sound` arguments. Delivery
 uses the existing Windows platform notification and sound adapters and works

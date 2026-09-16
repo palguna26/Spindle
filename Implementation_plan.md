@@ -55,6 +55,9 @@ on top of the selected built-in theme; broader token overrides remain.
 An unset theme now defaults to Herdr's Catppuccin palette in both rendering
 and the settings overlay.
 
+Selected theme accents now apply across the sidebar, tab strip, mobile header,
+navigator, and drag indicators instead of only the main pane chrome.
+
 Latest first-run milestone: Spindle now shows a persistent welcome overlay
 when `onboarding` is absent or true, matching Herdr's `Config::should_show_onboarding`
 behavior. Enter or Esc records `onboarding = false` without removing other
