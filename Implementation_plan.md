@@ -178,9 +178,10 @@ Hook command construction now lives in `src/integration/command.rs`, matching
 Herdr's command helper boundary and keeping Windows PowerShell quoting in one
 place.
 
-The interactive default pane now also honors Herdr's `[terminal].default_shell`
-setting. PowerShell receives its non-login startup flags; other configured
-shells are launched without PowerShell-specific arguments.
+The interactive default pane now honors Herdr's `[terminal].default_shell` and
+`[terminal].shell_mode` settings. PowerShell receives mode-aware startup flags;
+other configured shells avoid PowerShell-specific arguments and can request a
+login shell on Unix.
 
 ## 0. Establish the parity matrix
 
