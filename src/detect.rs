@@ -317,6 +317,13 @@ pub(crate) fn detect_state_with_osc(
     let bottom_six = recent_nonempty_lines(screen, 6).to_ascii_lowercase();
     let bottom_eight = recent_nonempty_lines(screen, 8).to_ascii_lowercase();
     if agent == AgentKind::Qwen {
+        if let Some(state) = manifest::detect_qwen(manifest::DetectionInput {
+            screen,
+            osc_title: title,
+            _osc_progress: osc_progress,
+        }) {
+            return state;
+        }
         return qwen_state(screen, title, osc_progress).unwrap_or(AgentState::Unknown);
     }
     if agent == AgentKind::Grok {

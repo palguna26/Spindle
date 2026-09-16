@@ -86,6 +86,15 @@ enum Matcher {
     MuseApproval,
     MuseIdlePrompt,
     MuseIdleFallback,
+    QwenTitleBlocked,
+    QwenTitleWorking,
+    QwenWaiting,
+    QwenToolConfirmation,
+    QwenQuestionDialog,
+    QwenFolderTrust,
+    QwenCancelHint,
+    QwenNarrowCancelHint,
+    QwenComposerIdle,
     GrokOption,
     GrokLegacyPermission,
     GrokBackgroundChip,
@@ -785,6 +794,75 @@ const GROK_RULES: &[Rule] = &[
     },
 ];
 
+const QWEN_RULES: &[Rule] = &[
+    Rule {
+        priority: 1200,
+        state: AgentState::Blocked,
+        region: Region::OscTitle,
+        matcher: Matcher::QwenTitleBlocked,
+    },
+    Rule {
+        priority: 1100,
+        state: AgentState::Working,
+        region: Region::OscTitle,
+        matcher: Matcher::QwenTitleWorking,
+    },
+    Rule {
+        priority: 1000,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(20),
+        matcher: Matcher::QwenWaiting,
+    },
+    Rule {
+        priority: 990,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(20),
+        matcher: Matcher::QwenToolConfirmation,
+    },
+    Rule {
+        priority: 980,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(20),
+        matcher: Matcher::QwenQuestionDialog,
+    },
+    Rule {
+        priority: 970,
+        state: AgentState::Blocked,
+        region: Region::BottomNonEmpty(20),
+        matcher: Matcher::QwenFolderTrust,
+    },
+    Rule {
+        priority: 900,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::QwenCancelHint,
+    },
+    Rule {
+        priority: 890,
+        state: AgentState::Working,
+        region: Region::BottomNonEmpty(8),
+        matcher: Matcher::QwenNarrowCancelHint,
+    },
+    Rule {
+        priority: 850,
+        state: AgentState::Working,
+        region: Region::OscProgress,
+        matcher: Matcher::Regex(r"^4;3(?:;|$)"),
+    },
+    Rule {
+        priority: 950,
+        state: AgentState::Idle,
+        region: Region::OscProgress,
+        matcher: Matcher::Contains(&["4;0;0"]),
+    },
+    Rule {
+        priority: 100,
+        state: AgentState::Idle,
+        region: Region::BottomNonEmpty(30),
+        matcher: Matcher::QwenComposerIdle,
+    },
+];
+
 pub(crate) fn detect_codex(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, CODEX_RULES)
 }
@@ -859,6 +937,10 @@ pub(crate) fn detect_muse(input: DetectionInput<'_>) -> Option<AgentState> {
 
 pub(crate) fn detect_grok(input: DetectionInput<'_>) -> Option<AgentState> {
     detect_rules(input, GROK_RULES)
+}
+
+pub(crate) fn detect_qwen(input: DetectionInput<'_>) -> Option<AgentState> {
+    detect_rules(input, QWEN_RULES)
 }
 
 fn detect_rules(input: DetectionInput<'_>, rules: &[Rule]) -> Option<AgentState> {
@@ -1358,6 +1440,71 @@ fn matcher_matches(matcher: Matcher, text: &str) -> bool {
                 && !text.contains("esc:cancel")
                 && !text.contains("ctrl+c:cancel")
         }
+        Matcher::QwenTitleBlocked => Regex::new(r"^\u{2733}\u{fe0e}? ")
+            .is_ok_and(|regex| regex.is_match(text)),
+        Matcher::QwenTitleWorking => Regex::new(r"^\u{25d0}\u{fe0e}? ")
+            .is_ok_and(|regex| regex.is_match(text)),
+        Matcher::QwenWaiting => {
+            text.lines().any(|line| {
+                line.trim().starts_with('\u{280f}') && line.trim_end().ends_with("...")
+            }) && [
+                "waiting for user confirmation...",
+                "等候用户确认...",
+                "等待用户確認...",
+                "warten auf benutzerbestätigung...",
+                "en attente de la confirmation de l'utilisateur...",
+                "aguardando confirmação do usuário...",
+                "esperant la confirmació de l'usuari...",
+            ]
+            .iter()
+            .any(|signal| text.contains(signal))
+        }
+        Matcher::QwenToolConfirmation => {
+            text.contains("yes, allow once")
+                && [
+                    "apply this change?",
+                    "allow execution of:",
+                    "allow execution of mcp tool",
+                    "do you want to proceed?",
+                    "shell command execution",
+                ]
+                .iter()
+                .any(|signal| text.contains(signal))
+        }
+        Matcher::QwenQuestionDialog => text.lines().any(|line| {
+            let line = line.trim_start();
+            Regex::new(r"^\s*[❯›]\s*(?:\[(?: |✓)\]\s*)?\d+\.\s+")
+                .is_ok_and(|regex| regex.is_match(line))
+                || (line.starts_with("↑/↓")
+                    && line.contains(':')
+                    && (line.contains("enter") || line.contains("return")))
+        }),
+        Matcher::QwenFolderTrust => {
+            text.contains("do you trust this folder?")
+                && text.contains("trust folder (")
+                && text.contains("don't trust (esc)")
+        }
+        Matcher::QwenCancelHint => Regex::new(
+            r"(?i)^\s*(?:[\u2801-\u28ff]|\.{1,2})?\s*.*\(\d+(?:m(?:\s+\d+s)?|s).*esc to cancel\)\s*$",
+        )
+        .is_ok_and(|regex| text.lines().any(|line| regex.is_match(line))),
+        Matcher::QwenNarrowCancelHint => Regex::new(
+            r"(?i)^\s*\(\d+(?:m(?:\s+\d+s)?|s).*esc to cancel\)\s*$",
+        )
+        .is_ok_and(|regex| text.lines().any(|line| regex.is_match(line))),
+        Matcher::QwenComposerIdle => {
+            text.lines().any(|line| line.trim_start().starts_with('>'))
+                && ([
+                    "type your message",
+                    "your message or @path/to/file",
+                    "@path/to/file",
+                ]
+                .iter()
+                .any(|signal| text.contains(signal))
+                    || ["type", "mes", "sage", "@pat", "h/to", "/fil"]
+                        .iter()
+                        .all(|fragment| text.contains(fragment)))
+        }
     }
 }
 
@@ -1449,7 +1596,7 @@ mod tests {
         detect_amp, detect_antigravity, detect_cline, detect_codex, detect_copilot, detect_cursor,
         detect_devin, detect_droid, detect_gemini, detect_grok, detect_hermes, detect_kilo,
         detect_kimi, detect_kiro, detect_maki, detect_muse, detect_opencode, detect_pi,
-        detect_qoder, DetectionInput,
+        detect_qoder, detect_qwen, DetectionInput,
     };
     use crate::detect::AgentState;
 
@@ -1603,6 +1750,47 @@ mod tests {
             osc_title: title,
             _osc_progress: progress,
         })
+    }
+
+    fn detect_qwen_state(screen: &str, title: &str, progress: &str) -> Option<AgentState> {
+        detect_qwen(DetectionInput {
+            screen,
+            osc_title: title,
+            _osc_progress: progress,
+        })
+    }
+
+    #[test]
+    fn qwen_manifest_matches_herdr_priority_rules() {
+        assert_eq!(
+            detect_qwen_state("", "✳ Working", ""),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_qwen_state("yes, allow once\nAllow execution of: command", "", ""),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_qwen_state(
+                "Do you trust this folder?\nTrust folder (enter)\nDon't trust (esc)",
+                "",
+                ""
+            ),
+            Some(AgentState::Blocked)
+        );
+        assert_eq!(
+            detect_qwen_state("", "", "4;1;-1"),
+            None,
+            "Qwen uses 4;3 for tool progress"
+        );
+        assert_eq!(
+            detect_qwen_state("", "", "4;3;50"),
+            Some(AgentState::Working)
+        );
+        assert_eq!(
+            detect_qwen_state("> Type your message", "", ""),
+            Some(AgentState::Idle)
+        );
     }
 
     #[test]
