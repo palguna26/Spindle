@@ -6,6 +6,11 @@ intentionally rejected and ignored, matching Herdr's
 
 Reference: `C:\Users\Palguna\.opensrc\repos\github.com\herdrdev\herdr\master`.
 
+Notification parity now includes `spindle notification show <title>` with
+Herdr-compatible `--body`, `--position`, and `--sound` arguments. Delivery
+uses the existing Windows platform notification and sound adapters and works
+without a session server.
+
 API parity now includes `spindle api snapshot`, which returns the live session
 snapshot as pretty JSON; Bash, Fish, Zsh, PowerShell, and Elvish completions
 include the command. Windows server startup uses the Herdr-compatible direct

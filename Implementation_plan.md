@@ -51,6 +51,10 @@ snapshot command and is exposed in every generated shell completion. Windows
 server startup now follows Herdr's safe detached-launch path for this runtime,
 and both Windows smoke checks pass with the release binary.
 
+Latest notification milestone: `spindle notification show` accepts Herdr's
+title, body, position, and sound arguments and delivers through Spindle's
+Windows notification platform; the command does not require a running server.
+
 ## 0. Establish the parity matrix
 
 - [ ] Compare Herdr's README, quick-start, keyboard guide, CLI guide, and
@@ -465,9 +469,9 @@ approved design changes it.
   start/attach recovery hint for stale metadata, matching Herdr's explicit
   running/not-running server status. It also prints the client version, binary
   path, and protocol so users can identify which build they launched.
-  Server daemon startup now uses Herdr's WMI detached-process launch path and
-  a bounded five-second readiness retry window, so the caller is not held by
-  the server child.
+  Server daemon startup uses the Herdr-compatible direct-spawn path when the
+  current Windows runtime does not require WMI detachment, with a bounded
+  readiness retry window so the caller is not held by the server child.
   Sidebar width settings now accept Herdr-style `[ui] sidebar_width`,
   `sidebar_min_width`, and `sidebar_max_width` values with safe bound fallback.
   `[ui] sidebar_start_collapsed` now matches Herdr and is applied only when a
