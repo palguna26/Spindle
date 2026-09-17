@@ -49,6 +49,7 @@ struct WorktreeOptions {
     label: Option<String>,
     focus: bool,
     force: bool,
+    trust_repository: bool,
 }
 
 pub(super) fn run_worktree_command(project: &Project, args: &[String]) -> io::Result<()> {
@@ -74,6 +75,7 @@ pub(super) fn run_worktree_command(project: &Project, args: &[String]) -> io::Re
 fn worktree_list(project: &Project, args: &[String]) -> io::Result<()> {
     let mut workspace_id = None;
     let mut cwd = None;
+    let mut trust_repository = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -98,6 +100,10 @@ fn worktree_list(project: &Project, args: &[String]) -> io::Result<()> {
                 index += 2;
             }
             "--json" => index += 1,
+            "--trust-repository" => {
+                trust_repository = true;
+                index += 1;
+            }
             other => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -151,9 +157,14 @@ fn worktree_list(project: &Project, args: &[String]) -> io::Result<()> {
         })
         .or_else(|| std::env::current_dir().ok())
         .ok_or_else(|| io::Error::other("could not determine repository path"))?;
-    let repo_root = git_output(&root, ["rev-parse", "--show-toplevel"])?;
-    let source_checkout_path = git_output(&root, ["rev-parse", "--show-toplevel"])?;
-    let records = parse_porcelain(&git_output(&root, ["worktree", "list", "--porcelain"])?)?;
+    let repo_root = git_output(&root, ["rev-parse", "--show-toplevel"], trust_repository)?;
+    let source_checkout_path =
+        git_output(&root, ["rev-parse", "--show-toplevel"], trust_repository)?;
+    let records = parse_porcelain(&git_output(
+        &root,
+        ["worktree", "list", "--porcelain"],
+        trust_repository,
+    )?)?;
     let source_workspace_id = snapshot.as_ref().and_then(|(snapshot, _)| {
         snapshot
             .spaces
@@ -230,7 +241,12 @@ fn worktree_create(project: &Project, args: &[String]) -> io::Result<()> {
         )
     });
     let base = options.base.unwrap_or_else(|| {
-        git_output(&root, ["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|_| "HEAD".into())
+        git_output(
+            &root,
+            ["rev-parse", "--abbrev-ref", "HEAD"],
+            options.trust_repository,
+        )
+        .unwrap_or_else(|_| "HEAD".into())
     });
     let path = options.path.unwrap_or_else(|| {
         crate::config::load()
@@ -251,6 +267,7 @@ fn worktree_create(project: &Project, args: &[String]) -> io::Result<()> {
     git_run_vec(
         &root,
         &["worktree", "add", "-b", &branch, &path_string, &base],
+        options.trust_repository,
     )?;
     let workspace_id = open_workspace(
         project,
@@ -261,7 +278,11 @@ fn worktree_create(project: &Project, args: &[String]) -> io::Result<()> {
         options.focus,
     );
     if workspace_id.is_err() {
-        let _ = git_run_vec(&root, &["worktree", "remove", "--force", &path_string]);
+        let _ = git_run_vec(
+            &root,
+            &["worktree", "remove", "--force", &path_string],
+            options.trust_repository,
+        );
     }
     let workspace_id = workspace_id?;
     record_worktree_event(
@@ -278,7 +299,11 @@ fn worktree_create(project: &Project, args: &[String]) -> io::Result<()> {
 fn worktree_open(project: &Project, args: &[String]) -> io::Result<()> {
     let options = parse_worktree_options(args, true)?;
     let (root, snapshot) = worktree_root(project, options.workspace_id.as_deref(), options.cwd)?;
-    let records = parse_porcelain(&git_output(&root, ["worktree", "list", "--porcelain"])?)?;
+    let records = parse_porcelain(&git_output(
+        &root,
+        ["worktree", "list", "--porcelain"],
+        options.trust_repository,
+    )?)?;
     let record = records
         .into_iter()
         .find(|record| {
@@ -338,7 +363,7 @@ fn worktree_remove(project: &Project, args: &[String]) -> io::Result<()> {
     }
     let path_string = path.to_string_lossy().into_owned();
     remove_args.push(&path_string);
-    git_run_vec(&root, &remove_args)?;
+    git_run_vec(&root, &remove_args, options.trust_repository)?;
     let response = super::send_command_with_payload(
         project,
         "delete_workspace",
@@ -388,7 +413,8 @@ fn parse_worktree_options(args: &[String], require_target: bool) -> io::Result<W
             "--focus" => options.focus = true,
             "--no-focus" => options.focus = false,
             "--force" => options.force = true,
-            "--trust-repository" | "--json" => {}
+            "--trust-repository" => options.trust_repository = true,
+            "--json" => {}
             other => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -613,12 +639,20 @@ fn branch_to_slug(branch: &str) -> String {
     slug.trim_matches('-').to_owned()
 }
 
-fn git_output<const N: usize>(cwd: &Path, args: [&str; N]) -> io::Result<String> {
-    git_run_vec(cwd, &args).map(|output| output.trim().to_owned())
+fn git_output<const N: usize>(
+    cwd: &Path,
+    args: [&str; N],
+    trust_repository: bool,
+) -> io::Result<String> {
+    git_run_vec(cwd, &args, trust_repository).map(|output| output.trim().to_owned())
 }
 
-fn git_run_vec(cwd: &Path, args: &[&str]) -> io::Result<String> {
-    let output = Command::new("git").arg("-C").arg(cwd).args(args).output()?;
+fn git_run_vec(cwd: &Path, args: &[&str], trust_repository: bool) -> io::Result<String> {
+    let mut command = Command::new("git");
+    if trust_repository {
+        command.args(["-c", &format!("safe.directory={}", cwd.display())]);
+    }
+    let output = command.arg("-C").arg(cwd).args(args).output()?;
     if !output.status.success() {
         return Err(io::Error::other(
             String::from_utf8_lossy(&output.stderr).trim().to_owned(),
@@ -666,15 +700,15 @@ fn same_path(left: &Path, right: &Path) -> bool {
 
 fn print_help() {
     eprintln!("spindle worktree commands:");
-    eprintln!("  spindle worktree list [--workspace ID | --cwd PATH]");
-    eprintln!("  spindle worktree create [--workspace ID | --cwd PATH] [--branch NAME] [--base REF] [--path PATH] [--label TEXT] [--focus|--no-focus]");
-    eprintln!("  spindle worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus|--no-focus]");
-    eprintln!("  spindle worktree remove --workspace ID [--force]");
+    eprintln!("  spindle worktree list [--workspace ID | --cwd PATH] [--trust-repository]");
+    eprintln!("  spindle worktree create [--workspace ID | --cwd PATH] [--branch NAME] [--base REF] [--path PATH] [--label TEXT] [--focus|--no-focus] [--trust-repository]");
+    eprintln!("  spindle worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus|--no-focus] [--trust-repository]");
+    eprintln!("  spindle worktree remove --workspace ID [--force] [--trust-repository]");
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_porcelain, ParsedWorktree};
+    use super::{parse_porcelain, parse_worktree_options, ParsedWorktree};
 
     #[test]
     fn parses_herdr_worktree_porcelain() {
@@ -697,6 +731,20 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn parses_trust_repository_flag() {
+        let options = parse_worktree_options(
+            &[
+                "--cwd".into(),
+                "C:/repo".into(),
+                "--trust-repository".into(),
+            ],
+            false,
+        )
+        .unwrap();
+        assert!(options.trust_repository);
     }
 
     #[test]
