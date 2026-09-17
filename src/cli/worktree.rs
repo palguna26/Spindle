@@ -233,17 +233,19 @@ fn worktree_create(project: &Project, args: &[String]) -> io::Result<()> {
         git_output(&root, ["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|_| "HEAD".into())
     });
     let path = options.path.unwrap_or_else(|| {
-        root.parent().unwrap_or(&root).join(format!(
-            "{}-{}",
-            repo_name(&root),
-            branch_to_slug(&branch)
-        ))
+        crate::config::load()
+            .worktree_directory
+            .join(repo_name(&root))
+            .join(branch_to_slug(&branch))
     });
     if path.exists() {
         return Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
             format!("worktree path already exists: {}", path.display()),
         ));
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
     let path_string = path.to_string_lossy().into_owned();
     git_run_vec(

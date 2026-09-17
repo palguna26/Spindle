@@ -41,6 +41,22 @@ struct FileConfig {
     ui: UiConfig,
     #[serde(default)]
     terminal: TerminalConfig,
+    #[serde(default)]
+    worktrees: WorktreesConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+struct WorktreesConfig {
+    directory: String,
+}
+
+impl Default for WorktreesConfig {
+    fn default() -> Self {
+        Self {
+            directory: "~/.herdr/worktrees".into(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -388,6 +404,7 @@ pub struct Config {
     pub(crate) default_shell: Option<String>,
     pub(crate) shell_mode: ShellMode,
     pub(crate) new_cwd: NewCwd,
+    pub(crate) worktree_directory: PathBuf,
 }
 
 impl Default for Config {
@@ -443,6 +460,7 @@ impl Default for Config {
             default_shell: None,
             shell_mode: ShellMode::Auto,
             new_cwd: NewCwd::Follow,
+            worktree_directory: expand_tilde_path("~/.herdr/worktrees"),
         }
     }
 }
@@ -564,7 +582,36 @@ pub fn load_from(path: &std::path::Path) -> Config {
             .filter(|shell| !shell.trim().is_empty()),
         shell_mode: file.terminal.shell_mode,
         new_cwd: file.terminal.new_cwd,
+        worktree_directory: expand_tilde_path(&file.worktrees.directory),
     }
+}
+
+fn expand_tilde_path(value: &str) -> PathBuf {
+    if value == "~" {
+        return home_directory().unwrap_or_else(|| PathBuf::from(value));
+    }
+    let Some(rest) = value
+        .strip_prefix("~/")
+        .or_else(|| value.strip_prefix("~\\"))
+    else {
+        let path = PathBuf::from(value);
+        return if path.is_absolute() {
+            path
+        } else {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(&path))
+                .unwrap_or(path)
+        };
+    };
+    home_directory()
+        .map(|home| home.join(rest))
+        .unwrap_or_else(|| PathBuf::from(value))
+}
+
+fn home_directory() -> Option<PathBuf> {
+    std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from)
 }
 
 pub(crate) fn complete_onboarding() -> Result<(), String> {
@@ -681,6 +728,10 @@ name = "terminal"
 # yellow = "rgb(249, 226, 175)"
 # red = "rgb(243, 139, 168)"
 # teal = "rgb(148, 226, 213)"
+
+[worktrees]
+# Default: ~/.herdr/worktrees/<repository>/<branch-slug>
+directory = "~/.herdr/worktrees"
 
 [notifications]
 enabled = true
@@ -856,6 +907,24 @@ mod tests {
         ));
         std::fs::write(&path, "[terminal]\nnew_cwd = \"~/Projects\"\n").unwrap();
         assert_eq!(load_from(&path).new_cwd, NewCwd::Path("~/Projects".into()));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_herdr_style_worktree_directory() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-worktree-config-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "[worktrees]\ndirectory = \"C:/Projects/worktrees\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            load_from(&path).worktree_directory,
+            std::path::PathBuf::from("C:/Projects/worktrees")
+        );
         std::fs::remove_file(path).unwrap();
     }
 
