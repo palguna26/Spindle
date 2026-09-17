@@ -4,13 +4,17 @@ use std::ptr::null_mut;
 use std::time::Duration;
 
 use windows_sys::Win32::System::Diagnostics::Debug::MessageBeep;
+use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob, JobObjectExtendedLimitInformation,
     QueryInformationJobObject, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 use windows_sys::Win32::System::Threading::{
-    GetCurrentProcess, OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+    GetCurrentProcess, OpenProcess, OpenThread, ResumeThread, CREATE_SUSPENDED, PROCESS_SET_QUOTA,
+    PROCESS_TERMINATE, THREAD_SUSPEND_RESUME,
 };
 use windows_sys::Win32::UI::Shell::{
     Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_TIP, NIIF_INFO, NIIF_NOSOUND, NIM_ADD, NIM_DELETE,
@@ -24,7 +28,8 @@ use super::NotificationSound;
 
 pub(crate) fn configure_status_command(command: &mut std::process::Command) {
     use std::os::windows::process::CommandExt;
-    command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+    command
+        .creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW | CREATE_SUSPENDED);
 }
 
 pub(crate) fn status_command_process(command: &str) -> std::process::Command {
@@ -67,8 +72,49 @@ impl StatusCommandGuard {
             unsafe { windows_sys::Win32::Foundation::CloseHandle(job) };
             return Err(io::Error::last_os_error());
         }
+        if let Err(error) = resume_suspended_process(child.id()) {
+            unsafe { windows_sys::Win32::Foundation::CloseHandle(job) };
+            return Err(error);
+        }
         Ok(Self { job })
     }
+}
+
+fn resume_suspended_process(process_id: u32) -> io::Result<()> {
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+    if snapshot == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+    let result = (|| {
+        let mut entry: THREADENTRY32 = unsafe { zeroed() };
+        entry.dwSize = size_of::<THREADENTRY32>() as u32;
+        if unsafe { Thread32First(snapshot, &mut entry) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        loop {
+            if entry.th32OwnerProcessID == process_id {
+                let thread = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID) };
+                if thread.is_null() {
+                    return Err(io::Error::last_os_error());
+                }
+                let resumed = unsafe { ResumeThread(thread) };
+                let result = if resumed == u32::MAX {
+                    Err(io::Error::last_os_error())
+                } else {
+                    Ok(())
+                };
+                unsafe { windows_sys::Win32::Foundation::CloseHandle(thread) };
+                return result;
+            }
+            if unsafe { Thread32Next(snapshot, &mut entry) } == 0 {
+                return Err(io::Error::other(
+                    "status command primary thread was not found",
+                ));
+            }
+        }
+    })();
+    unsafe { windows_sys::Win32::Foundation::CloseHandle(snapshot) };
+    result
 }
 
 impl Drop for StatusCommandGuard {

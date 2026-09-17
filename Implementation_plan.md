@@ -778,6 +778,9 @@ approved design changes it.
   also summarizes local agent attention and activity.
   Windows PTY children now use kill-on-close Job Objects so child tools do not
   outlive their pane; assignment safely falls back when Windows denies it.
+  Status commands now follow Herdr's stronger ordering too: they start
+  suspended, enter the kill-on-close job, and only then resume their primary
+  thread so descendants cannot escape during startup.
 - [x] Make `spindle stop` wait for endpoint cleanup and retry Windows named-pipe
   wakeups through the listener handoff race, following Herdr's bounded server
   stop wait. The Windows and installer smoke scripts pass after stale-endpoint
