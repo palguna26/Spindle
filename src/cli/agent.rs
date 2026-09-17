@@ -1,5 +1,6 @@
 use super::Project;
 use crate::server::session::SessionSnapshot;
+use std::fs;
 use std::io;
 use std::time::{Duration, Instant};
 
@@ -16,6 +17,7 @@ pub(super) fn run_agent_command(project: &Project, args: &[String]) -> io::Resul
         [command, args @ ..] if command == "send-keys" => agent_send_keys(project, args),
         [command, args @ ..] if command == "prompt" => agent_prompt(project, args),
         [command, args @ ..] if command == "rename" => agent_rename(project, args),
+        [command, args @ ..] if command == "explain" => agent_explain(project, args),
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
             print_help();
             Ok(())
@@ -28,6 +30,131 @@ pub(super) fn run_agent_command(project: &Project, args: &[String]) -> io::Resul
             ))
         }
     }
+}
+
+fn agent_explain(project: &Project, args: &[String]) -> io::Result<()> {
+    let mut target = None;
+    let mut file = None;
+    let mut agent_label = None;
+    let mut json = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" | "--format=json" => json = true,
+            "--format" => {
+                let format = args.get(index + 1).ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "missing value for --format")
+                })?;
+                match format.as_str() {
+                    "json" => json = true,
+                    "text" => json = false,
+                    other => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!("invalid --format: {other} (expected text or json)"),
+                        ));
+                    }
+                }
+                index += 1;
+            }
+            "--file" => {
+                file = Some(
+                    args.get(index + 1)
+                        .ok_or_else(|| {
+                            io::Error::new(io::ErrorKind::InvalidInput, "missing value for --file")
+                        })?
+                        .clone(),
+                );
+                index += 1;
+            }
+            "--agent" => {
+                agent_label = Some(
+                    args.get(index + 1)
+                        .ok_or_else(|| {
+                            io::Error::new(io::ErrorKind::InvalidInput, "missing value for --agent")
+                        })?
+                        .clone(),
+                );
+                index += 1;
+            }
+            "--verbose" | "-v" => {}
+            value if value.starts_with('-') => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unknown option: {value}"),
+                ));
+            }
+            value => {
+                if target.replace(value.to_owned()).is_some() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "agent explain accepts one target",
+                    ));
+                }
+            }
+        }
+        index += 1;
+    }
+
+    let (kind, screen, title, pane_id) = if let Some(path) = file {
+        let kind =
+            crate::detect::AgentKind::from_label(agent_label.as_deref().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidInput, "--file requires --agent LABEL")
+            })?)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "unknown agent label"))?;
+        (kind, fs::read_to_string(path)?, String::new(), None)
+    } else {
+        if agent_label.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--agent is only valid with --file",
+            ));
+        }
+        let target = target.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "usage: spindle agent explain TARGET [--json]",
+            )
+        })?;
+        let snapshot = get_snapshot(project)?;
+        let (pane_id, _row) = resolve_agent(&agent_rows(&snapshot), &target)?;
+        let pane = snapshot
+            .panes
+            .iter()
+            .find(|pane| pane.pane_id == pane_id)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "agent pane is unavailable"))?;
+        (
+            pane.agent.ok_or_else(|| {
+                io::Error::new(io::ErrorKind::NotFound, "pane has no detected agent")
+            })?,
+            pane.screen.clone(),
+            pane.title.clone(),
+            Some(pane_id),
+        )
+    };
+    let explain = crate::detect::manifest::explain_for_agent(
+        kind,
+        crate::detect::manifest::DetectionInput {
+            screen: &screen,
+            osc_title: &title,
+            _osc_progress: "",
+        },
+    );
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&explain).map_err(io::Error::other)?
+        );
+    } else {
+        println!("agent: {}", explain["agent"].as_str().unwrap_or("unknown"));
+        println!("state: {}", explain["state"].as_str().unwrap_or("unknown"));
+        println!("manifest: bundled {}", env!("CARGO_PKG_VERSION"));
+        if let Some(pane_id) = pane_id {
+            println!("pane: {pane_id}");
+        }
+        println!("screen bytes: {}", screen.len());
+    }
+    Ok(())
 }
 
 fn agent_list(project: &Project) -> io::Result<()> {
@@ -630,7 +757,7 @@ fn agent_rows(snapshot: &SessionSnapshot) -> Vec<serde_json::Value> {
 
 fn print_help() {
     println!(
-        "Usage: spindle agent <list|get|focus|start|wait|read|send-keys|prompt|rename TARGET [OPTIONS]>\nTARGET is a pane ID or a unique live agent name\nagent start NAME --kind KIND --pane PANE_ID [--timeout MS] [-- AGENT_ARGS...]\nagent prompt TARGET TEXT [--wait] [--until STATE]... [--timeout MS]"
+        "Usage: spindle agent <list|get|focus|start|wait|read|send-keys|prompt|rename|explain TARGET [OPTIONS]>\nTARGET is a pane ID or a unique live agent name\nagent start NAME --kind KIND --pane PANE_ID [--timeout MS] [-- AGENT_ARGS...]\nagent prompt TARGET TEXT [--wait] [--until STATE]... [--timeout MS]\nagent explain TARGET [--json]\nagent explain --file PATH --agent LABEL [--json]"
     );
 }
 

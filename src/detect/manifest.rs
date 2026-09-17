@@ -5,7 +5,7 @@
 //! region semantics; compatibility functions remain only as fallbacks where
 //! terminal encoding or legacy layouts need them.
 
-use super::{agents, AgentState};
+use super::{agents, AgentKind, AgentState};
 use regex::Regex;
 
 #[derive(Debug, Clone, Copy)]
@@ -13,6 +13,23 @@ pub(crate) struct DetectionInput<'a> {
     pub(crate) screen: &'a str,
     pub(crate) osc_title: &'a str,
     pub(crate) _osc_progress: &'a str,
+}
+
+pub(crate) fn explain_for_agent(agent: AgentKind, input: DetectionInput<'_>) -> serde_json::Value {
+    let state =
+        super::detect_state_with_osc(agent, input.screen, input.osc_title, input._osc_progress);
+    serde_json::json!({
+        "agent": agent.label(),
+        "state": state.label(),
+        "manifest_source": "bundled",
+        "manifest_version": env!("CARGO_PKG_VERSION"),
+        "matched_rule": serde_json::Value::Null,
+        "visible_idle": state == AgentState::Idle,
+        "visible_blocker": state == AgentState::Blocked,
+        "visible_working": state == AgentState::Working,
+        "screen_detection_skip_reason": if input.screen.is_empty() { Some("empty_screen") } else { None::<&str> },
+        "warning": "Rule-level evidence is not available in this build"
+    })
 }
 
 #[derive(Debug, Clone, Copy)]

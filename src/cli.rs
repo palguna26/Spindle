@@ -362,7 +362,7 @@ fn print_help() {
     println!("  tab create      create a tab in the active workspace");
     println!("  tab get/focus/move/rename/close  manage tabs by ID");
     println!("  pane list/current/get/focus/neighbor/edges/layout/process-info/input/rename/stop/restart/zoom/close/send-text/send-keys/run/read/swap/move/report-agent/report-agent-session/report-metadata/release-agent/wait-output/split/resize  manage panes");
-    println!("  agent list/get/focus/start/wait/read/send-keys/prompt/rename <target>  inspect and control agents");
+    println!("  agent list/get/focus/start/wait/read/send-keys/prompt/rename/explain <target>  inspect and control agents");
     println!("  session list/attach/stop/delete <name>  manage named sessions");
     println!("Options:");
     println!("  --help, -h       show this help");

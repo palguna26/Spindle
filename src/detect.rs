@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[path = "detect/agents/mod.rs"]
 mod agents;
-mod manifest;
+pub(crate) mod manifest;
 use agents::{
     amp_is_idle, amp_is_working, amp_permission_required, antigravity_is_working,
     antigravity_permission_required, claude_dynamic_workflow_prompt, claude_mcp_elicitation_prompt,
@@ -138,6 +138,38 @@ impl AgentKind {
             Self::OpenCode => "OpenCode",
             Self::GithubCopilot => "GitHub Copilot",
         }
+    }
+
+    pub(crate) fn from_label(label: &str) -> Option<Self> {
+        let normalized = label.trim().to_ascii_lowercase();
+        [
+            Self::Pi,
+            Self::QoderCli,
+            Self::Droid,
+            Self::Kiro,
+            Self::Cline,
+            Self::Kimi,
+            Self::Devin,
+            Self::Cursor,
+            Self::Amp,
+            Self::Kilo,
+            Self::Antigravity,
+            Self::Hermes,
+            Self::Qwen,
+            Self::Grok,
+            Self::Maki,
+            Self::Muse,
+            Self::Claude,
+            Self::Codex,
+            Self::Gemini,
+            Self::OpenCode,
+            Self::GithubCopilot,
+        ]
+        .into_iter()
+        .find(|kind| {
+            kind.label().to_ascii_lowercase() == normalized
+                || format!("{:?}", kind).to_ascii_lowercase() == normalized
+        })
     }
 }
 
