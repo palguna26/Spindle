@@ -30,6 +30,10 @@ pub(crate) const THEME_NAMES: &[&str] = &[
     "vesper",
 ];
 
+fn default_tab_bar_right_separator() -> String {
+    " ".into()
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct FileConfig {
     #[serde(default)]
@@ -142,6 +146,8 @@ struct UiConfig {
     status_indicators: StatusIndicatorStyle,
     #[serde(default)]
     tab_bar_right: Vec<TabBarRightEntryConfig>,
+    #[serde(default = "default_tab_bar_right_separator")]
+    tab_bar_right_separator: String,
     prompt_new_tab_name: bool,
     prompt_new_workspace_name: bool,
     copy_on_select: bool,
@@ -264,6 +270,7 @@ impl Default for UiConfig {
             window_title: "{hostname}: {workspace}".into(),
             status_indicators: StatusIndicatorStyle::Dots,
             tab_bar_right: Vec::new(),
+            tab_bar_right_separator: " ".into(),
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -432,6 +439,7 @@ pub struct Config {
     pub(crate) window_title: String,
     pub(crate) status_indicators: StatusIndicatorStyle,
     pub(crate) tab_bar_right: Vec<TabBarRightEntryConfig>,
+    pub(crate) tab_bar_right_separator: String,
     pub(crate) prompt_new_tab_name: bool,
     pub(crate) prompt_new_workspace_name: bool,
     pub(crate) copy_on_select: bool,
@@ -493,6 +501,7 @@ impl Default for Config {
             window_title: "{hostname}: {workspace}".into(),
             status_indicators: StatusIndicatorStyle::Dots,
             tab_bar_right: Vec::new(),
+            tab_bar_right_separator: " ".into(),
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -666,6 +675,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
             .into_iter()
             .take(tab_bar::MAX_TAB_BAR_RIGHT_ENTRIES)
             .collect(),
+        tab_bar_right_separator: file.ui.tab_bar_right_separator,
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
         copy_on_select: file.ui.copy_on_select,
@@ -883,6 +893,7 @@ pane_scrollbars = true
 show_agent_labels_on_pane_borders = false
 window_title = "{hostname}: {workspace}"
 status_indicators = "dots"
+tab_bar_right_separator = " "
 prompt_new_tab_name = true
 prompt_new_workspace_name = false
 copy_on_select = true

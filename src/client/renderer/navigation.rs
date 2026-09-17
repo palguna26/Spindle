@@ -2284,7 +2284,10 @@ fn tab_bar_right_width(config: &crate::config::Config) -> u16 {
         .map(tab_bar_right_text)
         .map(|text| unicode_width::UnicodeWidthStr::width(text.as_str()) as u16)
         .sum::<u16>()
-        .saturating_add(config.tab_bar_right.len().saturating_sub(1) as u16)
+        .saturating_add(
+            (unicode_width::UnicodeWidthStr::width(config.tab_bar_right_separator.as_str()) as u16)
+                .saturating_mul(config.tab_bar_right.len().saturating_sub(1) as u16),
+        )
 }
 
 fn tab_bar_right_text(entry: &crate::config::TabBarRightEntryConfig) -> String {
@@ -2321,7 +2324,7 @@ fn render_tab_bar_right(
         .map(tab_bar_right_text)
         .filter(|text| !text.is_empty())
         .collect::<Vec<_>>()
-        .join(" ");
+        .join(&config.tab_bar_right_separator);
     frame.render_widget(
         Paragraph::new(text)
             .alignment(Alignment::Right)
