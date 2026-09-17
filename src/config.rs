@@ -137,6 +137,7 @@ struct UiConfig {
     pane_scrollbars: bool,
     show_agent_labels_on_pane_borders: bool,
     window_title: String,
+    status_indicators: StatusIndicatorStyle,
     prompt_new_tab_name: bool,
     prompt_new_workspace_name: bool,
     copy_on_select: bool,
@@ -164,6 +165,14 @@ pub(crate) enum AgentPanelSort {
     #[serde(alias = "workspaces")]
     Spaces,
     Priority,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum StatusIndicatorStyle {
+    #[default]
+    Dots,
+    Symbols,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
@@ -249,6 +258,7 @@ impl Default for UiConfig {
             pane_scrollbars: true,
             show_agent_labels_on_pane_borders: false,
             window_title: "{hostname}: {workspace}".into(),
+            status_indicators: StatusIndicatorStyle::Dots,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -415,6 +425,7 @@ pub struct Config {
     pub(crate) pane_scrollbars: bool,
     pub(crate) show_agent_labels_on_pane_borders: bool,
     pub(crate) window_title: String,
+    pub(crate) status_indicators: StatusIndicatorStyle,
     pub(crate) prompt_new_tab_name: bool,
     pub(crate) prompt_new_workspace_name: bool,
     pub(crate) copy_on_select: bool,
@@ -474,6 +485,7 @@ impl Default for Config {
             pane_scrollbars: true,
             show_agent_labels_on_pane_borders: false,
             window_title: "{hostname}: {workspace}".into(),
+            status_indicators: StatusIndicatorStyle::Dots,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -640,6 +652,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         pane_scrollbars: file.ui.pane_scrollbars,
         show_agent_labels_on_pane_borders: file.ui.show_agent_labels_on_pane_borders,
         window_title: file.ui.window_title,
+        status_indicators: file.ui.status_indicators,
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
         copy_on_select: file.ui.copy_on_select,
@@ -856,6 +869,7 @@ pane_gaps = true
 pane_scrollbars = true
 show_agent_labels_on_pane_borders = false
 window_title = "{hostname}: {workspace}"
+status_indicators = "dots"
 prompt_new_tab_name = true
 prompt_new_workspace_name = false
 copy_on_select = true
@@ -957,7 +971,7 @@ mod tests {
     use super::{
         config_path_override, load_from, remove_keybinding_config_sections, upsert_section_key,
         upsert_top_level_bool, Config, HostCursorMode, NewCwd, NotificationDelivery, PaneBorders,
-        ShellMode, SidebarCollapsedMode, TabBarPosition,
+        ShellMode, SidebarCollapsedMode, StatusIndicatorStyle, TabBarPosition,
     };
     use crossterm::event::KeyModifiers;
 
@@ -1286,6 +1300,24 @@ mod tests {
         ));
         std::fs::write(&path, "[ui]\nshow_agent_labels_on_pane_borders = true\n").unwrap();
         assert!(load_from(&path).show_agent_labels_on_pane_borders);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn status_indicators_match_herdr_default_and_symbols_option() {
+        assert_eq!(
+            Config::default().status_indicators,
+            StatusIndicatorStyle::Dots
+        );
+        let path = std::env::temp_dir().join(format!(
+            "spindle-status-indicators-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[ui]\nstatus_indicators = \"symbols\"\n").unwrap();
+        assert_eq!(
+            load_from(&path).status_indicators,
+            StatusIndicatorStyle::Symbols
+        );
         std::fs::remove_file(path).unwrap();
     }
 

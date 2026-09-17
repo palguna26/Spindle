@@ -1080,7 +1080,7 @@ fn render_space_token_row(
     config: &crate::config::Config,
 ) -> Line<'static> {
     let state_icon = state
-        .map(|state| state.sidebar_marker().to_owned())
+        .map(|state| agent_status_marker(state, config.status_indicators).to_owned())
         .unwrap_or_else(|| if active { "●" } else { "○" }.to_owned());
     let state_text = state
         .map(|state| state.label().to_owned())
@@ -1111,6 +1111,25 @@ fn render_space_token_row(
     ))
 }
 
+fn agent_status_marker(
+    state: crate::detect::AgentDisplayState,
+    style: crate::config::StatusIndicatorStyle,
+) -> &'static str {
+    use crate::config::StatusIndicatorStyle;
+    match (style, state) {
+        (StatusIndicatorStyle::Dots, crate::detect::AgentDisplayState::Working)
+        | (StatusIndicatorStyle::Dots, crate::detect::AgentDisplayState::Blocked)
+        | (StatusIndicatorStyle::Dots, crate::detect::AgentDisplayState::Done) => "●",
+        (StatusIndicatorStyle::Dots, crate::detect::AgentDisplayState::Idle) => "○",
+        (StatusIndicatorStyle::Dots, crate::detect::AgentDisplayState::Unknown) => "·",
+        (StatusIndicatorStyle::Symbols, crate::detect::AgentDisplayState::Blocked) => "×",
+        (StatusIndicatorStyle::Symbols, crate::detect::AgentDisplayState::Working) => "◐",
+        (StatusIndicatorStyle::Symbols, crate::detect::AgentDisplayState::Done) => "✓",
+        (StatusIndicatorStyle::Symbols, crate::detect::AgentDisplayState::Idle) => "○",
+        (StatusIndicatorStyle::Symbols, crate::detect::AgentDisplayState::Unknown) => "·",
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_agent_token_row(
     tokens: &[String],
@@ -1125,7 +1144,7 @@ fn render_agent_token_row(
     config: &crate::config::Config,
 ) -> Line<'static> {
     let state = pane.agent_display_state();
-    let state_icon = state.sidebar_marker().to_owned();
+    let state_icon = agent_status_marker(state, config.status_indicators).to_owned();
     let state_text = pane.agent_display_state_label().to_owned();
     let agent = pane.agent_display_name().unwrap_or("Agent").to_owned();
     let title = pane
@@ -2429,9 +2448,10 @@ mod tests {
     use super::super::layout::{main_areas, main_areas_with_sidebar};
     use super::super::layout::{pane_rectangles, pane_sizes, split_areas, split_handles};
     use super::{
-        agent_state_priority, hit_test, hit_test_with_sidebar, hit_test_with_sidebar_scroll,
-        hit_test_with_sidebar_scroll_and_sort, hit_test_with_sidebar_scroll_and_sort_and_groups,
-        render_sidebar, render_sidebar_with_collapsed, render_sidebar_with_scroll, render_tabs,
+        agent_state_priority, agent_status_marker, hit_test, hit_test_with_sidebar,
+        hit_test_with_sidebar_scroll, hit_test_with_sidebar_scroll_and_sort,
+        hit_test_with_sidebar_scroll_and_sort_and_groups, render_sidebar,
+        render_sidebar_with_collapsed, render_sidebar_with_scroll, render_tabs,
         sidebar_rows_with_collapsed, tab_drop_target, tab_window, workspace_drop_target,
         ClickTarget, MIN_TAB_WIDTH,
     };
@@ -2451,6 +2471,29 @@ mod tests {
             "Spaces"
         );
         assert!(super::sidebar_title(Rect::new(0, 0, 40, 30), true, true).contains("priority"));
+    }
+
+    #[test]
+    fn agent_status_markers_match_herdr_styles() {
+        use crate::config::StatusIndicatorStyle;
+        use crate::detect::AgentDisplayState;
+
+        assert_eq!(
+            agent_status_marker(AgentDisplayState::Working, StatusIndicatorStyle::Dots),
+            "●"
+        );
+        assert_eq!(
+            agent_status_marker(AgentDisplayState::Idle, StatusIndicatorStyle::Dots),
+            "○"
+        );
+        assert_eq!(
+            agent_status_marker(AgentDisplayState::Blocked, StatusIndicatorStyle::Symbols),
+            "×"
+        );
+        assert_eq!(
+            agent_status_marker(AgentDisplayState::Done, StatusIndicatorStyle::Symbols),
+            "✓"
+        );
     }
 
     #[test]
@@ -3065,8 +3108,8 @@ mod tests {
             .collect::<String>();
         assert!(content.contains("Codex"));
         assert!(content.contains("OpenCode"));
-        assert!(content.contains("W"));
-        assert!(content.contains("!"));
+        assert!(content.contains("●"));
+        assert!(content.contains("○"));
         assert!(!content.contains("Idle"));
     }
 
@@ -3230,7 +3273,7 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol())
             .collect();
-        assert!(content.contains("! Docs"), "workspace status: {content}");
+        assert!(content.contains("● Docs"), "workspace status: {content}");
     }
 
     #[test]
