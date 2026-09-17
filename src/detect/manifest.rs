@@ -18,18 +18,109 @@ pub(crate) struct DetectionInput<'a> {
 pub(crate) fn explain_for_agent(agent: AgentKind, input: DetectionInput<'_>) -> serde_json::Value {
     let state =
         super::detect_state_with_osc(agent, input.screen, input.osc_title, input._osc_progress);
+    let rules = rules_for_agent(agent);
+    let mut matched: Option<(usize, Rule)> = None;
+    let evaluated_rules = rules
+        .iter()
+        .enumerate()
+        .map(|(index, rule)| {
+            let region_text = region(input, rule.region);
+            let is_interrupted = matches!(rule.region, Region::BottomNonEmpty(3))
+                && region_text.contains("â–  conversation interrupted");
+            let matches = !is_interrupted && matcher_matches(rule.matcher, &region_text);
+            if matches
+                && matched
+                    .as_ref()
+                    .is_none_or(|(_, previous)| rule.priority > previous.priority)
+            {
+                matched = Some((index, *rule));
+            }
+            serde_json::json!({
+                "id": format!("rule-{index}"),
+                "priority": rule.priority,
+                "region": region_name(rule.region),
+                "state": rule.state.label(),
+                "matched": matches,
+                "evidence": {
+                    "region_bytes": region_text.len(),
+                    "region_preview": evidence_preview(&region_text),
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    let matched_rule = matched.map(|(index, rule)| {
+        serde_json::json!({
+            "id": format!("rule-{index}"),
+            "priority": rule.priority,
+            "region": region_name(rule.region),
+            "state": rule.state.label(),
+        })
+    });
     serde_json::json!({
         "agent": agent.label(),
         "state": state.label(),
         "manifest_source": "bundled",
         "manifest_version": env!("CARGO_PKG_VERSION"),
-        "matched_rule": serde_json::Value::Null,
+        "matched_rule": matched_rule,
         "visible_idle": state == AgentState::Idle,
         "visible_blocker": state == AgentState::Blocked,
         "visible_working": state == AgentState::Working,
         "screen_detection_skip_reason": if input.screen.is_empty() { Some("empty_screen") } else { None::<&str> },
-        "warning": "Rule-level evidence is not available in this build"
+        "evaluated_rules": evaluated_rules,
     })
+}
+
+fn rules_for_agent(agent: AgentKind) -> &'static [Rule] {
+    match agent {
+        AgentKind::Codex => CODEX_RULES,
+        AgentKind::OpenCode => OPENCODE_RULES,
+        AgentKind::Gemini => GEMINI_RULES,
+        AgentKind::Cline => CLINE_RULES,
+        AgentKind::GithubCopilot => COPILOT_RULES,
+        AgentKind::Pi => PI_RULES,
+        AgentKind::QoderCli => QODER_RULES,
+        AgentKind::Droid => DROID_RULES,
+        AgentKind::Devin => DEVIN_RULES,
+        AgentKind::Cursor => CURSOR_RULES,
+        AgentKind::Amp => AMP_RULES,
+        AgentKind::Antigravity => ANTIGRAVITY_RULES,
+        AgentKind::Kilo => KILO_RULES,
+        AgentKind::Hermes => HERMES_RULES,
+        AgentKind::Kiro => KIRO_RULES,
+        AgentKind::Kimi => KIMI_RULES,
+        AgentKind::Maki => MAKI_RULES,
+        AgentKind::Muse => MUSE_RULES,
+        AgentKind::Grok => GROK_RULES,
+        AgentKind::Qwen => QWEN_RULES,
+        AgentKind::Claude => CLAUDE_RULES,
+    }
+}
+
+fn region_name(region: Region) -> &'static str {
+    match region {
+        Region::OscTitle => "osc_title",
+        Region::OscProgress => "osc_progress",
+        Region::TopNonEmpty(_) => "top_non_empty",
+        Region::BottomNonEmpty(_) => "bottom_non_empty",
+        Region::AfterLastPrompt => "after_last_prompt",
+        Region::WholeRecent => "whole_recent",
+        Region::WholeRecentWithoutCurrentPrompt => "whole_recent_without_current_prompt",
+        Region::LastNonEmptyAbovePromptBox => "last_non_empty_above_prompt_box",
+        Region::PromptBoxBody => "prompt_box_body",
+        Region::AfterLastHorizontalRule => "after_last_horizontal_rule",
+    }
+}
+
+fn evidence_preview(value: &str) -> String {
+    const MAX_PREVIEW_BYTES: usize = 240;
+    if value.len() <= MAX_PREVIEW_BYTES {
+        return value.to_owned();
+    }
+    let mut end = MAX_PREVIEW_BYTES;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &value[..end])
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1959,7 +2050,7 @@ mod tests {
         detect_kilo, detect_kimi, detect_kiro, detect_maki, detect_muse, detect_opencode,
         detect_pi, detect_qoder, detect_qwen, DetectionInput,
     };
-    use crate::detect::AgentState;
+    use crate::detect::{AgentKind, AgentState};
 
     fn detect(screen: &str, title: &str) -> Option<AgentState> {
         detect_codex(DetectionInput {
@@ -1967,6 +2058,28 @@ mod tests {
             osc_title: title,
             _osc_progress: "",
         })
+    }
+
+    #[test]
+    fn explain_reports_herdr_style_rule_evidence() {
+        let explain = super::explain_for_agent(
+            AgentKind::Codex,
+            DetectionInput {
+                screen: "prompt",
+                osc_title: "Action required",
+                _osc_progress: "",
+            },
+        );
+        assert_eq!(explain["state"], "blocked");
+        assert_eq!(explain["matched_rule"]["id"], "rule-0");
+        assert!(explain["evaluated_rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|rule| {
+                rule["matched"] == true && rule["evidence"]["region_bytes"].as_u64() == Some(15)
+            }));
+        assert!(explain.get("warning").is_none());
     }
 
     fn detect_opencode_state(screen: &str) -> Option<AgentState> {

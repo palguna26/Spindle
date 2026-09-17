@@ -37,6 +37,7 @@ fn agent_explain(project: &Project, args: &[String]) -> io::Result<()> {
     let mut file = None;
     let mut agent_label = None;
     let mut json = false;
+    let mut verbose = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -77,7 +78,7 @@ fn agent_explain(project: &Project, args: &[String]) -> io::Result<()> {
                 );
                 index += 1;
             }
-            "--verbose" | "-v" => {}
+            "--verbose" | "-v" => verbose = true,
             value if value.starts_with('-') => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -153,6 +154,23 @@ fn agent_explain(project: &Project, args: &[String]) -> io::Result<()> {
             println!("pane: {pane_id}");
         }
         println!("screen bytes: {}", screen.len());
+        if verbose {
+            if let Some(rule) = explain["matched_rule"].as_object() {
+                println!(
+                    "rule: {} (region={} priority={} state={})",
+                    rule["id"].as_str().unwrap_or("-"),
+                    rule["region"].as_str().unwrap_or("-"),
+                    rule["priority"].as_i64().unwrap_or_default(),
+                    rule["state"].as_str().unwrap_or("unknown"),
+                );
+            } else {
+                println!("rule: none");
+            }
+            println!(
+                "evaluated rules: {}",
+                explain["evaluated_rules"].as_array().map_or(0, Vec::len)
+            );
+        }
     }
     Ok(())
 }
