@@ -30,6 +30,9 @@ try {
     & $installed stop
     if ($LASTEXITCODE -ne 0) { throw "installed stop failed" }
 } finally {
+    if (Test-Path -LiteralPath $installed) {
+        try { & $installed stop *> $null } catch { }
+    }
     if ($null -eq $previousLocalAppData) {
         Remove-Item Env:LOCALAPPDATA -ErrorAction SilentlyContinue
     } else {

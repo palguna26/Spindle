@@ -239,9 +239,10 @@ fn start_server_with_output(project: &Project, show_status: bool) -> io::Result<
         .stderr(Stdio::null());
     crate::platform::launch_server_daemon(&mut server)?;
     // Detached Windows processes can take longer to initialize than the
-    // endpoint file creation. Keep startup bounded, but allow the listener
-    // and restored session to become ready under normal system load.
-    for _ in 0..200 {
+    // endpoint file creation. Keep startup bounded, but allow WMI process
+    // creation, the listener, and restored session to become ready under
+    // normal Windows system load.
+    for _ in 0..600 {
         if ping_server(project).is_ok() {
             if show_status {
                 println!("server started for {}", project.describe());

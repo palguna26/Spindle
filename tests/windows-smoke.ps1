@@ -136,6 +136,9 @@ try {
         throw "server markers were not cleaned up"
     }
 } finally {
+    if ($null -ne $env:LOCALAPPDATA) {
+        try { & $Binary stop *> $null } catch { }
+    }
     if ($null -eq $previousLocalAppData) {
         Remove-Item Env:LOCALAPPDATA -ErrorAction SilentlyContinue
     } else {
