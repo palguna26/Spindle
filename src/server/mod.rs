@@ -43,8 +43,12 @@ pub fn run(state_dir: &Path) -> io::Result<()> {
     let address = transport::endpoint(state_dir);
     #[cfg(windows)]
     let interactive_address = transport::interactive_endpoint(state_dir);
-    let mut loaded_session = session::Session::load_or_default(state_dir.join("session.json"))
-        .map_err(|error| io::Error::other(format!("session snapshot is invalid: {error:?}")))?;
+    let scrollback_limit = crate::config::load().scrollback_limit_bytes;
+    let mut loaded_session = session::Session::load_or_default_with_scrollback(
+        state_dir.join("session.json"),
+        scrollback_limit,
+    )
+    .map_err(|error| io::Error::other(format!("session snapshot is invalid: {error:?}")))?;
     let repository = std::env::current_dir()?;
     let repository_path = repository.to_string_lossy().into_owned();
     loaded_session.set_default_workspace_context(repository_path, git::branch(&repository));

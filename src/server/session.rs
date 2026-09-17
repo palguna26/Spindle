@@ -411,6 +411,15 @@ impl Default for Session {
 }
 
 impl Session {
+    pub fn load_or_default_with_scrollback(
+        path: impl AsRef<Path>,
+        scrollback_limit: usize,
+    ) -> Result<Self, SnapshotError> {
+        let mut session = Self::load_or_default(path)?;
+        session.pane_manager = PaneManager::new(scrollback_limit.max(1));
+        Ok(session)
+    }
+
     pub fn load_or_default(path: impl AsRef<Path>) -> Result<Self, SnapshotError> {
         let path = path.as_ref().to_path_buf();
         match load_versioned::<SessionSnapshot>(&path) {

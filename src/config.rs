@@ -44,6 +44,23 @@ struct FileConfig {
     terminal: TerminalConfig,
     #[serde(default)]
     worktrees: WorktreesConfig,
+    #[serde(default)]
+    advanced: AdvancedConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+struct AdvancedConfig {
+    #[serde(alias = "scrollback_lines")]
+    scrollback_limit_bytes: usize,
+}
+
+impl Default for AdvancedConfig {
+    fn default() -> Self {
+        Self {
+            scrollback_limit_bytes: 10_000_000,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -406,6 +423,7 @@ pub struct Config {
     pub(crate) shell_mode: ShellMode,
     pub(crate) new_cwd: NewCwd,
     pub(crate) worktree_directory: PathBuf,
+    pub(crate) scrollback_limit_bytes: usize,
 }
 
 impl Default for Config {
@@ -462,6 +480,7 @@ impl Default for Config {
             shell_mode: ShellMode::Auto,
             new_cwd: NewCwd::Follow,
             worktree_directory: expand_tilde_path("~/.herdr/worktrees"),
+            scrollback_limit_bytes: 10_000_000,
         }
     }
 }
@@ -630,6 +649,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         shell_mode: file.terminal.shell_mode,
         new_cwd: file.terminal.new_cwd,
         worktree_directory: expand_tilde_path(&file.worktrees.directory),
+        scrollback_limit_bytes: file.advanced.scrollback_limit_bytes.max(1),
     }
 }
 
@@ -806,6 +826,11 @@ sound = true
 # shell_mode = "auto" # auto, login, or non_login
 # new_cwd = "follow" # follow, home, current, or a fixed path
 
+[advanced]
+# Maximum retained terminal output per pane, in bytes. Herdr default: 10000000.
+# scrollback_lines = 10000000 # legacy alias
+scrollback_limit_bytes = 10000000
+
 [ui]
 sidebar_width = 26
 sidebar_min_width = 18
@@ -969,6 +994,19 @@ mod tests {
         ));
         std::fs::write(&path, "[terminal]\nnew_cwd = \"~/Projects\"\n").unwrap();
         assert_eq!(load_from(&path).new_cwd, NewCwd::Path("~/Projects".into()));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn loads_herdr_scrollback_limit_and_legacy_alias() {
+        let path = std::env::temp_dir().join(format!(
+            "spindle-scrollback-config-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[advanced]\nscrollback_limit_bytes = 12345\n").unwrap();
+        assert_eq!(load_from(&path).scrollback_limit_bytes, 12345);
+        std::fs::write(&path, "[advanced]\nscrollback_lines = 6789\n").unwrap();
+        assert_eq!(load_from(&path).scrollback_limit_bytes, 6789);
         std::fs::remove_file(path).unwrap();
     }
 
