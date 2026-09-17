@@ -6,6 +6,8 @@ use std::path::PathBuf;
 
 mod sidebar;
 pub(crate) use sidebar::SidebarConfig;
+mod tab_bar;
+pub(crate) use tab_bar::TabBarRightEntryConfig;
 
 pub(crate) const THEME_NAMES: &[&str] = &[
     "catppuccin",
@@ -138,6 +140,8 @@ struct UiConfig {
     show_agent_labels_on_pane_borders: bool,
     window_title: String,
     status_indicators: StatusIndicatorStyle,
+    #[serde(default)]
+    tab_bar_right: Vec<TabBarRightEntryConfig>,
     prompt_new_tab_name: bool,
     prompt_new_workspace_name: bool,
     copy_on_select: bool,
@@ -259,6 +263,7 @@ impl Default for UiConfig {
             show_agent_labels_on_pane_borders: false,
             window_title: "{hostname}: {workspace}".into(),
             status_indicators: StatusIndicatorStyle::Dots,
+            tab_bar_right: Vec::new(),
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -426,6 +431,7 @@ pub struct Config {
     pub(crate) show_agent_labels_on_pane_borders: bool,
     pub(crate) window_title: String,
     pub(crate) status_indicators: StatusIndicatorStyle,
+    pub(crate) tab_bar_right: Vec<TabBarRightEntryConfig>,
     pub(crate) prompt_new_tab_name: bool,
     pub(crate) prompt_new_workspace_name: bool,
     pub(crate) copy_on_select: bool,
@@ -486,6 +492,7 @@ impl Default for Config {
             show_agent_labels_on_pane_borders: false,
             window_title: "{hostname}: {workspace}".into(),
             status_indicators: StatusIndicatorStyle::Dots,
+            tab_bar_right: Vec::new(),
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -653,6 +660,12 @@ pub fn load_from(path: &std::path::Path) -> Config {
         show_agent_labels_on_pane_borders: file.ui.show_agent_labels_on_pane_borders,
         window_title: file.ui.window_title,
         status_indicators: file.ui.status_indicators,
+        tab_bar_right: file
+            .ui
+            .tab_bar_right
+            .into_iter()
+            .take(tab_bar::MAX_TAB_BAR_RIGHT_ENTRIES)
+            .collect(),
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
         copy_on_select: file.ui.copy_on_select,

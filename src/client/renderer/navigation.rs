@@ -227,14 +227,16 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
     }
     if contains(main.tabs, x, y) {
         let workspace = active_workspace(snapshot)?;
-        let (tab_area, scroll_left, scroll_right) = tab_layout(main.tabs, workspace.tabs.len());
+        let config = crate::config::load();
+        let (tab_area, scroll_left, scroll_right) =
+            tab_layout(main.tabs, workspace.tabs.len(), &config);
         if scroll_left.is_some_and(|rect| contains(rect, x, y)) {
             return Some(ClickTarget::TabScrollLeft);
         }
         if scroll_right.is_some_and(|rect| contains(rect, x, y)) {
             return Some(ClickTarget::TabScrollRight);
         }
-        if contains(new_tab_area(main.tabs), x, y) {
+        if contains(new_tab_area(main.tabs, &config), x, y) {
             return Some(ClickTarget::NewTab);
         }
         let active_index = workspace
@@ -489,7 +491,7 @@ pub fn tab_drop_target(
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
     let target_index = tab_index_at(
-        tab_strip_area(main.tabs),
+        tab_strip_area(main.tabs, &crate::config::load()),
         x,
         workspace.tabs.len(),
         active_index,
@@ -2129,7 +2131,7 @@ pub(super) fn render_tabs_with_scroll(
         );
         return;
     }
-    let (tab_area, scroll_left, scroll_right) = tab_layout(area, workspace.tabs.len());
+    let (tab_area, scroll_left, scroll_right) = tab_layout(area, workspace.tabs.len(), &config);
     let active_index = workspace
         .tabs
         .iter()
@@ -2223,20 +2225,28 @@ pub(super) fn render_tabs_with_scroll(
                     .fg(super::ThemePalette::overlay1(&config))
                     .bg(super::ThemePalette::panel_bg(&config)),
             ),
-            new_tab_area(area),
+            new_tab_area(area, &config),
         );
     }
+    render_tab_bar_right(frame, area, &config, workspace);
 }
 
-fn tab_strip_area(area: Rect) -> Rect {
+fn tab_strip_area(area: Rect, config: &crate::config::Config) -> Rect {
     Rect {
-        width: area.width.saturating_sub(3),
+        width: area
+            .width
+            .saturating_sub(3)
+            .saturating_sub(tab_bar_right_width(config)),
         ..area
     }
 }
 
-fn tab_layout(area: Rect, count: usize) -> (Rect, Option<Rect>, Option<Rect>) {
-    let strip = tab_strip_area(area);
+fn tab_layout(
+    area: Rect,
+    count: usize,
+    config: &crate::config::Config,
+) -> (Rect, Option<Rect>, Option<Rect>) {
+    let strip = tab_strip_area(area, config);
     let overflow = count
         .saturating_mul(usize::from(MIN_TAB_WIDTH))
         .saturating_add(count.saturating_sub(1))
@@ -2256,13 +2266,68 @@ fn tab_layout(area: Rect, count: usize) -> (Rect, Option<Rect>, Option<Rect>) {
     }
 }
 
-fn new_tab_area(area: Rect) -> Rect {
+fn new_tab_area(area: Rect, config: &crate::config::Config) -> Rect {
     Rect::new(
-        area.right().saturating_sub(3),
+        area.right()
+            .saturating_sub(tab_bar_right_width(config))
+            .saturating_sub(3),
         area.y,
         3.min(area.width),
         area.height,
     )
+}
+
+fn tab_bar_right_width(config: &crate::config::Config) -> u16 {
+    config
+        .tab_bar_right
+        .iter()
+        .map(tab_bar_right_text)
+        .map(|text| unicode_width::UnicodeWidthStr::width(text.as_str()) as u16)
+        .sum::<u16>()
+        .saturating_add(config.tab_bar_right.len().saturating_sub(1) as u16)
+}
+
+fn tab_bar_right_text(entry: &crate::config::TabBarRightEntryConfig) -> String {
+    match entry {
+        crate::config::TabBarRightEntryConfig::Hostname => std::env::var("COMPUTERNAME")
+            .or_else(|_| std::env::var("HOSTNAME"))
+            .unwrap_or_default(),
+        crate::config::TabBarRightEntryConfig::Text { text } => text.clone(),
+        crate::config::TabBarRightEntryConfig::Zoom => "Z".into(),
+        crate::config::TabBarRightEntryConfig::Datetime { .. }
+        | crate::config::TabBarRightEntryConfig::Command { .. } => String::new(),
+    }
+}
+
+fn render_tab_bar_right(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    config: &crate::config::Config,
+    _workspace: &WorkspaceView,
+) {
+    let width = tab_bar_right_width(config);
+    if width == 0 || area.width <= width.saturating_add(3) {
+        return;
+    }
+    let status = Rect::new(
+        area.right().saturating_sub(width),
+        area.y,
+        width,
+        area.height,
+    );
+    let text = config
+        .tab_bar_right
+        .iter()
+        .map(tab_bar_right_text)
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    frame.render_widget(
+        Paragraph::new(text)
+            .alignment(Alignment::Right)
+            .style(Style::default().fg(super::ThemePalette::overlay1(config))),
+        status,
+    );
 }
 
 pub fn tab_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -> usize {
@@ -2275,7 +2340,8 @@ pub fn tab_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -
         .iter()
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
-    let (content, _, _) = tab_layout(main.tabs, workspace.tabs.len());
+    let config = crate::config::load();
+    let (content, _, _) = tab_layout(main.tabs, workspace.tabs.len(), &config);
     let (_, widths) = tab_window_with_scroll(
         content.width,
         workspace.tabs.len(),
@@ -2287,7 +2353,7 @@ pub fn tab_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -
 
 pub fn tab_scroll_region(area: Rect, collapsed: bool, x: u16, y: u16) -> bool {
     let main = super::layout::main_areas_with_sidebar(area, collapsed);
-    contains(tab_strip_area(main.tabs), x, y)
+    contains(tab_strip_area(main.tabs, &crate::config::load()), x, y)
 }
 
 pub fn render_tab_drop_indicator(
@@ -2319,7 +2385,8 @@ pub fn render_tab_drop_indicator_with_scroll(
         .iter()
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
-    let (content, _, _) = tab_layout(area, workspace.tabs.len());
+    let config = crate::config::load();
+    let (content, _, _) = tab_layout(area, workspace.tabs.len(), &config);
     let (first_tab, widths) = tab_window_with_scroll(
         content.width,
         workspace.tabs.len(),
