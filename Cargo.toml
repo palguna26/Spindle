@@ -17,6 +17,7 @@ jsonc-parser = { version = "0.33.1", default-features = false, features = ["cst"
 regex = "1"
 vt100 = "0.16.2"
 unicode-width = "0.2"
+time = { version = "0.3", features = ["formatting", "local-offset"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

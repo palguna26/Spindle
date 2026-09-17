@@ -2297,8 +2297,17 @@ fn tab_bar_right_text(entry: &crate::config::TabBarRightEntryConfig) -> String {
             .unwrap_or_default(),
         crate::config::TabBarRightEntryConfig::Text { text } => text.clone(),
         crate::config::TabBarRightEntryConfig::Zoom => "Z".into(),
-        crate::config::TabBarRightEntryConfig::Datetime { .. }
-        | crate::config::TabBarRightEntryConfig::Command { .. } => String::new(),
+        crate::config::TabBarRightEntryConfig::Datetime { format } => {
+            time::OffsetDateTime::now_local()
+                .ok()
+                .and_then(|datetime| {
+                    datetime
+                        .format(&time::format_description::parse_strftime_owned(format).ok()?)
+                        .ok()
+                })
+                .unwrap_or_default()
+        }
+        crate::config::TabBarRightEntryConfig::Command { .. } => String::new(),
     }
 }
 
