@@ -11,7 +11,11 @@ use crate::terminal::{TerminalEmulator, TerminalSnapshot};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
-const DEFAULT_SCROLLBACK_BYTES: usize = 64 * 1024;
+// Herdr retains 10 MB of terminal output by default. Keep the same budget so
+// copy mode and scrollback remain useful after long-running commands, while
+// avoiding a large allocation for panes that have not produced much output.
+const DEFAULT_SCROLLBACK_BYTES: usize = 10_000_000;
+const INITIAL_SCROLLBACK_CAPACITY: usize = 64 * 1024;
 #[derive(Debug, Clone)]
 pub struct PaneConfig {
     pub command: String,
@@ -128,7 +132,9 @@ impl PaneManager {
                 metadata_token_sequences: HashMap::new(),
                 agent_session: None,
                 agent_session_seq: None,
-                scrollback: VecDeque::with_capacity(self.scrollback_limit),
+                scrollback: VecDeque::with_capacity(
+                    self.scrollback_limit.min(INITIAL_SCROLLBACK_CAPACITY),
+                ),
                 terminal: TerminalEmulator::new(rows, cols, self.scrollback_limit),
                 session,
                 pending_idle: PendingIdleConfirmation::default(),
@@ -618,7 +624,10 @@ mod tests {
         AgentReport, AgentStartupGrace, PendingIdleConfirmation, AGENT_EXIT_CONFIRMATIONS,
         AGENT_STARTUP_GRACE_WINDOW, IDLE_CONFIRM_CAP, IDLE_CONFIRM_INTERVAL,
     };
-    use super::{observe_agent_process, PaneConfig, PaneManager};
+    use super::{
+        observe_agent_process, PaneConfig, PaneManager, DEFAULT_SCROLLBACK_BYTES,
+        INITIAL_SCROLLBACK_CAPACITY,
+    };
     use crate::detect::{AgentKind, AgentProcessScan, AgentState};
     use std::collections::BTreeMap;
     use std::time::{Duration, Instant};
@@ -641,6 +650,16 @@ mod tests {
     fn missing_pane_is_reported() {
         let mut manager = PaneManager::new(32);
         assert!(manager.send_input("missing", b"hello").is_err());
+    }
+
+    #[test]
+    fn default_scrollback_matches_herdr_without_eager_large_allocation() {
+        assert_eq!(DEFAULT_SCROLLBACK_BYTES, 10_000_000);
+        assert_eq!(INITIAL_SCROLLBACK_CAPACITY, 64 * 1024);
+        assert_eq!(
+            DEFAULT_SCROLLBACK_BYTES.min(INITIAL_SCROLLBACK_CAPACITY),
+            64 * 1024
+        );
     }
 
     #[test]
