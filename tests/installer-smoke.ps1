@@ -11,6 +11,9 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ("spindle-installer-smoke-" + [guid
 $bin = Join-Path $root "bin"
 $state = Join-Path $root "state"
 $previousLocalAppData = $env:LOCALAPPDATA
+$previousSpindleSocketPath = $env:SPINDLE_SOCKET_PATH
+$previousHerdrSocketPath = $env:HERDR_SOCKET_PATH
+$installed = $null
 New-Item -ItemType Directory -Path $root | Out-Null
 
 try {
@@ -21,6 +24,8 @@ try {
     }
 
     $env:LOCALAPPDATA = $state
+    Remove-Item Env:SPINDLE_SOCKET_PATH -ErrorAction SilentlyContinue
+    Remove-Item Env:HERDR_SOCKET_PATH -ErrorAction SilentlyContinue
     & $installed help
     if ($LASTEXITCODE -ne 0) { throw "installed help failed" }
     & $installed start
@@ -30,7 +35,7 @@ try {
     & $installed stop
     if ($LASTEXITCODE -ne 0) { throw "installed stop failed" }
 } finally {
-    if (Test-Path -LiteralPath $installed) {
+    if ($null -ne $installed -and (Test-Path -LiteralPath $installed)) {
         try { & $installed stop *> $null } catch { }
     }
     if ($null -eq $previousLocalAppData) {
@@ -38,7 +43,19 @@ try {
     } else {
         $env:LOCALAPPDATA = $previousLocalAppData
     }
-    if (Test-Path -LiteralPath $root) {
+    if ($null -eq $previousSpindleSocketPath) {
+        Remove-Item Env:SPINDLE_SOCKET_PATH -ErrorAction SilentlyContinue
+    } else {
+        $env:SPINDLE_SOCKET_PATH = $previousSpindleSocketPath
+    }
+    if ($null -eq $previousHerdrSocketPath) {
+        Remove-Item Env:HERDR_SOCKET_PATH -ErrorAction SilentlyContinue
+    } else {
+        $env:HERDR_SOCKET_PATH = $previousHerdrSocketPath
+    }
+if (Test-Path -LiteralPath $root) {
         Remove-Item -LiteralPath $root -Recurse -Force
     }
 }
+
+exit 0
