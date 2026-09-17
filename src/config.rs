@@ -135,6 +135,7 @@ struct UiConfig {
     pane_outer_borders: bool,
     pane_gaps: bool,
     pane_scrollbars: bool,
+    show_agent_labels_on_pane_borders: bool,
     prompt_new_tab_name: bool,
     prompt_new_workspace_name: bool,
     copy_on_select: bool,
@@ -245,6 +246,7 @@ impl Default for UiConfig {
             pane_outer_borders: true,
             pane_gaps: true,
             pane_scrollbars: true,
+            show_agent_labels_on_pane_borders: false,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -409,6 +411,7 @@ pub struct Config {
     pub(crate) pane_outer_borders: bool,
     pub(crate) pane_gaps: bool,
     pub(crate) pane_scrollbars: bool,
+    pub(crate) show_agent_labels_on_pane_borders: bool,
     pub(crate) prompt_new_tab_name: bool,
     pub(crate) prompt_new_workspace_name: bool,
     pub(crate) copy_on_select: bool,
@@ -466,6 +469,7 @@ impl Default for Config {
             pane_outer_borders: true,
             pane_gaps: true,
             pane_scrollbars: true,
+            show_agent_labels_on_pane_borders: false,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -630,6 +634,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         pane_outer_borders: file.ui.pane_outer_borders,
         pane_gaps: file.ui.pane_gaps,
         pane_scrollbars: file.ui.pane_scrollbars,
+        show_agent_labels_on_pane_borders: file.ui.show_agent_labels_on_pane_borders,
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
         copy_on_select: file.ui.copy_on_select,
@@ -844,6 +849,7 @@ pane_borders = "auto"
 pane_outer_borders = true
 pane_gaps = true
 pane_scrollbars = true
+show_agent_labels_on_pane_borders = false
 prompt_new_tab_name = true
 prompt_new_workspace_name = false
 copy_on_select = true
@@ -1262,6 +1268,18 @@ mod tests {
             std::env::temp_dir().join(format!("spindle-hide-tab-bar-{}.toml", std::process::id()));
         std::fs::write(&path, "[ui]\nhide_tab_bar_when_single_tab = true\n").unwrap();
         assert!(load_from(&path).hide_tab_bar_when_single_tab);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn agent_labels_on_pane_borders_match_herdr_default_and_value() {
+        assert!(!Config::default().show_agent_labels_on_pane_borders);
+        let path = std::env::temp_dir().join(format!(
+            "spindle-agent-border-labels-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[ui]\nshow_agent_labels_on_pane_borders = true\n").unwrap();
+        assert!(load_from(&path).show_agent_labels_on_pane_borders);
         std::fs::remove_file(path).unwrap();
     }
 

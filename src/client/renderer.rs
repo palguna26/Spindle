@@ -1725,7 +1725,7 @@ fn pane_title_with_config(
     config: &crate::config::Config,
 ) -> Line<'static> {
     let indicator = pane.status.indicator().to_string();
-    let title = pane_title_text(pane);
+    let title = pane_title_text_with_agent_labels(pane, config.show_agent_labels_on_pane_borders);
     Line::from(vec![
         Span::styled(
             indicator,
@@ -1735,7 +1735,15 @@ fn pane_title_with_config(
     ])
 }
 
+#[cfg(test)]
 fn pane_title_text(pane: &crate::server::session::PaneView) -> String {
+    pane_title_text_with_agent_labels(pane, true)
+}
+
+fn pane_title_text_with_agent_labels(
+    pane: &crate::server::session::PaneView,
+    show_agent_labels: bool,
+) -> String {
     let label = pane
         .label
         .as_deref()
@@ -1754,6 +1762,7 @@ fn pane_title_text(pane: &crate::server::session::PaneView) -> String {
         pane.pane_id,
         label,
         pane.agent
+            .filter(|_| show_agent_labels)
             .as_ref()
             .map(|agent| {
                 let state = format!(" {}", pane.agent_display_state_label());
@@ -2469,6 +2478,10 @@ mod tests {
                 .fg,
             Some(Color::Rgb(249, 226, 175))
         );
+        assert!(!super::pane_title_text_with_agent_labels(&pane, false)
+            .contains("[Codex Review working]"));
+        assert!(super::pane_title_text_with_agent_labels(&pane, true)
+            .contains("[Codex Review working]"));
         pane.agent_state = Some(crate::detect::AgentState::Idle);
         pane.agent_done = true;
         assert!(pane_title_text(&pane).contains("[Codex Review done]"));
