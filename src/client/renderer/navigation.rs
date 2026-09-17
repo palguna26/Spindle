@@ -2286,12 +2286,13 @@ fn new_tab_area(area: Rect, config: &crate::config::Config, workspace: &Workspac
 
 fn tab_bar_right_width(config: &crate::config::Config, workspace: &WorkspaceView) -> u16 {
     let parts = tab_bar_right_parts(config, workspace);
+    let separator = sanitize_tab_bar_separator(&config.tab_bar_right_separator);
     parts
         .iter()
         .map(|(text, _)| unicode_width::UnicodeWidthStr::width(text.as_str()) as u16)
         .sum::<u16>()
         .saturating_add(
-            (unicode_width::UnicodeWidthStr::width(config.tab_bar_right_separator.as_str()) as u16)
+            (unicode_width::UnicodeWidthStr::width(separator.as_str()) as u16)
                 .saturating_mul(parts.len().saturating_sub(1) as u16),
         )
 }
@@ -2314,12 +2315,16 @@ fn tab_bar_right_text(
 ) -> Option<(String, bool)> {
     match entry {
         crate::config::TabBarRightEntryConfig::Hostname => Some((
-            std::env::var("COMPUTERNAME")
-                .or_else(|_| std::env::var("HOSTNAME"))
-                .unwrap_or_default(),
+            sanitize_tab_bar_text(
+                &std::env::var("COMPUTERNAME")
+                    .or_else(|_| std::env::var("HOSTNAME"))
+                    .unwrap_or_default(),
+            ),
             false,
         )),
-        crate::config::TabBarRightEntryConfig::Text { text } => Some((text.clone(), false)),
+        crate::config::TabBarRightEntryConfig::Text { text } => {
+            sanitize_tab_bar_literal(text).map(|text| (text, false))
+        }
         crate::config::TabBarRightEntryConfig::Zoom => workspace
             .tabs
             .iter()
@@ -2327,14 +2332,16 @@ fn tab_bar_right_text(
             .filter(|tab| tab.zoomed)
             .map(|_| ("ZOOM".into(), true)),
         crate::config::TabBarRightEntryConfig::Datetime { format } => Some((
-            time::OffsetDateTime::now_local()
-                .ok()
-                .and_then(|datetime| {
-                    datetime
-                        .format(&time::format_description::parse_strftime_owned(format).ok()?)
-                        .ok()
-                })
-                .unwrap_or_default(),
+            sanitize_tab_bar_text(
+                &time::OffsetDateTime::now_local()
+                    .ok()
+                    .and_then(|datetime| {
+                        datetime
+                            .format(&time::format_description::parse_strftime_owned(format).ok()?)
+                            .ok()
+                    })
+                    .unwrap_or_default(),
+            ),
             false,
         )),
         crate::config::TabBarRightEntryConfig::Command {
@@ -2580,6 +2587,30 @@ fn is_unicode_format_control(character: char) -> bool {
     )
 }
 
+fn sanitize_tab_bar_separator(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect()
+}
+
+fn sanitize_tab_bar_literal(value: &str) -> Option<String> {
+    let value: String = value
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect();
+    (!value.is_empty()).then_some(value)
+}
+
+fn sanitize_tab_bar_text(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .filter(|character| !character.is_control() && !is_unicode_format_control(*character))
+        .take(80)
+        .collect()
+}
+
 fn render_tab_bar_right(
     frame: &mut Frame<'_>,
     area: Rect,
@@ -2602,7 +2633,7 @@ fn render_tab_bar_right(
     for (index, (text, accent)) in parts.iter().enumerate() {
         if index > 0 {
             spans.push(Span::styled(
-                config.tab_bar_right_separator.clone(),
+                sanitize_tab_bar_separator(&config.tab_bar_right_separator),
                 Style::default().fg(super::ThemePalette::overlay0(config)),
             ));
         }
@@ -2888,6 +2919,16 @@ mod tests {
         output.extend_from_slice(b"\nlast\n");
         let bytes = super::read_last_status_output_line(output.as_slice()).unwrap();
         assert_eq!(bytes, b"last");
+    }
+
+    #[test]
+    fn tab_bar_text_and_separator_are_terminal_safe() {
+        assert_eq!(super::sanitize_tab_bar_separator(" · \n"), " · ");
+        assert_eq!(
+            super::sanitize_tab_bar_literal("hello\tworld"),
+            Some("helloworld".into())
+        );
+        assert_eq!(super::sanitize_tab_bar_text("  ready\u{200b}\n"), "ready");
     }
 
     #[test]

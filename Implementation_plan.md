@@ -38,6 +38,12 @@ Latest input milestone: Spindle now canonicalizes `Shift+Tab` and `BackTab`
 before matching configured or built-in bindings, following Herdr's
 `src/config/keybinds.rs::normalize_key_combo` behavior.
 
+Tab-bar status now follows Herdr's visible-segment rules: inactive zoom entries
+are hidden, active zoom uses an accented `ZOOM` label, layout and hit testing
+reserve only visible segments, and configured status text/separators are
+sanitized before terminal rendering. Status command output is drained while
+the process runs and keeps only its bounded last line.
+
 Configured keybindings now take precedence over conflicting built-in and
 custom chords, following Herdr's user-before-default binding registry.
 
