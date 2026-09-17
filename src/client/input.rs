@@ -32,6 +32,9 @@ pub enum Action {
     RenameActiveTab,
     RenameActiveWorkspace,
     CreateWorkspace,
+    NewWorktree,
+    OpenWorktree,
+    RemoveWorktree,
     RenameActiveSpace,
     CreateSpace,
     DeleteActiveWorkspace,
@@ -249,6 +252,7 @@ fn default_bindings() -> Vec<Binding> {
         (Action::DeleteActiveWorkspace, 'D', true),
         (Action::NewTab, 'c', false),
         (Action::CreateWorkspace, 'N', true),
+        (Action::NewWorktree, 'G', true),
         (Action::NextTab, 'n', false),
         (Action::NextTab, ']', false),
         (Action::PreviousTab, 'p', false),
@@ -394,6 +398,9 @@ fn action_name(name: &str) -> Option<Action> {
         "detach" => Action::Detach,
         "new_tab" => Action::NewTab,
         "new_workspace" => Action::CreateWorkspace,
+        "new_worktree" => Action::NewWorktree,
+        "open_worktree" => Action::OpenWorktree,
+        "remove_worktree" => Action::RemoveWorktree,
         "new_pane" => Action::NewPane,
         "close_pane" => Action::ClosePane,
         "close_tab" => Action::CloseTab,
@@ -564,6 +571,10 @@ mod tests {
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('N'), KeyModifiers::SHIFT)),
             Action::CreateWorkspace
+        );
+        assert_eq!(
+            action(true, KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT)),
+            Action::NewWorktree
         );
         assert_eq!(
             action(true, KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE)),

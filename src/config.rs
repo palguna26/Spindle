@@ -664,6 +664,7 @@ settings = "prefix+s"
 reload_config = "prefix+shift+r"
 open_notification_target = "prefix+o"
 create_workspace = "prefix+shift+n"
+new_worktree = "prefix+shift+g"
 rename_workspace = "prefix+shift+w"
 delete_workspace = "prefix+shift+d"
 

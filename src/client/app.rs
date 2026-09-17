@@ -1645,6 +1645,11 @@ fn event_loop(
                 let result = create_workspace_from_current_directory(client, terminal_size);
                 record_action_error(&mut action_error, "create workspace", result);
             }
+            Action::NewWorktree | Action::OpenWorktree | Action::RemoveWorktree => {
+                if let Some(target) = rename_target(pressed) {
+                    rename_prompt = Some(prompt_for_target(target, &snapshot));
+                }
+            }
             Action::RenameActiveWorkspace => {
                 rename_prompt = Some(prompt_for_target(RenameTarget::Workspace, &snapshot));
             }
@@ -3059,6 +3064,9 @@ fn rename_target(action: Action) -> Option<RenameTarget> {
         Action::RenameActiveTab => Some(RenameTarget::Tab),
         Action::RenameActiveWorkspace => Some(RenameTarget::Workspace),
         Action::CreateWorkspace => Some(RenameTarget::CreateWorkspace),
+        Action::NewWorktree => Some(RenameTarget::CreateWorktree),
+        Action::OpenWorktree => Some(RenameTarget::OpenWorktree),
+        Action::RemoveWorktree => Some(RenameTarget::RemoveWorktree),
         Action::NewTab => Some(RenameTarget::CreateTab),
         Action::RenameActiveSpace => Some(RenameTarget::Space),
         Action::CreateSpace => Some(RenameTarget::CreateSpace),
@@ -3795,6 +3803,9 @@ fn execute_action(
         | Action::RenameActiveTab
         | Action::RenameActiveWorkspace
         | Action::CreateWorkspace
+        | Action::NewWorktree
+        | Action::OpenWorktree
+        | Action::RemoveWorktree
         | Action::RenameActiveSpace
         | Action::CreateSpace
         | Action::DeleteActiveWorkspace
