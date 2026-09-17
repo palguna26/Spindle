@@ -20,6 +20,9 @@ pub enum Command {
     RenameActiveTab,
     RenameActiveWorkspace,
     CreateWorkspace,
+    NewWorktree,
+    OpenWorktree,
+    RemoveWorktree,
     RenameActiveSpace,
     CreateSpace,
     DeleteActiveWorkspace,
@@ -45,7 +48,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Self; 39] = [
+    pub const ALL: [Self; 42] = [
         Self::NewTab,
         Self::NewPane,
         Self::CloseTab,
@@ -63,6 +66,9 @@ impl Command {
         Self::RenameActiveTab,
         Self::RenameActiveWorkspace,
         Self::CreateWorkspace,
+        Self::NewWorktree,
+        Self::OpenWorktree,
+        Self::RemoveWorktree,
         Self::RenameActiveSpace,
         Self::CreateSpace,
         Self::DeleteActiveWorkspace,
@@ -106,6 +112,9 @@ impl Command {
             Self::RenameActiveTab => "Rename active tab",
             Self::RenameActiveWorkspace => "Rename active workspace",
             Self::CreateWorkspace => "Create workspace",
+            Self::NewWorktree => "Create worktree",
+            Self::OpenWorktree => "Open worktree",
+            Self::RemoveWorktree => "Remove worktree",
             Self::RenameActiveSpace => "Rename active space",
             Self::CreateSpace => "Create space",
             Self::DeleteActiveWorkspace => "Delete active workspace (type name)",
@@ -150,6 +159,9 @@ impl Command {
             Self::RenameActiveTab => Action::RenameActiveTab,
             Self::RenameActiveWorkspace => Action::RenameActiveWorkspace,
             Self::CreateWorkspace => Action::CreateWorkspace,
+            Self::NewWorktree => Action::NewWorktree,
+            Self::OpenWorktree => Action::OpenWorktree,
+            Self::RemoveWorktree => Action::RemoveWorktree,
             Self::RenameActiveSpace => Action::RenameActiveSpace,
             Self::CreateSpace => Action::CreateSpace,
             Self::DeleteActiveWorkspace => Action::DeleteActiveWorkspace,
@@ -224,5 +236,18 @@ mod tests {
         assert_eq!(command.label(), "Run plugin action (type ID)");
         assert_eq!(command.action(), super::Action::PluginAction);
         assert!(Command::ALL.contains(&command));
+    }
+
+    #[test]
+    fn worktree_actions_are_available_in_the_command_palette() {
+        assert_eq!(Command::NewWorktree.action(), super::Action::NewWorktree);
+        assert_eq!(Command::OpenWorktree.action(), super::Action::OpenWorktree);
+        assert_eq!(
+            Command::RemoveWorktree.action(),
+            super::Action::RemoveWorktree
+        );
+        assert!(Command::ALL.contains(&Command::NewWorktree));
+        assert!(Command::ALL.contains(&Command::OpenWorktree));
+        assert!(Command::ALL.contains(&Command::RemoveWorktree));
     }
 }

@@ -903,8 +903,14 @@ fn event_loop(
             } else if key.code == KeyCode::Enter {
                 let command = Command::ALL[palette_selected];
                 palette_open = false;
-                if (!matches!(command.action(), Action::NewTab | Action::CreateWorkspace))
-                    || (command.action() == Action::NewTab && config.prompt_new_tab_name)
+                if (!matches!(
+                    command.action(),
+                    Action::NewTab
+                        | Action::CreateWorkspace
+                        | Action::NewWorktree
+                        | Action::OpenWorktree
+                        | Action::RemoveWorktree
+                )) || (command.action() == Action::NewTab && config.prompt_new_tab_name)
                     || (command.action() == Action::CreateWorkspace
                         && config.prompt_new_workspace_name)
                 {
