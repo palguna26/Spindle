@@ -44,6 +44,11 @@ reserve only visible segments, and configured status text/separators are
 sanitized before terminal rendering. Status command output is drained while
 the process runs and keeps only its bounded last line.
 
+Tab-bar commands now use the focused pane's valid working directory and receive
+Herdr-compatible active workspace, tab, pane, socket, and binary environment
+variables. Their cached values are isolated by command settings and active
+context, and Windows uses Herdr's `/d /c` command invocation form.
+
 Configured keybindings now take precedence over conflicting built-in and
 custom chords, following Herdr's user-before-default binding registry.
 

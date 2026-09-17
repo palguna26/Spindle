@@ -11,3 +11,9 @@ pub(crate) fn should_draw_host_cursor_by_default() -> bool {
 pub(crate) fn launch_server_daemon(command: &mut std::process::Command) -> io::Result<u32> {
     command.spawn().map(|child| child.id())
 }
+
+pub(crate) fn status_command_process(command: &str) -> std::process::Command {
+    let mut process = std::process::Command::new("sh");
+    process.args(["-c", command]);
+    process
+}

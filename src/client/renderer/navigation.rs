@@ -233,15 +233,20 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
     if contains(main.tabs, x, y) {
         let workspace = active_workspace(snapshot)?;
         let config = crate::config::load();
-        let (tab_area, scroll_left, scroll_right) =
-            tab_layout(main.tabs, workspace.tabs.len(), &config, workspace);
+        let (tab_area, scroll_left, scroll_right) = tab_layout(
+            main.tabs,
+            workspace.tabs.len(),
+            &config,
+            snapshot,
+            workspace,
+        );
         if scroll_left.is_some_and(|rect| contains(rect, x, y)) {
             return Some(ClickTarget::TabScrollLeft);
         }
         if scroll_right.is_some_and(|rect| contains(rect, x, y)) {
             return Some(ClickTarget::TabScrollRight);
         }
-        if contains(new_tab_area(main.tabs, &config, workspace), x, y) {
+        if contains(new_tab_area(main.tabs, &config, snapshot, workspace), x, y) {
             return Some(ClickTarget::NewTab);
         }
         let active_index = workspace
@@ -496,7 +501,7 @@ pub fn tab_drop_target(
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
     let target_index = tab_index_at(
-        tab_strip_area(main.tabs, &crate::config::load(), workspace),
+        tab_strip_area(main.tabs, &crate::config::load(), snapshot, workspace),
         x,
         workspace.tabs.len(),
         active_index,
@@ -2137,7 +2142,7 @@ pub(super) fn render_tabs_with_scroll(
         return;
     }
     let (tab_area, scroll_left, scroll_right) =
-        tab_layout(area, workspace.tabs.len(), &config, workspace);
+        tab_layout(area, workspace.tabs.len(), &config, snapshot, workspace);
     let active_index = workspace
         .tabs
         .iter()
@@ -2231,18 +2236,23 @@ pub(super) fn render_tabs_with_scroll(
                     .fg(super::ThemePalette::overlay1(&config))
                     .bg(super::ThemePalette::panel_bg(&config)),
             ),
-            new_tab_area(area, &config, workspace),
+            new_tab_area(area, &config, snapshot, workspace),
         );
     }
-    render_tab_bar_right(frame, area, &config, workspace);
+    render_tab_bar_right(frame, area, &config, snapshot, workspace);
 }
 
-fn tab_strip_area(area: Rect, config: &crate::config::Config, workspace: &WorkspaceView) -> Rect {
+fn tab_strip_area(
+    area: Rect,
+    config: &crate::config::Config,
+    snapshot: &SessionSnapshot,
+    workspace: &WorkspaceView,
+) -> Rect {
     Rect {
         width: area
             .width
             .saturating_sub(3)
-            .saturating_sub(tab_bar_right_width(config, workspace)),
+            .saturating_sub(tab_bar_right_width(config, snapshot, workspace)),
         ..area
     }
 }
@@ -2251,9 +2261,10 @@ fn tab_layout(
     area: Rect,
     count: usize,
     config: &crate::config::Config,
+    snapshot: &SessionSnapshot,
     workspace: &WorkspaceView,
 ) -> (Rect, Option<Rect>, Option<Rect>) {
-    let strip = tab_strip_area(area, config, workspace);
+    let strip = tab_strip_area(area, config, snapshot, workspace);
     let overflow = count
         .saturating_mul(usize::from(MIN_TAB_WIDTH))
         .saturating_add(count.saturating_sub(1))
@@ -2273,10 +2284,15 @@ fn tab_layout(
     }
 }
 
-fn new_tab_area(area: Rect, config: &crate::config::Config, workspace: &WorkspaceView) -> Rect {
+fn new_tab_area(
+    area: Rect,
+    config: &crate::config::Config,
+    snapshot: &SessionSnapshot,
+    workspace: &WorkspaceView,
+) -> Rect {
     Rect::new(
         area.right()
-            .saturating_sub(tab_bar_right_width(config, workspace))
+            .saturating_sub(tab_bar_right_width(config, snapshot, workspace))
             .saturating_sub(3),
         area.y,
         3.min(area.width),
@@ -2284,8 +2300,12 @@ fn new_tab_area(area: Rect, config: &crate::config::Config, workspace: &Workspac
     )
 }
 
-fn tab_bar_right_width(config: &crate::config::Config, workspace: &WorkspaceView) -> u16 {
-    let parts = tab_bar_right_parts(config, workspace);
+fn tab_bar_right_width(
+    config: &crate::config::Config,
+    snapshot: &SessionSnapshot,
+    workspace: &WorkspaceView,
+) -> u16 {
+    let parts = tab_bar_right_parts(config, snapshot, workspace);
     let separator = sanitize_tab_bar_separator(&config.tab_bar_right_separator);
     parts
         .iter()
@@ -2299,18 +2319,20 @@ fn tab_bar_right_width(config: &crate::config::Config, workspace: &WorkspaceView
 
 fn tab_bar_right_parts(
     config: &crate::config::Config,
+    snapshot: &SessionSnapshot,
     workspace: &WorkspaceView,
 ) -> Vec<(String, bool)> {
     config
         .tab_bar_right
         .iter()
-        .filter_map(|entry| tab_bar_right_text(entry, workspace))
+        .filter_map(|entry| tab_bar_right_text(entry, snapshot, workspace))
         .filter(|(text, _)| !text.is_empty())
         .collect()
 }
 
 fn tab_bar_right_text(
     entry: &crate::config::TabBarRightEntryConfig,
+    snapshot: &SessionSnapshot,
     workspace: &WorkspaceView,
 ) -> Option<(String, bool)> {
     match entry {
@@ -2349,7 +2371,12 @@ fn tab_bar_right_text(
             interval_seconds,
             timeout_seconds,
         } => Some((
-            command_status(command, *interval_seconds, *timeout_seconds),
+            command_status(
+                command,
+                *interval_seconds,
+                *timeout_seconds,
+                status_command_context(snapshot, workspace),
+            ),
             false,
         )),
     }
@@ -2364,15 +2391,98 @@ struct CommandStatus {
 
 static TAB_BAR_COMMANDS: OnceLock<Mutex<HashMap<String, CommandStatus>>> = OnceLock::new();
 
-fn command_status(command: &str, interval_seconds: u64, timeout_seconds: u64) -> String {
+#[derive(Clone)]
+struct StatusCommandContext {
+    cache_key: String,
+    cwd: Option<std::path::PathBuf>,
+    environment: Vec<(String, String)>,
+}
+
+fn status_command_context(
+    snapshot: &SessionSnapshot,
+    workspace: &WorkspaceView,
+) -> StatusCommandContext {
+    let pane_id = snapshot.focused_pane_id.clone();
+    let cwd = pane_id.as_deref().and_then(|pane_id| {
+        snapshot
+            .panes
+            .iter()
+            .find(|pane| pane.pane_id == pane_id)
+            .map(|pane| std::path::PathBuf::from(&pane.cwd))
+            .filter(|cwd| cwd.is_dir())
+    });
+    let endpoint = std::env::var("SPINDLE_SOCKET_PATH")
+        .or_else(|_| std::env::var("HERDR_SOCKET_PATH"))
+        .unwrap_or_default();
+    let mut environment = vec![
+        (
+            "SPINDLE_ACTIVE_WORKSPACE_ID".into(),
+            workspace.workspace_id.clone(),
+        ),
+        (
+            "HERDR_ACTIVE_WORKSPACE_ID".into(),
+            workspace.workspace_id.clone(),
+        ),
+        (
+            "SPINDLE_ACTIVE_TAB_ID".into(),
+            workspace.active_tab_id.clone(),
+        ),
+        (
+            "HERDR_ACTIVE_TAB_ID".into(),
+            workspace.active_tab_id.clone(),
+        ),
+    ];
+    if let Some(pane_id) = pane_id.as_deref() {
+        environment.push(("SPINDLE_ACTIVE_PANE_ID".into(), pane_id.into()));
+        environment.push(("HERDR_ACTIVE_PANE_ID".into(), pane_id.into()));
+        if let Some(pane) = snapshot.panes.iter().find(|pane| pane.pane_id == pane_id) {
+            environment.push(("SPINDLE_ACTIVE_PANE_CWD".into(), pane.cwd.clone()));
+            environment.push(("HERDR_ACTIVE_PANE_CWD".into(), pane.cwd.clone()));
+        }
+    }
+    if !endpoint.is_empty() {
+        environment.push(("SPINDLE_SOCKET_PATH".into(), endpoint.clone()));
+        environment.push(("HERDR_SOCKET_PATH".into(), endpoint));
+    }
+    if let Ok(executable) = std::env::current_exe() {
+        let executable = executable.display().to_string();
+        environment.push(("SPINDLE_BIN_PATH".into(), executable.clone()));
+        environment.push(("HERDR_BIN_PATH".into(), executable));
+    }
+    let cache_key = format!(
+        "{}\0{}\0{}\0{}",
+        workspace.workspace_id,
+        workspace.active_tab_id,
+        pane_id.as_deref().unwrap_or_default(),
+        cwd.as_ref()
+            .map(|cwd| cwd.display().to_string())
+            .unwrap_or_default(),
+    );
+    StatusCommandContext {
+        cache_key,
+        cwd,
+        environment,
+    }
+}
+
+fn command_status(
+    command: &str,
+    interval_seconds: u64,
+    timeout_seconds: u64,
+    context: StatusCommandContext,
+) -> String {
     if command.trim().is_empty() || interval_seconds == 0 || timeout_seconds == 0 {
         return String::new();
     }
     let cache = TAB_BAR_COMMANDS.get_or_init(|| Mutex::new(HashMap::new()));
+    let cache_key = format!(
+        "{command}\0{interval_seconds}\0{timeout_seconds}\0{}",
+        context.cache_key
+    );
     let now = Instant::now();
     let should_start = {
         let mut entries = cache.lock().unwrap_or_else(|error| error.into_inner());
-        let entry = entries.entry(command.to_owned()).or_default();
+        let entry = entries.entry(cache_key.clone()).or_default();
         if entry.next_run.is_none() || entry.next_run.is_some_and(|deadline| now >= deadline) {
             if !entry.running {
                 entry.running = true;
@@ -2387,11 +2497,14 @@ fn command_status(command: &str, interval_seconds: u64, timeout_seconds: u64) ->
     };
     if should_start {
         let command = command.to_owned();
+        let context = context.clone();
+        let result_key = cache_key.clone();
         std::thread::spawn(move || {
-            let value = run_status_command(&command, Duration::from_secs(timeout_seconds));
+            let value =
+                run_status_command(&command, Duration::from_secs(timeout_seconds), &context);
             let cache = TAB_BAR_COMMANDS.get().expect("command cache initialized");
             let mut entries = cache.lock().unwrap_or_else(|error| error.into_inner());
-            if let Some(entry) = entries.get_mut(&command) {
+            if let Some(entry) = entries.get_mut(&result_key) {
                 entry.value = value;
                 entry.running = false;
             }
@@ -2400,21 +2513,17 @@ fn command_status(command: &str, interval_seconds: u64, timeout_seconds: u64) ->
     cache
         .lock()
         .unwrap_or_else(|error| error.into_inner())
-        .get(command)
+        .get(&cache_key)
         .map(|entry| entry.value.clone())
         .unwrap_or_default()
 }
 
-fn run_status_command(command: &str, timeout: Duration) -> String {
-    let mut process = if cfg!(windows) {
-        let mut process = std::process::Command::new("cmd");
-        process.args(["/C", command]);
-        process
-    } else {
-        let mut process = std::process::Command::new("sh");
-        process.args(["-c", command]);
-        process
-    };
+fn run_status_command(command: &str, timeout: Duration, context: &StatusCommandContext) -> String {
+    let mut process = crate::platform::status_command_process(command);
+    process.envs(context.environment.iter().cloned());
+    if let Some(cwd) = &context.cwd {
+        process.current_dir(cwd);
+    }
     crate::platform::configure_status_command(&mut process);
     let Ok(mut child) = process
         .stdin(std::process::Stdio::null())
@@ -2615,11 +2724,12 @@ fn render_tab_bar_right(
     frame: &mut Frame<'_>,
     area: Rect,
     config: &crate::config::Config,
+    snapshot: &SessionSnapshot,
     workspace: &WorkspaceView,
 ) {
-    let parts = tab_bar_right_parts(config, workspace);
+    let parts = tab_bar_right_parts(config, snapshot, workspace);
     let palette = super::ThemePalette::from_config(config);
-    let width = tab_bar_right_width(config, workspace);
+    let width = tab_bar_right_width(config, snapshot, workspace);
     if width == 0 || area.width <= width.saturating_add(3) {
         return;
     }
@@ -2664,7 +2774,13 @@ pub fn tab_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
     let config = crate::config::load();
-    let (content, _, _) = tab_layout(main.tabs, workspace.tabs.len(), &config, workspace);
+    let (content, _, _) = tab_layout(
+        main.tabs,
+        workspace.tabs.len(),
+        &config,
+        snapshot,
+        workspace,
+    );
     let (_, widths) = tab_window_with_scroll(
         content.width,
         workspace.tabs.len(),
@@ -2686,7 +2802,7 @@ pub fn tab_scroll_region(
         return false;
     };
     contains(
-        tab_strip_area(main.tabs, &crate::config::load(), workspace),
+        tab_strip_area(main.tabs, &crate::config::load(), snapshot, workspace),
         x,
         y,
     )
@@ -2722,7 +2838,7 @@ pub fn render_tab_drop_indicator_with_scroll(
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
     let config = crate::config::load();
-    let (content, _, _) = tab_layout(area, workspace.tabs.len(), &config, workspace);
+    let (content, _, _) = tab_layout(area, workspace.tabs.len(), &config, snapshot, workspace);
     let (first_tab, widths) = tab_window_with_scroll(
         content.width,
         workspace.tabs.len(),

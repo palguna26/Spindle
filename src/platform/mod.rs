@@ -37,6 +37,13 @@ pub(crate) fn launch_server_daemon(command: &mut std::process::Command) -> std::
     fallback::launch_server_daemon(command)
 }
 
+pub(crate) fn status_command_process(command: &str) -> std::process::Command {
+    #[cfg(windows)]
+    return windows::status_command_process(command);
+    #[cfg(not(windows))]
+    fallback::status_command_process(command)
+}
+
 #[cfg(windows)]
 pub(crate) use windows::{configure_status_command, StatusCommandGuard};
 

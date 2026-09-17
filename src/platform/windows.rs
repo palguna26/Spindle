@@ -27,6 +27,15 @@ pub(crate) fn configure_status_command(command: &mut std::process::Command) {
     command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
 }
 
+pub(crate) fn status_command_process(command: &str) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+
+    let mut process =
+        std::process::Command::new(std::env::var_os("ComSpec").unwrap_or_else(|| "cmd.exe".into()));
+    process.arg("/d").arg("/c").raw_arg(command);
+    process
+}
+
 pub(crate) struct StatusCommandGuard {
     job: windows_sys::Win32::Foundation::HANDLE,
 }
