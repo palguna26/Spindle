@@ -148,3 +148,5 @@ try {
         Remove-Item -LiteralPath $stateRoot -Recurse -Force
     }
 }
+
+exit 0
