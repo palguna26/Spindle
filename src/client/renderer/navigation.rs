@@ -2379,6 +2379,7 @@ fn run_status_command(command: &str, timeout: Duration) -> String {
         process.args(["-c", command]);
         process
     };
+    crate::platform::configure_status_command(&mut process);
     let Ok(mut child) = process
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -2387,6 +2388,7 @@ fn run_status_command(command: &str, timeout: Duration) -> String {
     else {
         return String::new();
     };
+    let _guard = crate::platform::StatusCommandGuard::new(&child).ok();
     let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {

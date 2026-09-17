@@ -5,10 +5,13 @@ use std::time::Duration;
 
 use windows_sys::Win32::System::Diagnostics::Debug::MessageBeep;
 use windows_sys::Win32::System::JobObjects::{
-    IsProcessInJob, JobObjectExtendedLimitInformation, QueryInformationJobObject,
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob, JobObjectExtendedLimitInformation,
+    QueryInformationJobObject, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
-use windows_sys::Win32::System::Threading::GetCurrentProcess;
+use windows_sys::Win32::System::Threading::{
+    GetCurrentProcess, OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+};
 use windows_sys::Win32::UI::Shell::{
     Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_TIP, NIIF_INFO, NIIF_NOSOUND, NIM_ADD, NIM_DELETE,
     NIM_MODIFY, NOTIFYICONDATAW,
@@ -18,6 +21,55 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use super::NotificationSound;
+
+pub(crate) fn configure_status_command(command: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+}
+
+pub(crate) struct StatusCommandGuard {
+    job: windows_sys::Win32::Foundation::HANDLE,
+}
+
+impl StatusCommandGuard {
+    pub(crate) fn new(child: &std::process::Child) -> io::Result<Self> {
+        let job = unsafe { CreateJobObjectW(null_mut(), null_mut()) };
+        if job.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { zeroed() };
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let configured = unsafe {
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &mut limits as *mut _ as *mut std::ffi::c_void,
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        } != 0;
+        let process = unsafe { OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, child.id()) };
+        let assigned = configured
+            && !process.is_null()
+            && unsafe { AssignProcessToJobObject(job, process) } != 0;
+        if !process.is_null() {
+            unsafe { windows_sys::Win32::Foundation::CloseHandle(process) };
+        }
+        if !assigned {
+            unsafe { windows_sys::Win32::Foundation::CloseHandle(job) };
+            return Err(io::Error::last_os_error());
+        }
+        Ok(Self { job })
+    }
+}
+
+impl Drop for StatusCommandGuard {
+    fn drop(&mut self) {
+        if !self.job.is_null() {
+            unsafe { windows_sys::Win32::Foundation::CloseHandle(self.job) };
+            self.job = null_mut();
+        }
+    }
+}
 
 pub(crate) fn launch_server_daemon(command: &mut std::process::Command) -> io::Result<u32> {
     if !current_job_kills_processes_on_close()? {

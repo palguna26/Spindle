@@ -37,6 +37,22 @@ pub(crate) fn launch_server_daemon(command: &mut std::process::Command) -> std::
     fallback::launch_server_daemon(command)
 }
 
+#[cfg(windows)]
+pub(crate) use windows::{configure_status_command, StatusCommandGuard};
+
+#[cfg(not(windows))]
+pub(crate) fn configure_status_command(_command: &mut std::process::Command) {}
+
+#[cfg(not(windows))]
+pub(crate) struct StatusCommandGuard;
+
+#[cfg(not(windows))]
+impl StatusCommandGuard {
+    pub(crate) fn new(_child: &std::process::Child) -> std::io::Result<Self> {
+        Ok(Self)
+    }
+}
+
 #[cfg(not(windows))]
 pub(crate) fn play_notification_sound(_sound: NotificationSound) -> std::io::Result<bool> {
     if sound_playback_disabled_by_env() {
