@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::client::ControlClient;
 use crate::protocol::Response;
@@ -347,6 +347,7 @@ fn print_help() {
     println!("  integration status  show agent integration status");
     println!("  config path     show the user config path");
     println!("  config default  print a starter config");
+    println!("  config reset-keys  back up config.toml and remove custom keybindings");
     println!(
         "  completion <shell>  generate shell completions (bash, elvish, fish, powershell, zsh)"
     );
@@ -476,16 +477,68 @@ fn run_config_command(args: &[String]) -> io::Result<()> {
     match args {
         [command] if command == "path" => println!("{}", crate::config::path().display()),
         [command] if command == "default" => print!("{}", crate::config::default_document()),
+        [command] if command == "reset-keys" => reset_config_keys()?,
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
-            println!("Usage: spindle config <path|default>");
+            println!("Usage: spindle config <path|default|reset-keys>");
         }
         _ => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle config <path|default>",
+                "usage: spindle config <path|default|reset-keys>",
             ));
         }
     }
+    Ok(())
+}
+
+fn reset_config_keys() -> io::Result<()> {
+    let path = crate::config::path();
+    if !path.exists() {
+        println!(
+            "No config file found at {}. Built-in keybindings already apply.",
+            path.display()
+        );
+        return Ok(());
+    }
+    let content = fs::read_to_string(&path)?;
+    if content.parse::<toml::Value>().is_err() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("config file at {} is invalid TOML", path.display()),
+        ));
+    }
+    let (updated, removed) = crate::config::remove_keybinding_config_sections(&content);
+    if !removed {
+        println!(
+            "No [keys] config found in {}. Built-in keybindings already apply.",
+            path.display()
+        );
+        return Ok(());
+    }
+    if updated.parse::<toml::Value>().is_err() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "removing keybinding config would make the config invalid TOML",
+        ));
+    }
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let backup = path.with_file_name(format!(
+        "{}.bak-keybind-v2-{timestamp}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("config.toml")
+    ));
+    fs::copy(&path, &backup)?;
+    fs::write(&path, updated)?;
+    println!("Created backup: {}", backup.display());
+    println!(
+        "Removed [keys] and [[keys.command]] from {}.",
+        path.display()
+    );
+    println!("Built-in keybindings will apply after restart or config reload.");
     Ok(())
 }
 

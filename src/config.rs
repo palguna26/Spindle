@@ -485,6 +485,52 @@ pub fn path() -> PathBuf {
     std::env::temp_dir().join("Spindle").join("config.toml")
 }
 
+pub(crate) fn remove_keybinding_config_sections(content: &str) -> (String, bool) {
+    let mut result = Vec::new();
+    let mut removed = false;
+    let mut skipping_keys = false;
+    let mut in_table = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(table_name) = table_header_name(trimmed) {
+            in_table = true;
+            skipping_keys = table_name == "keys" || table_name.starts_with("keys.");
+            if skipping_keys {
+                removed = true;
+                continue;
+            }
+        } else if skipping_keys || (!in_table && is_top_level_keys_assignment(trimmed)) {
+            removed = true;
+            continue;
+        }
+        result.push(line);
+    }
+
+    let mut updated = result.join("\n");
+    if content.ends_with('\n') || !updated.is_empty() {
+        updated.push('\n');
+    }
+    (updated, removed)
+}
+
+fn table_header_name(trimmed: &str) -> Option<&str> {
+    if let Some(name) = trimmed
+        .strip_prefix("[[")
+        .and_then(|value| value.strip_suffix("]]"))
+    {
+        return Some(name.trim());
+    }
+    trimmed
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .map(str::trim)
+}
+
+fn is_top_level_keys_assignment(trimmed: &str) -> bool {
+    trimmed.starts_with("keys ") || trimmed.starts_with("keys=") || trimmed.starts_with("keys.")
+}
+
 fn config_path_override(
     spindle: Option<std::ffi::OsString>,
     herdr: Option<std::ffi::OsString>,
@@ -856,9 +902,9 @@ fn upsert_section_key(content: &str, section: &str, key: &str, value: &str) -> S
 #[cfg(test)]
 mod tests {
     use super::{
-        config_path_override, load_from, upsert_section_key, upsert_top_level_bool, Config,
-        HostCursorMode, NewCwd, NotificationDelivery, PaneBorders, ShellMode, SidebarCollapsedMode,
-        TabBarPosition,
+        config_path_override, load_from, remove_keybinding_config_sections, upsert_section_key,
+        upsert_top_level_bool, Config, HostCursorMode, NewCwd, NotificationDelivery, PaneBorders,
+        ShellMode, SidebarCollapsedMode, TabBarPosition,
     };
     use crossterm::event::KeyModifiers;
 
@@ -926,6 +972,18 @@ mod tests {
             std::path::PathBuf::from("C:/Projects/worktrees")
         );
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn removes_only_keybinding_config_sections() {
+        let content = "onboarding = false\n\n[keys]\nprefix = \"ctrl+a\"\n\n[[keys.command]]\nkey = \"g\"\ncommand = \"git status\"\n\n[theme]\nname = \"nord\"\n";
+        let (updated, removed) = remove_keybinding_config_sections(content);
+        assert!(removed);
+        assert!(updated.contains("onboarding = false"));
+        assert!(updated.contains("[theme]\nname = \"nord\""));
+        assert!(!updated.contains("[keys]"));
+        assert!(!updated.contains("keys.command"));
+        assert!(updated.parse::<toml::Value>().is_ok());
     }
 
     #[test]
