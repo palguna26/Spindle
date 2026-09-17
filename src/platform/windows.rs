@@ -162,6 +162,9 @@ fn quote_windows_arg(value: &str) -> String {
 }
 
 pub(crate) fn play_notification_sound(sound: NotificationSound) -> io::Result<bool> {
+    if super::sound_playback_disabled_by_env() {
+        return Ok(false);
+    }
     let kind = match sound {
         NotificationSound::Attention => MB_ICONEXCLAMATION,
         NotificationSound::Finished => MB_OK,
