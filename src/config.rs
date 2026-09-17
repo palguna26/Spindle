@@ -1,6 +1,7 @@
 use crossterm::event::KeyModifiers;
 use serde::{de, Deserialize, Deserializer};
 use std::collections::BTreeMap;
+use std::io;
 use std::path::PathBuf;
 
 mod sidebar;
@@ -630,6 +631,21 @@ pub fn load_from(path: &std::path::Path) -> Config {
         new_cwd: file.terminal.new_cwd,
         worktree_directory: expand_tilde_path(&file.worktrees.directory),
     }
+}
+
+pub(crate) fn check(path: &std::path::Path) -> io::Result<Vec<String>> {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return Ok(Vec::new());
+    };
+    let file = match toml::from_str::<FileConfig>(&content) {
+        Ok(file) => file,
+        Err(error) => return Ok(vec![format!("invalid TOML: {error}")]),
+    };
+    let mut diagnostics = Vec::new();
+    if let Err(error) = sidebar::validate(&file.ui.sidebar) {
+        diagnostics.push(format!("invalid sidebar config: {error}"));
+    }
+    Ok(diagnostics)
 }
 
 fn expand_tilde_path(value: &str) -> PathBuf {

@@ -347,6 +347,7 @@ fn print_help() {
     println!("  integration status  show agent integration status");
     println!("  config path     show the user config path");
     println!("  config default  print a starter config");
+    println!("  config check    validate the user config");
     println!("  config reset-keys  back up config.toml and remove custom keybindings");
     println!(
         "  completion <shell>  generate shell completions (bash, elvish, fish, powershell, zsh)"
@@ -477,16 +478,32 @@ fn run_config_command(args: &[String]) -> io::Result<()> {
     match args {
         [command] if command == "path" => println!("{}", crate::config::path().display()),
         [command] if command == "default" => print!("{}", crate::config::default_document()),
+        [command] if command == "check" => check_config()?,
         [command] if command == "reset-keys" => reset_config_keys()?,
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
-            println!("Usage: spindle config <path|default|reset-keys>");
+            println!("Usage: spindle config <path|default|check|reset-keys>");
         }
         _ => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: spindle config <path|default|reset-keys>",
+                "usage: spindle config <path|default|check|reset-keys>",
             ));
         }
+    }
+    Ok(())
+}
+
+fn check_config() -> io::Result<()> {
+    let path = crate::config::path();
+    let diagnostics = crate::config::check(&path)?;
+    if diagnostics.is_empty() {
+        println!("config: ok");
+    } else {
+        println!("config: issues found");
+        for diagnostic in diagnostics {
+            println!("{diagnostic}");
+        }
+        return Err(io::Error::other("config check failed"));
     }
     Ok(())
 }

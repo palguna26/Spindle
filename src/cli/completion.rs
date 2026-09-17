@@ -50,7 +50,7 @@ const BASH: &str = r#"_spindle() {
   elif [[ "$COMP_WORDS[1]" == "status" ]]; then
     COMPREPLY=( $(compgen -W "server client --json" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "config" ]]; then
-    COMPREPLY=( $(compgen -W "path default reset-keys help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "path default check reset-keys help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "workspace" ]]; then
     if [[ "$COMP_WORDS[2]" == "create" ]]; then
       COMPREPLY=( $(compgen -W "--cwd --label --env --focus --no-focus" -- "$cur") )
@@ -108,7 +108,7 @@ complete -c spindle -f -n '__fish_seen_argument --session' -a 'start attach stop
 complete -c spindle -f -n '__fish_seen_subcommand_from session' -a 'list attach stop delete help'
 complete -c spindle -f -n '__fish_seen_subcommand_from completion' -a 'bash elvish fish powershell zsh'
 complete -c spindle -f -n '__fish_seen_subcommand_from status' -a 'server client --json'
-complete -c spindle -f -n '__fish_seen_subcommand_from config' -a 'path default reset-keys help'
+complete -c spindle -f -n '__fish_seen_subcommand_from config' -a 'path default check reset-keys help'
 complete -c spindle -f -n '__fish_seen_subcommand_from workspace' -a 'list create get focus report-metadata move rename close'
     complete -c spindle -f -n '__fish_seen_subcommand_from worktree' -a 'list create open remove help'
 complete -c spindle -f -n '__fish_seen_subcommand_from worktree; and __fish_seen_subcommand_from list' -l workspace -r -l cwd -r -l trust-repository
@@ -145,7 +145,7 @@ _spindle() {
   case $words[2] in
     completion) _arguments '1:shell:(bash elvish fish powershell zsh)' ;;
     status) _arguments '1:scope:(server client)' '2:options:(--json --outdated-only)' ;;
-    config) _arguments '1:command:(path default reset-keys help)' ;;
+    config) _arguments '1:command:(path default check reset-keys help)' ;;
     workspace) _arguments '1:command:(list create get focus report-metadata move rename close)' '2:options:(--cwd --label --env --focus --no-focus --group --source --token --clear-token --ttl-ms --seq)' ;;
     worktree) _arguments '1:command:(list create open remove help)' '2:options:(--workspace --cwd --branch --base --path --label --focus --no-focus --force --trust-repository)' ;;
     tab) _arguments '1:command:(list create get focus move rename close)' '2:options:(--label --workspace --cwd --env --focus --no-focus)' ;;
@@ -168,7 +168,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq '--session' -and $words.Count -ge 3) { 'start attach stop list status doctor config workspace worktree tab pane agent notification integration completion api session help' }
     elseif ($words[1] -eq 'session') { 'list attach stop delete help' }
     elseif ($words[1] -eq 'status') { 'server client --json' }
-    elseif ($words[1] -eq 'config') { 'path default reset-keys help' }
+    elseif ($words[1] -eq 'config') { 'path default check reset-keys help' }
     elseif ($words[1] -eq 'workspace' -and $words[2] -eq 'create') { '--cwd --label --env --focus --no-focus' }
     elseif ($words[1] -eq 'workspace' -and $words[2] -eq 'report-metadata') { '--source --token --clear-token --ttl-ms --seq' }
     elseif ($words[1] -eq 'workspace' -and $words[2] -eq 'close') { '--group' }
@@ -193,7 +193,7 @@ edit:completion:argadd 'spindle --session' (review)
 edit:completion:argadd 'spindle --session review' (start attach stop list status doctor config workspace worktree tab pane agent notification integration completion api session help)
 edit:completion:argadd 'spindle session' (list attach stop delete help)
 edit:completion:argadd 'spindle status' (server client --json)
-edit:completion:argadd 'spindle config' (path default reset-keys help)
+edit:completion:argadd 'spindle config' (path default check reset-keys help)
 edit:completion:argadd 'spindle api' (snapshot schema help)
 edit:completion:argadd 'spindle workspace' (list create get focus report-metadata move rename close)
 edit:completion:argadd 'spindle workspace close' (--group)
