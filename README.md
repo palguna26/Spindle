@@ -57,6 +57,9 @@ Herdr-compatible `HERDR_CONFIG_PATH` name is also accepted.
 Managed pane hooks can use `SPINDLE_SOCKET_PATH`; `HERDR_SOCKET_PATH` is also
 accepted and points commands at the pane's running session.
 
+Set `SPINDLE_DISABLE_SOUND` (or Herdr’s `HERDR_DISABLE_SOUND`) to suppress
+notification sounds without changing the config file.
+
 Press `Ctrl-b`, then `?` for the in-app mouse and keyboard guide. Press `Ctrl-b`,
 then `:` to open the command palette. Unless noted otherwise, the shortcuts
 below are pressed after `Ctrl-b`:

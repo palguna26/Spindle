@@ -41,6 +41,9 @@ Managed pane hooks may use `SPINDLE_SOCKET_PATH` or Herdr's
 `HERDR_SOCKET_PATH` to target the running session directly when their current
 directory is different from the project directory.
 
+Set `SPINDLE_DISABLE_SOUND` or `HERDR_DISABLE_SOUND` to suppress notification
+sounds in scripts, CI, or agent sessions.
+
 The screen shows spaces and workspaces in a left sidebar and tabs above the
 panes. Click a space, workspace, tab, or pane to switch focus. Drag split
 borders to resize. Right-click panes, tabs, and workspaces for actions. Drag
