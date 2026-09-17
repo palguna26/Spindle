@@ -295,6 +295,25 @@ pub(crate) fn run_status(json: bool) -> std::io::Result<()> {
     Ok(())
 }
 
+pub(crate) fn print_outdated_update_notice() -> bool {
+    let outdated = statuses()
+        .into_iter()
+        .filter(|status| status.state == "outdated")
+        .collect::<Vec<_>>();
+    if outdated.is_empty() {
+        return false;
+    }
+    let commands = outdated
+        .iter()
+        .map(|status| format!("spindle integration install {}", status.target))
+        .collect::<Vec<_>>();
+    eprintln!(
+        "installed Spindle integrations need updating; run {}.",
+        commands.join(" or ")
+    );
+    true
+}
+
 pub(crate) fn install_codex() -> std::io::Result<Vec<String>> {
     let dir = codex_dir();
     if !dir.is_dir() {

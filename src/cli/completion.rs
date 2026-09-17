@@ -84,7 +84,9 @@ const BASH: &str = r#"_spindle() {
   elif [[ "$COMP_WORDS[1]" == "notification" ]]; then
     COMPREPLY=( $(compgen -W "show help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "integration" ]]; then
-    if [[ "$COMP_WORDS[2]" == "install" || "$COMP_WORDS[2]" == "uninstall" ]]; then
+    if [[ "$COMP_WORDS[2]" == "status" ]]; then
+      COMPREPLY=( $(compgen -W "--json --outdated-only" -- "$cur") )
+    elif [[ "$COMP_WORDS[2]" == "install" || "$COMP_WORDS[2]" == "uninstall" ]]; then
       COMPREPLY=( $(compgen -W "codex opencode claude pi omp copilot cursor devin droid kimi qodercli qwen grok kilo hermes antigravity-cli" -- "$cur") )
     else
       COMPREPLY=( $(compgen -W "status install uninstall help" -- "$cur") )
@@ -128,7 +130,8 @@ complete -c spindle -f -n '__fish_seen_subcommand_from api' -a 'snapshot schema 
 complete -c spindle -f -n '__fish_seen_subcommand_from agent' -a 'list get focus start wait read send-keys prompt rename explain help'
 complete -c spindle -f -n '__fish_seen_subcommand_from notification' -a 'show help'
 complete -c spindle -f -n '__fish_seen_subcommand_from notification; and __fish_seen_subcommand_from show' -l body -r -l position -r -l sound -r
-complete -c spindle -f -n '__fish_seen_subcommand_from integration' -a 'status install uninstall help'
+    complete -c spindle -f -n '__fish_seen_subcommand_from integration' -a 'status install uninstall help'
+complete -c spindle -f -n '__fish_seen_subcommand_from integration; and __fish_seen_subcommand_from status' -l json -l outdated-only
 complete -c spindle -f -n '__fish_seen_subcommand_from integration; and __fish_seen_subcommand_from install uninstall' -a 'codex opencode claude pi omp copilot cursor devin droid kimi qodercli qwen grok kilo hermes antigravity-cli'
 complete -c spindle -f -n '__fish_seen_subcommand_from integration; and __fish_seen_subcommand_from status' -l json
 "#;
@@ -138,7 +141,7 @@ _spindle() {
   _arguments '1:command:(start attach stop list status doctor config workspace worktree tab pane agent notification integration completion api session help)' '--session[use a named session]:name' '*::argument:->args'
   case $words[2] in
     completion) _arguments '1:shell:(bash elvish fish powershell zsh)' ;;
-    status) _arguments '1:scope:(server client)' '2:options:(--json)' ;;
+    status) _arguments '1:scope:(server client)' '2:options:(--json --outdated-only)' ;;
     workspace) _arguments '1:command:(list create get focus report-metadata move rename close)' '2:options:(--cwd --label --env --focus --no-focus --group --source --token --clear-token --ttl-ms --seq)' ;;
     worktree) _arguments '1:command:(list create open remove help)' '2:options:(--workspace --cwd --branch --base --path --label --focus --no-focus --force --trust-repository)' ;;
     tab) _arguments '1:command:(list create get focus move rename close)' '2:options:(--label --workspace --cwd --env --focus --no-focus)' ;;
@@ -174,7 +177,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq 'agent') { 'list get focus start wait read send-keys prompt rename explain help' }
     elseif ($words[1] -eq 'notification') { 'show help --body --position --sound' }
     elseif ($words[1] -eq 'integration' -and ($words[2] -eq 'install' -or $words[2] -eq 'uninstall')) { 'codex opencode claude pi omp copilot cursor devin droid kimi qodercli qwen grok kilo hermes antigravity-cli' }
-    elseif ($words[1] -eq 'integration') { 'status install uninstall help --json' }
+    elseif ($words[1] -eq 'integration') { 'status install uninstall help --json --outdated-only' }
   $choices | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
 "#;
@@ -203,6 +206,7 @@ edit:completion:argadd 'spindle agent' (list get focus start wait read send-keys
 edit:completion:argadd 'spindle notification' (show help)
 edit:completion:argadd 'spindle notification show' (--body --position --sound)
 edit:completion:argadd 'spindle integration' (status install uninstall help)
+edit:completion:argadd 'spindle integration status' (--json --outdated-only)
 edit:completion:argadd 'spindle integration status' (--json)
 edit:completion:argadd 'spindle integration install' (codex)
 edit:completion:argadd 'spindle integration uninstall' (codex)

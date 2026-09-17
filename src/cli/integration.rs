@@ -7,6 +7,10 @@ pub(super) fn run(args: &[String]) -> io::Result<()> {
         [command, flag] if command == "status" && flag == "--json" => {
             crate::integration::run_status(true)
         }
+        [command, flag] if command == "status" && flag == "--outdated-only" => {
+            crate::integration::print_outdated_update_notice();
+            Ok(())
+        }
         [command, target] if command == "install" && target == "codex" => {
             print_messages(crate::integration::install_codex()?)
         }
@@ -124,7 +128,7 @@ pub(super) fn run(args: &[String]) -> io::Result<()> {
 }
 
 fn print_help() {
-    eprintln!("usage: spindle integration status [--json]");
+    eprintln!("usage: spindle integration status [--json|--outdated-only]");
     eprintln!("       spindle integration install codex");
     eprintln!("       spindle integration uninstall codex");
     eprintln!("       spindle integration install opencode");
