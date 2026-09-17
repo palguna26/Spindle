@@ -26,7 +26,8 @@ of the PTY. The renderer draws the history viewport, cursor, selection, search
 match, and a small mode hint. Copying uses Spindle's existing clipboard helper.
 No control-protocol changes are needed because snapshots already contain the
 retained terminal history. Keep the copy buffer aligned with the existing
-limits: 64 KiB of PTY bytes per pane and at most 4,096 reconstructed rows. Cache
+limits: 10 MB of PTY bytes per pane by default (configurable with
+`[advanced].scrollback_limit_bytes`) and at most 4,096 reconstructed rows. Cache
 the parsed buffer by pane, bytes, and geometry, and rebuild only when one of
 those inputs changes; the client refreshes snapshots every 100 ms.
 

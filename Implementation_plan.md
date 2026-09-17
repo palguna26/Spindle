@@ -453,7 +453,7 @@ Reference: Herdr `src/client/shell/mouse.rs`, `copy_mode.rs`, `context_menu.rs`,
 
 Copy-mode difference: Herdr asks the server's retained terminal for
 revision-checked motions and searches. Spindle builds a local `vt100` text
-buffer from its existing 64 KiB pane byte ring, so no protocol change is
+buffer from its configurable pane byte ring (10 MB by default, matching Herdr), so no protocol change is
 needed; history is limited to that retained ring. Keyboard flow, motions,
 search direction/repeat and case rules, selection/copy, and live-output
 viewport pinning are covered by client tests. Full tests, strict Clippy, release
