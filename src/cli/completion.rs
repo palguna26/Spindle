@@ -80,7 +80,7 @@ const BASH: &str = r#"_spindle() {
   elif [[ "$COMP_WORDS[1]" == "api" ]]; then
     COMPREPLY=( $(compgen -W "snapshot schema help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "agent" ]]; then
-    COMPREPLY=( $(compgen -W "list get focus start wait read send-keys prompt rename help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "list get focus start wait read send-keys prompt rename explain help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "notification" ]]; then
     COMPREPLY=( $(compgen -W "show help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "integration" ]]; then
@@ -125,7 +125,7 @@ complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subc
 complete -c spindle -f -n '__fish_seen_subcommand_from tab; and __fish_seen_subcommand_from list' -l workspace -r
 complete -c spindle -f -n '__fish_seen_subcommand_from pane' -a 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent clear-agent-authority wait-output split resize'
 complete -c spindle -f -n '__fish_seen_subcommand_from api' -a 'snapshot schema help'
-complete -c spindle -f -n '__fish_seen_subcommand_from agent' -a 'list get focus start wait read send-keys prompt rename help'
+complete -c spindle -f -n '__fish_seen_subcommand_from agent' -a 'list get focus start wait read send-keys prompt rename explain help'
 complete -c spindle -f -n '__fish_seen_subcommand_from notification' -a 'show help'
 complete -c spindle -f -n '__fish_seen_subcommand_from notification; and __fish_seen_subcommand_from show' -l body -r -l position -r -l sound -r
 complete -c spindle -f -n '__fish_seen_subcommand_from integration' -a 'status install uninstall help'
@@ -144,7 +144,7 @@ _spindle() {
     tab) _arguments '1:command:(list create get focus move rename close)' '2:options:(--label --workspace --cwd --env --focus --no-focus)' ;;
     pane) _arguments '1:command:(list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent clear-agent-authority wait-output split resize)' ;;
     api) _arguments '1:command:(snapshot schema help)' ;;
-    agent) _arguments '1:command:(list get focus start wait read send-keys prompt rename help)' ;;
+    agent) _arguments '1:command:(list get focus start wait read send-keys prompt rename explain help)' ;;
     notification) _arguments '1:command:(show help)' '2:options:(--body --position --sound)' ;;
     integration) _arguments '1:command:(status install uninstall help)' '2:target:(codex opencode claude pi omp copilot cursor devin droid kimi qodercli qwen grok kilo hermes antigravity-cli)' '3:options:(--json)' ;;
     session) _arguments '1:command:(list attach stop delete help)' ;;
@@ -171,7 +171,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq 'tab') { 'list create get focus move rename close' }
     elseif ($words[1] -eq 'pane') { 'list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent clear-agent-authority wait-output split resize' }
     elseif ($words[1] -eq 'api') { 'snapshot schema help' }
-    elseif ($words[1] -eq 'agent') { 'list get focus start wait read send-keys prompt rename help' }
+    elseif ($words[1] -eq 'agent') { 'list get focus start wait read send-keys prompt rename explain help' }
     elseif ($words[1] -eq 'notification') { 'show help --body --position --sound' }
     elseif ($words[1] -eq 'integration' -and ($words[2] -eq 'install' -or $words[2] -eq 'uninstall')) { 'codex opencode claude pi omp copilot cursor devin droid kimi qodercli qwen grok kilo hermes antigravity-cli' }
     elseif ($words[1] -eq 'integration') { 'status install uninstall help --json' }
@@ -199,7 +199,7 @@ edit:completion:argadd 'spindle tab list' (--workspace)
 edit:completion:argadd 'spindle tab create' (--label --workspace --cwd --env --focus --no-focus)
 edit:completion:argadd 'spindle tab' (list create get focus move rename close)
 edit:completion:argadd 'spindle pane' (list current get focus neighbor edges layout process-info input rename stop restart zoom close send-text send-keys run read swap move report-agent report-agent-session report-metadata release-agent clear-agent-authority wait-output split resize)
-edit:completion:argadd 'spindle agent' (list get focus start wait read send-keys prompt rename help)
+edit:completion:argadd 'spindle agent' (list get focus start wait read send-keys prompt rename explain help)
 edit:completion:argadd 'spindle notification' (show help)
 edit:completion:argadd 'spindle notification show' (--body --position --sound)
 edit:completion:argadd 'spindle integration' (status install uninstall help)
