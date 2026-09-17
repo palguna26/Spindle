@@ -5,7 +5,11 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
+use std::collections::HashMap;
 use std::collections::HashSet;
+use std::io::Read;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use super::layout::{pane_rectangles, split_handles};
 
@@ -2307,8 +2311,115 @@ fn tab_bar_right_text(entry: &crate::config::TabBarRightEntryConfig) -> String {
                 })
                 .unwrap_or_default()
         }
-        crate::config::TabBarRightEntryConfig::Command { .. } => String::new(),
+        crate::config::TabBarRightEntryConfig::Command {
+            command,
+            interval_seconds,
+            timeout_seconds,
+        } => command_status(command, *interval_seconds, *timeout_seconds),
     }
+}
+
+#[derive(Default)]
+struct CommandStatus {
+    value: String,
+    next_run: Option<Instant>,
+    running: bool,
+}
+
+static TAB_BAR_COMMANDS: OnceLock<Mutex<HashMap<String, CommandStatus>>> = OnceLock::new();
+
+fn command_status(command: &str, interval_seconds: u64, timeout_seconds: u64) -> String {
+    if command.trim().is_empty() || interval_seconds == 0 || timeout_seconds == 0 {
+        return String::new();
+    }
+    let cache = TAB_BAR_COMMANDS.get_or_init(|| Mutex::new(HashMap::new()));
+    let now = Instant::now();
+    let should_start = {
+        let mut entries = cache.lock().unwrap_or_else(|error| error.into_inner());
+        let entry = entries.entry(command.to_owned()).or_default();
+        if entry.next_run.is_none() || entry.next_run.is_some_and(|deadline| now >= deadline) {
+            if !entry.running {
+                entry.running = true;
+                entry.next_run = Some(now + Duration::from_secs(interval_seconds));
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    };
+    if should_start {
+        let command = command.to_owned();
+        std::thread::spawn(move || {
+            let value = run_status_command(&command, Duration::from_secs(timeout_seconds));
+            let cache = TAB_BAR_COMMANDS.get().expect("command cache initialized");
+            let mut entries = cache.lock().unwrap_or_else(|error| error.into_inner());
+            if let Some(entry) = entries.get_mut(&command) {
+                entry.value = value;
+                entry.running = false;
+            }
+        });
+    }
+    cache
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .get(command)
+        .map(|entry| entry.value.clone())
+        .unwrap_or_default()
+}
+
+fn run_status_command(command: &str, timeout: Duration) -> String {
+    let mut process = if cfg!(windows) {
+        let mut process = std::process::Command::new("cmd");
+        process.args(["/C", command]);
+        process
+    } else {
+        let mut process = std::process::Command::new("sh");
+        process.args(["-c", command]);
+        process
+    };
+    let Ok(mut child) = process
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return String::new();
+    };
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    return String::new();
+                }
+                break;
+            }
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return String::new();
+            }
+            Err(_) => return String::new(),
+        }
+    }
+    let Some(stdout) = child.stdout.take() else {
+        return String::new();
+    };
+    let mut bytes = Vec::new();
+    let Ok(_) = std::io::BufReader::new(stdout).read_to_end(&mut bytes) else {
+        return String::new();
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    text.lines()
+        .next_back()
+        .unwrap_or_default()
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(80)
+        .collect()
 }
 
 fn render_tab_bar_right(
