@@ -234,14 +234,14 @@ pub fn hit_test_with_sidebar_scroll_and_sort_and_groups_and_tab_scroll(
         let workspace = active_workspace(snapshot)?;
         let config = crate::config::load();
         let (tab_area, scroll_left, scroll_right) =
-            tab_layout(main.tabs, workspace.tabs.len(), &config);
+            tab_layout(main.tabs, workspace.tabs.len(), &config, workspace);
         if scroll_left.is_some_and(|rect| contains(rect, x, y)) {
             return Some(ClickTarget::TabScrollLeft);
         }
         if scroll_right.is_some_and(|rect| contains(rect, x, y)) {
             return Some(ClickTarget::TabScrollRight);
         }
-        if contains(new_tab_area(main.tabs, &config), x, y) {
+        if contains(new_tab_area(main.tabs, &config, workspace), x, y) {
             return Some(ClickTarget::NewTab);
         }
         let active_index = workspace
@@ -496,7 +496,7 @@ pub fn tab_drop_target(
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
     let target_index = tab_index_at(
-        tab_strip_area(main.tabs, &crate::config::load()),
+        tab_strip_area(main.tabs, &crate::config::load(), workspace),
         x,
         workspace.tabs.len(),
         active_index,
@@ -2136,7 +2136,8 @@ pub(super) fn render_tabs_with_scroll(
         );
         return;
     }
-    let (tab_area, scroll_left, scroll_right) = tab_layout(area, workspace.tabs.len(), &config);
+    let (tab_area, scroll_left, scroll_right) =
+        tab_layout(area, workspace.tabs.len(), &config, workspace);
     let active_index = workspace
         .tabs
         .iter()
@@ -2230,18 +2231,18 @@ pub(super) fn render_tabs_with_scroll(
                     .fg(super::ThemePalette::overlay1(&config))
                     .bg(super::ThemePalette::panel_bg(&config)),
             ),
-            new_tab_area(area, &config),
+            new_tab_area(area, &config, workspace),
         );
     }
     render_tab_bar_right(frame, area, &config, workspace);
 }
 
-fn tab_strip_area(area: Rect, config: &crate::config::Config) -> Rect {
+fn tab_strip_area(area: Rect, config: &crate::config::Config, workspace: &WorkspaceView) -> Rect {
     Rect {
         width: area
             .width
             .saturating_sub(3)
-            .saturating_sub(tab_bar_right_width(config)),
+            .saturating_sub(tab_bar_right_width(config, workspace)),
         ..area
     }
 }
@@ -2250,8 +2251,9 @@ fn tab_layout(
     area: Rect,
     count: usize,
     config: &crate::config::Config,
+    workspace: &WorkspaceView,
 ) -> (Rect, Option<Rect>, Option<Rect>) {
-    let strip = tab_strip_area(area, config);
+    let strip = tab_strip_area(area, config, workspace);
     let overflow = count
         .saturating_mul(usize::from(MIN_TAB_WIDTH))
         .saturating_add(count.saturating_sub(1))
@@ -2271,10 +2273,10 @@ fn tab_layout(
     }
 }
 
-fn new_tab_area(area: Rect, config: &crate::config::Config) -> Rect {
+fn new_tab_area(area: Rect, config: &crate::config::Config, workspace: &WorkspaceView) -> Rect {
     Rect::new(
         area.right()
-            .saturating_sub(tab_bar_right_width(config))
+            .saturating_sub(tab_bar_right_width(config, workspace))
             .saturating_sub(3),
         area.y,
         3.min(area.width),
@@ -2282,27 +2284,49 @@ fn new_tab_area(area: Rect, config: &crate::config::Config) -> Rect {
     )
 }
 
-fn tab_bar_right_width(config: &crate::config::Config) -> u16 {
-    config
-        .tab_bar_right
+fn tab_bar_right_width(config: &crate::config::Config, workspace: &WorkspaceView) -> u16 {
+    let parts = tab_bar_right_parts(config, workspace);
+    parts
         .iter()
-        .map(tab_bar_right_text)
-        .map(|text| unicode_width::UnicodeWidthStr::width(text.as_str()) as u16)
+        .map(|(text, _)| unicode_width::UnicodeWidthStr::width(text.as_str()) as u16)
         .sum::<u16>()
         .saturating_add(
             (unicode_width::UnicodeWidthStr::width(config.tab_bar_right_separator.as_str()) as u16)
-                .saturating_mul(config.tab_bar_right.len().saturating_sub(1) as u16),
+                .saturating_mul(parts.len().saturating_sub(1) as u16),
         )
 }
 
-fn tab_bar_right_text(entry: &crate::config::TabBarRightEntryConfig) -> String {
+fn tab_bar_right_parts(
+    config: &crate::config::Config,
+    workspace: &WorkspaceView,
+) -> Vec<(String, bool)> {
+    config
+        .tab_bar_right
+        .iter()
+        .filter_map(|entry| tab_bar_right_text(entry, workspace))
+        .filter(|(text, _)| !text.is_empty())
+        .collect()
+}
+
+fn tab_bar_right_text(
+    entry: &crate::config::TabBarRightEntryConfig,
+    workspace: &WorkspaceView,
+) -> Option<(String, bool)> {
     match entry {
-        crate::config::TabBarRightEntryConfig::Hostname => std::env::var("COMPUTERNAME")
-            .or_else(|_| std::env::var("HOSTNAME"))
-            .unwrap_or_default(),
-        crate::config::TabBarRightEntryConfig::Text { text } => text.clone(),
-        crate::config::TabBarRightEntryConfig::Zoom => "Z".into(),
-        crate::config::TabBarRightEntryConfig::Datetime { format } => {
+        crate::config::TabBarRightEntryConfig::Hostname => Some((
+            std::env::var("COMPUTERNAME")
+                .or_else(|_| std::env::var("HOSTNAME"))
+                .unwrap_or_default(),
+            false,
+        )),
+        crate::config::TabBarRightEntryConfig::Text { text } => Some((text.clone(), false)),
+        crate::config::TabBarRightEntryConfig::Zoom => workspace
+            .tabs
+            .iter()
+            .find(|tab| tab.tab_id == workspace.active_tab_id)
+            .filter(|tab| tab.zoomed)
+            .map(|_| ("ZOOM".into(), true)),
+        crate::config::TabBarRightEntryConfig::Datetime { format } => Some((
             time::OffsetDateTime::now_local()
                 .ok()
                 .and_then(|datetime| {
@@ -2310,13 +2334,17 @@ fn tab_bar_right_text(entry: &crate::config::TabBarRightEntryConfig) -> String {
                         .format(&time::format_description::parse_strftime_owned(format).ok()?)
                         .ok()
                 })
-                .unwrap_or_default()
-        }
+                .unwrap_or_default(),
+            false,
+        )),
         crate::config::TabBarRightEntryConfig::Command {
             command,
             interval_seconds,
             timeout_seconds,
-        } => command_status(command, *interval_seconds, *timeout_seconds),
+        } => Some((
+            command_status(command, *interval_seconds, *timeout_seconds),
+            false,
+        )),
     }
 }
 
@@ -2556,9 +2584,11 @@ fn render_tab_bar_right(
     frame: &mut Frame<'_>,
     area: Rect,
     config: &crate::config::Config,
-    _workspace: &WorkspaceView,
+    workspace: &WorkspaceView,
 ) {
-    let width = tab_bar_right_width(config);
+    let parts = tab_bar_right_parts(config, workspace);
+    let palette = super::ThemePalette::from_config(config);
+    let width = tab_bar_right_width(config, workspace);
     if width == 0 || area.width <= width.saturating_add(3) {
         return;
     }
@@ -2568,17 +2598,26 @@ fn render_tab_bar_right(
         width,
         area.height,
     );
-    let text = config
-        .tab_bar_right
-        .iter()
-        .map(tab_bar_right_text)
-        .filter(|text| !text.is_empty())
-        .collect::<Vec<_>>()
-        .join(&config.tab_bar_right_separator);
+    let mut spans = Vec::with_capacity(parts.len().saturating_mul(2));
+    for (index, (text, accent)) in parts.iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled(
+                config.tab_bar_right_separator.clone(),
+                Style::default().fg(super::ThemePalette::overlay0(config)),
+            ));
+        }
+        let style = if *accent {
+            Style::default()
+                .fg(super::ThemePalette::panel_contrast_fg(config))
+                .bg(palette.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(super::ThemePalette::overlay1(config))
+        };
+        spans.push(Span::styled(text.clone(), style));
+    }
     frame.render_widget(
-        Paragraph::new(text)
-            .alignment(Alignment::Right)
-            .style(Style::default().fg(super::ThemePalette::overlay1(config))),
+        Paragraph::new(Line::from(spans)).alignment(Alignment::Right),
         status,
     );
 }
@@ -2594,7 +2633,7 @@ pub fn tab_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
     let config = crate::config::load();
-    let (content, _, _) = tab_layout(main.tabs, workspace.tabs.len(), &config);
+    let (content, _, _) = tab_layout(main.tabs, workspace.tabs.len(), &config, workspace);
     let (_, widths) = tab_window_with_scroll(
         content.width,
         workspace.tabs.len(),
@@ -2604,9 +2643,22 @@ pub fn tab_scroll_max(snapshot: &SessionSnapshot, area: Rect, collapsed: bool) -
     workspace.tabs.len().saturating_sub(widths.len())
 }
 
-pub fn tab_scroll_region(area: Rect, collapsed: bool, x: u16, y: u16) -> bool {
+pub fn tab_scroll_region(
+    snapshot: &SessionSnapshot,
+    area: Rect,
+    collapsed: bool,
+    x: u16,
+    y: u16,
+) -> bool {
     let main = super::layout::main_areas_with_sidebar(area, collapsed);
-    contains(tab_strip_area(main.tabs, &crate::config::load()), x, y)
+    let Some(workspace) = active_workspace(snapshot) else {
+        return false;
+    };
+    contains(
+        tab_strip_area(main.tabs, &crate::config::load(), workspace),
+        x,
+        y,
+    )
 }
 
 pub fn render_tab_drop_indicator(
@@ -2639,7 +2691,7 @@ pub fn render_tab_drop_indicator_with_scroll(
         .position(|tab| tab.tab_id == workspace.active_tab_id)
         .unwrap_or(0);
     let config = crate::config::load();
-    let (content, _, _) = tab_layout(area, workspace.tabs.len(), &config);
+    let (content, _, _) = tab_layout(area, workspace.tabs.len(), &config, workspace);
     let (first_tab, widths) = tab_window_with_scroll(
         content.width,
         workspace.tabs.len(),

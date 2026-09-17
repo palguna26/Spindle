@@ -1850,8 +1850,13 @@ fn handle_mouse(
             };
             return Ok(());
         }
-        if renderer::tab_scroll_region(area, mouse_state.sidebar_collapsed, mouse.column, mouse.row)
-        {
+        if renderer::tab_scroll_region(
+            snapshot,
+            area,
+            mouse_state.sidebar_collapsed,
+            mouse.column,
+            mouse.row,
+        ) {
             let max_scroll =
                 renderer::tab_scroll_max(snapshot, area, mouse_state.sidebar_collapsed);
             mouse_state.tab_scroll = if mouse.kind == MouseEventKind::ScrollUp {
