@@ -2388,7 +2388,11 @@ fn run_status_command(command: &str, timeout: Duration) -> String {
     else {
         return String::new();
     };
-    let _guard = crate::platform::StatusCommandGuard::new(&child).ok();
+    let Ok(_guard) = crate::platform::StatusCommandGuard::new(&child) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return String::new();
+    };
     let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
