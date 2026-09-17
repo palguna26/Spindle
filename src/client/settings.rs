@@ -4,16 +4,23 @@ use ratatui::layout::Rect;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Section {
     Theme,
+    Indicators,
     Notifications,
     Sound,
 }
 
 impl Section {
-    pub(super) const ALL: [Self; 3] = [Self::Theme, Self::Notifications, Self::Sound];
+    pub(super) const ALL: [Self; 4] = [
+        Self::Theme,
+        Self::Indicators,
+        Self::Notifications,
+        Self::Sound,
+    ];
 
     pub(super) fn title(self) -> &'static str {
         match self {
             Self::Theme => "theme",
+            Self::Indicators => "indicators",
             Self::Notifications => "notifications",
             Self::Sound => "sound",
         }
@@ -22,6 +29,7 @@ impl Section {
     fn choices(self) -> &'static [&'static str] {
         match self {
             Self::Theme => crate::config::THEME_NAMES,
+            Self::Indicators => &["dots", "symbols"],
             Self::Notifications => &["off", "herdr", "terminal", "system"],
             Self::Sound => &["on", "off"],
         }
@@ -144,6 +152,10 @@ impl Settings {
         let value = self.choices()[self.selected];
         let result = match self.section {
             Section::Theme => crate::config::write_theme(value),
+            Section::Indicators => crate::config::write_status_indicators(match value {
+                "symbols" => crate::config::StatusIndicatorStyle::Symbols,
+                _ => crate::config::StatusIndicatorStyle::Dots,
+            }),
             Section::Notifications => crate::config::write_notification_delivery(match value {
                 "off" => crate::config::NotificationDelivery::Off,
                 "terminal" => crate::config::NotificationDelivery::Terminal,
@@ -163,6 +175,10 @@ impl Settings {
 fn selected_for(section: Section, config: &crate::config::Config) -> usize {
     let value = match section {
         Section::Theme => config.theme_name.as_deref().unwrap_or("catppuccin"),
+        Section::Indicators => match config.status_indicators {
+            crate::config::StatusIndicatorStyle::Dots => "dots",
+            crate::config::StatusIndicatorStyle::Symbols => "symbols",
+        },
         Section::Notifications => match config.notification_delivery {
             crate::config::NotificationDelivery::Off => "off",
             crate::config::NotificationDelivery::Herdr => "herdr",
@@ -196,6 +212,9 @@ mod tests {
         let mut settings = Settings::open();
         assert_eq!(settings.section, Section::Theme);
         assert!(settings.choices().contains(&"terminal"));
+        settings.move_section(1);
+        assert_eq!(settings.section, Section::Indicators);
+        assert_eq!(settings.choices(), &["dots", "symbols"]);
         settings.move_section(1);
         assert_eq!(settings.section, Section::Notifications);
         assert_eq!(settings.choices(), &["off", "herdr", "terminal", "system"]);

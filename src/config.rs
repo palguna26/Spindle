@@ -896,6 +896,14 @@ pub(crate) fn write_theme(name: &str) -> Result<(), String> {
     update_section_key(&path(), "theme", "name", &format!("\"{name}\""))
 }
 
+pub(crate) fn write_status_indicators(style: StatusIndicatorStyle) -> Result<(), String> {
+    let value = match style {
+        StatusIndicatorStyle::Dots => "\"dots\"",
+        StatusIndicatorStyle::Symbols => "\"symbols\"",
+    };
+    update_section_key(&path(), "ui", "status_indicators", value)
+}
+
 pub(crate) fn write_notification_delivery(delivery: NotificationDelivery) -> Result<(), String> {
     let value = match delivery {
         NotificationDelivery::Herdr => "\"herdr\"",
