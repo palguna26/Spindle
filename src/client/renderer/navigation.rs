@@ -8,6 +8,7 @@ use ratatui::Frame;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Read;
+use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -2388,37 +2389,82 @@ fn run_status_command(command: &str, timeout: Duration) -> String {
     else {
         return String::new();
     };
+    let Some(stdout) = child.stdout.take() else {
+        return String::new();
+    };
+    let (output_tx, output_rx) = mpsc::channel();
+    let output_thread = std::thread::spawn(move || {
+        let result = read_last_status_output_line(stdout);
+        let _ = output_tx.send(result);
+    });
     let Ok(_guard) = crate::platform::StatusCommandGuard::new(&child) else {
         let _ = child.kill();
         let _ = child.wait();
+        let _ = output_thread.join();
         return String::new();
     };
     let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
-            Ok(Some(status)) => {
-                if !status.success() {
+            Ok(Some(status)) if status.success() => {
+                let Ok(Ok(bytes)) = output_rx.recv_timeout(Duration::from_secs(1)) else {
+                    let _ = output_thread.join();
                     return String::new();
-                }
-                break;
+                };
+                let _ = output_thread.join();
+                return sanitize_status_output(&bytes);
+            }
+            Ok(Some(_)) => {
+                let _ = output_thread.join();
+                return String::new();
             }
             Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
             Ok(None) => {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = output_thread.join();
                 return String::new();
             }
-            Err(_) => return String::new(),
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = output_thread.join();
+                return String::new();
+            }
         }
     }
-    let Some(stdout) = child.stdout.take() else {
-        return String::new();
-    };
-    let mut bytes = Vec::new();
-    let Ok(_) = std::io::BufReader::new(stdout).read_to_end(&mut bytes) else {
-        return String::new();
-    };
-    sanitize_status_output(&bytes)
+}
+
+fn read_last_status_output_line(mut stdout: impl Read) -> std::io::Result<Vec<u8>> {
+    const MAX_COMMAND_LINE_BYTES: usize = 4096;
+    let mut current_line = Vec::new();
+    let mut last_line = Vec::new();
+    let mut ended_with_newline = false;
+    let mut buffer = [0_u8; 1024];
+
+    loop {
+        let count = stdout.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        for &byte in &buffer[..count] {
+            if byte == b'\n' {
+                last_line = std::mem::take(&mut current_line);
+                ended_with_newline = true;
+            } else {
+                if current_line.len() < MAX_COMMAND_LINE_BYTES {
+                    current_line.push(byte);
+                }
+                ended_with_newline = false;
+            }
+        }
+    }
+
+    Ok(if ended_with_newline {
+        last_line
+    } else {
+        current_line
+    })
 }
 
 fn sanitize_status_output(bytes: &[u8]) -> String {
@@ -2782,6 +2828,14 @@ mod tests {
             ),
             "link"
         );
+    }
+
+    #[test]
+    fn tab_bar_command_reader_drains_large_output_and_keeps_last_line() {
+        let mut output = vec![b'x'; 16 * 1024];
+        output.extend_from_slice(b"\nlast\n");
+        let bytes = super::read_last_status_output_line(output.as_slice()).unwrap();
+        assert_eq!(bytes, b"last");
     }
 
     #[test]
