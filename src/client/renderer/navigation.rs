@@ -2412,14 +2412,92 @@ fn run_status_command(command: &str, timeout: Duration) -> String {
     let Ok(_) = std::io::BufReader::new(stdout).read_to_end(&mut bytes) else {
         return String::new();
     };
+    sanitize_status_output(&bytes)
+}
+
+fn sanitize_status_output(bytes: &[u8]) -> String {
+    let bytes = strip_terminal_control_sequences(bytes);
     let text = String::from_utf8_lossy(&bytes);
     text.lines()
-        .next_back()
+        .rfind(|line| !line.trim().is_empty())
         .unwrap_or_default()
         .chars()
-        .filter(|character| !character.is_control())
+        .filter(|character| !character.is_control() && !is_unicode_format_control(*character))
         .take(80)
         .collect()
+}
+
+#[cfg(test)]
+fn run_status_output_for_test(bytes: &[u8]) -> String {
+    sanitize_status_output(bytes)
+}
+
+fn strip_terminal_control_sequences(value: &[u8]) -> Vec<u8> {
+    #[derive(Clone, Copy)]
+    enum State {
+        Text,
+        Escape,
+        EscapeIntermediate,
+        Csi,
+        Osc,
+        String,
+    }
+    use State::*;
+
+    let mut output = Vec::with_capacity(value.len());
+    let mut state = Text;
+    for &byte in value {
+        state = match (state, byte) {
+            (Text, 0x1b) => Escape,
+            (Text, _) => {
+                output.push(byte);
+                Text
+            }
+            (Escape, b'[') => Csi,
+            (Escape, b']') => Osc,
+            (Escape, b'P' | b'X' | b'^' | b'_') => String,
+            (Escape, 0x20..=0x2f) => EscapeIntermediate,
+            (Escape, 0x30..=0x7e) => Text,
+            (Escape, b'\x1b') => Escape,
+            (Escape, byte) if byte.is_ascii_control() => Escape,
+            (Escape, _) => Text,
+            (EscapeIntermediate, 0x20..=0x2f) => EscapeIntermediate,
+            (EscapeIntermediate, 0x30..=0x7e) => Text,
+            (EscapeIntermediate, b'\x1b') => Escape,
+            (EscapeIntermediate, _) => EscapeIntermediate,
+            (Csi, 0x20..=0x3f) => Csi,
+            (Csi, 0x40..=0x7e) => Text,
+            (Csi, b'\x1b') => Escape,
+            (Csi, _) => Csi,
+            (Osc, 0x07) => Text,
+            (Osc, b'\x1b') => Escape,
+            (Osc, _) => Osc,
+            (String, b'\x1b') => Escape,
+            (String, b'\x18' | b'\x1a') => Text,
+            (String, _) => String,
+        };
+    }
+    output
+}
+
+fn is_unicode_format_control(character: char) -> bool {
+    matches!(
+        character,
+        '\u{00ad}'
+            | '\u{0600}'..='\u{0605}'
+            | '\u{061c}'
+            | '\u{06dd}'
+            | '\u{070f}'
+            | '\u{0890}'..='\u{0891}'
+            | '\u{08e2}'
+            | '\u{17b4}'..='\u{17b5}'
+            | '\u{180e}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{206f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+    )
 }
 
 fn render_tab_bar_right(
@@ -2683,6 +2761,20 @@ mod tests {
         assert_eq!(
             agent_status_marker(AgentDisplayState::Done, StatusIndicatorStyle::Symbols),
             "✓"
+        );
+    }
+
+    #[test]
+    fn tab_bar_command_output_matches_herdr_sanitization() {
+        assert_eq!(
+            super::run_status_output_for_test(b"old\n\x1b[31mnew\x1b[0m\n"),
+            "new"
+        );
+        assert_eq!(
+            super::run_status_output_for_test(
+                b"\x1b]8;;https://example.test\x1b\\link\x1b]8;;\x1b\\"
+            ),
+            "link"
         );
     }
 
