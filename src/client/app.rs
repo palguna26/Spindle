@@ -31,6 +31,7 @@ use crossterm::event::{
     KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use crossterm::execute;
+use crossterm::terminal::SetTitle;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, size, EnterAlternateScreen, LeaveAlternateScreen,
 };
@@ -219,6 +220,7 @@ fn event_loop(
     let mut status_notice: Option<(String, Instant)> = None;
     let mut notifications = VecDeque::new();
     let mut pending_external_notifications = VecDeque::new();
+    let mut last_window_title = None;
     loop {
         let config = crate::config::load();
         if config.mouse_capture != mouse_capture {
@@ -381,6 +383,13 @@ fn event_loop(
             }
         }
         was_connected = connected;
+        let next_window_title = renderer::window_title(&snapshot, &config.window_title);
+        if next_window_title != last_window_title {
+            if let Some(title) = next_window_title.as_deref() {
+                execute!(terminal.backend_mut(), SetTitle(title)).map_err(ClientError::Io)?;
+            }
+            last_window_title = next_window_title;
+        }
         let area = Rect::new(0, 0, terminal_size.0, terminal_size.1);
         mouse_state.sidebar_scroll = mouse_state.sidebar_scroll.min(
             renderer::sidebar_scroll_max_with_sort_and_groups_and_split(

@@ -136,6 +136,7 @@ struct UiConfig {
     pane_gaps: bool,
     pane_scrollbars: bool,
     show_agent_labels_on_pane_borders: bool,
+    window_title: String,
     prompt_new_tab_name: bool,
     prompt_new_workspace_name: bool,
     copy_on_select: bool,
@@ -247,6 +248,7 @@ impl Default for UiConfig {
             pane_gaps: true,
             pane_scrollbars: true,
             show_agent_labels_on_pane_borders: false,
+            window_title: "{hostname}: {workspace}".into(),
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -412,6 +414,7 @@ pub struct Config {
     pub(crate) pane_gaps: bool,
     pub(crate) pane_scrollbars: bool,
     pub(crate) show_agent_labels_on_pane_borders: bool,
+    pub(crate) window_title: String,
     pub(crate) prompt_new_tab_name: bool,
     pub(crate) prompt_new_workspace_name: bool,
     pub(crate) copy_on_select: bool,
@@ -470,6 +473,7 @@ impl Default for Config {
             pane_gaps: true,
             pane_scrollbars: true,
             show_agent_labels_on_pane_borders: false,
+            window_title: "{hostname}: {workspace}".into(),
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
             copy_on_select: true,
@@ -635,6 +639,7 @@ pub fn load_from(path: &std::path::Path) -> Config {
         pane_gaps: file.ui.pane_gaps,
         pane_scrollbars: file.ui.pane_scrollbars,
         show_agent_labels_on_pane_borders: file.ui.show_agent_labels_on_pane_borders,
+        window_title: file.ui.window_title,
         prompt_new_tab_name: file.ui.prompt_new_tab_name,
         prompt_new_workspace_name: file.ui.prompt_new_workspace_name,
         copy_on_select: file.ui.copy_on_select,
@@ -850,6 +855,7 @@ pane_outer_borders = true
 pane_gaps = true
 pane_scrollbars = true
 show_agent_labels_on_pane_borders = false
+window_title = "{hostname}: {workspace}"
 prompt_new_tab_name = true
 prompt_new_workspace_name = false
 copy_on_select = true

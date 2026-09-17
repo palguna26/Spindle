@@ -1720,6 +1720,57 @@ fn active_title(snapshot: &SessionSnapshot) -> String {
         .unwrap_or_else(|| "No active session".into())
 }
 
+pub(super) fn window_title(snapshot: &SessionSnapshot, template: &str) -> Option<String> {
+    if template.is_empty() {
+        return None;
+    }
+    let workspace = active_workspace(snapshot);
+    let tab = workspace.and_then(|workspace| {
+        workspace
+            .tabs
+            .iter()
+            .find(|tab| tab.tab_id == workspace.active_tab_id)
+            .map(|tab| tab.name.as_str())
+    });
+    let pane = snapshot
+        .focused_pane_id
+        .as_deref()
+        .and_then(|id| snapshot.panes.iter().find(|pane| pane.pane_id == id));
+    let hostname = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_default();
+    let replacements = [
+        ("{hostname}", hostname.as_str()),
+        (
+            "{workspace}",
+            workspace.map(|value| value.name.as_str()).unwrap_or(""),
+        ),
+        ("{tab}", tab.unwrap_or("")),
+        (
+            "{pane}",
+            pane.and_then(|value| value.label.as_deref())
+                .or_else(|| pane.map(|value| value.title.as_str()))
+                .unwrap_or(""),
+        ),
+        (
+            "{terminal_title}",
+            pane.map(|value| value.title.as_str()).unwrap_or(""),
+        ),
+    ];
+    let mut title = template.to_owned();
+    for (token, value) in replacements {
+        title = title.replace(token, value);
+    }
+    let title = title
+        .chars()
+        .filter(|ch| !ch.is_control())
+        .take(200)
+        .collect::<String>()
+        .trim()
+        .to_owned();
+    (!title.is_empty()).then_some(title)
+}
+
 fn pane_title_with_config(
     pane: &crate::server::session::PaneView,
     config: &crate::config::Config,
@@ -1812,7 +1863,7 @@ mod tests {
     use super::{
         active_title, pane_content_area, pane_rectangles, pane_title_text, popup_title, render,
         render_action_error, render_help, render_onboarding, render_palette, render_prefix_mode,
-        render_selection, render_startup_error, render_with_connection, status_color,
+        render_selection, render_startup_error, render_with_connection, status_color, window_title,
     };
     use crate::model::layout::LayoutNode;
     use crate::model::status::PaneStatus;
@@ -2089,6 +2140,56 @@ mod tests {
         assert!(content.contains("Current project"));
         assert!(content.contains("switch"));
         assert!(content.contains("Main"));
+    }
+
+    #[test]
+    fn window_title_expands_herdr_tokens_and_sanitizes_control_text() {
+        let mut snapshot = Session::default().snapshot().clone();
+        snapshot.panes.push(PaneView {
+            pane_id: "pane-1".into(),
+            command: "powershell.exe".into(),
+            args: Vec::new(),
+            cwd: "C:/".into(),
+            cols: 80,
+            rows: 24,
+            label: Some("shell".into()),
+            agent: None,
+            agent_state: None,
+            agent_done: false,
+            display_agent: None,
+            display_title: None,
+            state_labels: std::collections::BTreeMap::new(),
+            agent_session: None,
+            tokens: std::collections::HashMap::new(),
+            status: PaneStatus::Running,
+            scrollback_bytes: 0,
+            scrollback: Vec::new(),
+            screen: String::new(),
+            cursor: (0, 0),
+            cursor_visible: true,
+            title: "Prompt".into(),
+            alternate_screen: false,
+            mouse_reporting: false,
+            mouse_release: false,
+            mouse_motion: false,
+            mouse_any_motion: false,
+            sgr_mouse: false,
+            utf8_mouse: false,
+            application_cursor: false,
+            bracketed_paste: false,
+            right_click_passthrough: false,
+            hyperlinks: Vec::new(),
+        });
+        snapshot.focused_pane_id = Some("pane-1".into());
+        assert_eq!(
+            window_title(&snapshot, "{workspace}/{tab}/{pane}/{terminal_title}"),
+            Some("Current project/Main/shell/Prompt".into())
+        );
+        assert_eq!(
+            window_title(&snapshot, "  \u{1b}[31mSpindle\u{7}  "),
+            Some("[31mSpindle".into())
+        );
+        assert_eq!(window_title(&snapshot, ""), None);
     }
 
     #[test]
