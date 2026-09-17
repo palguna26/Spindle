@@ -39,9 +39,21 @@ spindle session stop review  stop a named session
 spindle session delete review  delete a named session
 spindle start    start the server
 spindle stop     stop the server
+spindle status   show client and server status
 spindle doctor   show server health and state paths
+spindle config path     show the config path
+spindle config check    validate the config file
+spindle config reset-keys  back up the config and remove custom keybindings
 spindle workspace list  list workspaces in the current project session
 spindle workspace focus <id>  focus a workspace by ID
+spindle worktree list    list Git worktrees
+spindle worktree create <branch>  create a worktree workspace
+spindle worktree open <path-or-branch>  open an existing worktree
+spindle worktree remove <name>  remove a worktree workspace
+spindle agent explain <target>  explain agent detection evidence
+spindle integration status  show installed agent integrations
+spindle integration install <agent>  install an agent integration
+spindle integration uninstall <agent>  remove an agent integration
 spindle list     show project identity and state path
 spindle --help   show commands
 spindle --version  show the build version
