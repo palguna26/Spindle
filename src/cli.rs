@@ -167,6 +167,7 @@ pub fn run() -> io::Result<()> {
     let project = Project::from_current_dir_named(session_name.as_deref())?;
 
     match command.as_str() {
+        "server" => run_server_command(&project, command_args)?,
         "start" => start_server(&project)?,
         "attach" => attach_server(&project)?,
         "list" => {
@@ -333,7 +334,7 @@ fn print_help() {
     println!("Spindle - persistent parallel coding-agent sessions");
     println!();
     println!(
-        "Usage: spindle [--session <name>] [start|attach|stop|list|status|doctor|workspace|worktree|tab|pane|agent|notification|integration|session|help]"
+        "Usage: spindle [--session <name>] [start|attach|stop|server|list|status|doctor|workspace|worktree|tab|pane|agent|notification|integration|session|help]"
     );
     println!();
     println!("Commands:");
@@ -341,6 +342,7 @@ fn print_help() {
     println!("  attach   attach to the current project's server (default)");
     println!("  --session <name>  use a named persistent session");
     println!("  stop     stop the current project's server");
+    println!("  server start/stop/status  Herdr-compatible server command group");
     println!("  list     show the current project identity and state path");
     println!("  status   show Herdr-style client and server status");
     println!("  doctor   check local Spindle state");
@@ -370,6 +372,22 @@ fn print_help() {
     println!("Options:");
     println!("  --help, -h       show this help");
     println!("  --version, -V    print the version");
+}
+
+fn run_server_command(project: &Project, args: &[String]) -> io::Result<()> {
+    match args {
+        [command] if command == "start" => start_server(project),
+        [command] if command == "stop" => stop_server(project),
+        [command, rest @ ..] if command == "status" => status::run(project, rest),
+        [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
+            println!("Usage: spindle server <start|stop|status>");
+            Ok(())
+        }
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: spindle server <start|stop|status>",
+        )),
+    }
 }
 
 fn run_session_command(args: &[String]) -> io::Result<()> {
