@@ -9,6 +9,8 @@ if (-not (Test-Path -LiteralPath $Binary)) {
 
 $stateRoot = Join-Path ([IO.Path]::GetTempPath()) ("spindle-smoke-" + [guid]::NewGuid())
 $previousLocalAppData = $env:LOCALAPPDATA
+$previousSpindleSocketPath = $env:SPINDLE_SOCKET_PATH
+$previousHerdrSocketPath = $env:HERDR_SOCKET_PATH
 New-Item -ItemType Directory -Path $stateRoot | Out-Null
 
 function Invoke-Spindle {
@@ -21,6 +23,8 @@ function Invoke-Spindle {
 
 try {
     $env:LOCALAPPDATA = $stateRoot
+    Remove-Item Env:SPINDLE_SOCKET_PATH -ErrorAction SilentlyContinue
+    Remove-Item Env:HERDR_SOCKET_PATH -ErrorAction SilentlyContinue
     Invoke-Spindle @("help")
     Invoke-Spindle @("start")
     Invoke-Spindle @("start")
@@ -143,6 +147,16 @@ try {
         Remove-Item Env:LOCALAPPDATA -ErrorAction SilentlyContinue
     } else {
         $env:LOCALAPPDATA = $previousLocalAppData
+    }
+    if ($null -eq $previousSpindleSocketPath) {
+        Remove-Item Env:SPINDLE_SOCKET_PATH -ErrorAction SilentlyContinue
+    } else {
+        $env:SPINDLE_SOCKET_PATH = $previousSpindleSocketPath
+    }
+    if ($null -eq $previousHerdrSocketPath) {
+        Remove-Item Env:HERDR_SOCKET_PATH -ErrorAction SilentlyContinue
+    } else {
+        $env:HERDR_SOCKET_PATH = $previousHerdrSocketPath
     }
     if (Test-Path -LiteralPath $stateRoot) {
         Remove-Item -LiteralPath $stateRoot -Recurse -Force
