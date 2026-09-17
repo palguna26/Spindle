@@ -342,7 +342,7 @@ fn print_help() {
     println!("  attach   attach to the current project's server (default)");
     println!("  --session <name>  use a named persistent session");
     println!("  stop     stop the current project's server");
-    println!("  server start/stop/status  Herdr-compatible server command group");
+    println!("  server start/stop/reload-config/status  Herdr-compatible server command group");
     println!("  list     show the current project identity and state path");
     println!("  status   show Herdr-style client and server status");
     println!("  doctor   check local Spindle state");
@@ -378,14 +378,25 @@ fn run_server_command(project: &Project, args: &[String]) -> io::Result<()> {
     match args {
         [command] if command == "start" => start_server(project),
         [command] if command == "stop" => stop_server(project),
+        [command] if command == "reload-config" => {
+            let response = send_command(project, "reload_config")?;
+            if response.ok {
+                println!("configuration reloaded");
+                Ok(())
+            } else {
+                Err(io::Error::other(format!(
+                    "configuration reload failed: {response:?}"
+                )))
+            }
+        }
         [command, rest @ ..] if command == "status" => status::run(project, rest),
         [command] if matches!(command.as_str(), "help" | "--help" | "-h") => {
-            println!("Usage: spindle server <start|stop|status>");
+            println!("Usage: spindle server <start|stop|reload-config|status>");
             Ok(())
         }
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: spindle server <start|stop|status>",
+            "usage: spindle server <start|stop|reload-config|status>",
         )),
     }
 }

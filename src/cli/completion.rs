@@ -50,7 +50,7 @@ const BASH: &str = r#"_spindle() {
   elif [[ "$COMP_WORDS[1]" == "status" ]]; then
     COMPREPLY=( $(compgen -W "server client --json" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "server" ]]; then
-    COMPREPLY=( $(compgen -W "start stop status help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start stop reload-config status help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "config" ]]; then
     COMPREPLY=( $(compgen -W "path default check reset-keys help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "workspace" ]]; then
@@ -112,7 +112,7 @@ complete -c spindle -f -n '__fish_seen_argument --session' -a 'start attach stop
 complete -c spindle -f -n '__fish_seen_subcommand_from session' -a 'list attach stop delete help'
 complete -c spindle -f -n '__fish_seen_subcommand_from completion' -a 'bash elvish fish powershell zsh'
 complete -c spindle -f -n '__fish_seen_subcommand_from status' -a 'server client --json'
-complete -c spindle -f -n '__fish_seen_subcommand_from server' -a 'start stop status help'
+complete -c spindle -f -n '__fish_seen_subcommand_from server' -a 'start stop reload-config status help'
 complete -c spindle -f -n '__fish_seen_subcommand_from plugin' -a 'install uninstall link unlink list enable disable config-dir action pane log help'
 complete -c spindle -f -n '__fish_seen_subcommand_from config' -a 'path default check reset-keys help'
 complete -c spindle -f -n '__fish_seen_subcommand_from workspace' -a 'list create get focus report-metadata move rename close'
@@ -151,7 +151,7 @@ _spindle() {
   case $words[2] in
     completion) _arguments '1:shell:(bash elvish fish powershell zsh)' ;;
     status) _arguments '1:scope:(server client)' '2:options:(--json --outdated-only)' ;;
-    server) _arguments '1:command:(start stop status help)' ;;
+    server) _arguments '1:command:(start stop reload-config status help)' ;;
     plugin) _arguments '1:command:(install uninstall link unlink list enable disable config-dir action pane log help)' ;;
     config) _arguments '1:command:(path default check reset-keys help)' ;;
     workspace) _arguments '1:command:(list create get focus report-metadata move rename close)' '2:options:(--cwd --label --env --focus --no-focus --group --source --token --clear-token --ttl-ms --seq)' ;;
@@ -176,7 +176,7 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
     elseif ($words[1] -eq '--session' -and $words.Count -ge 3) { 'start attach stop server list status doctor config workspace worktree tab pane agent notification integration plugin completion api session help' }
     elseif ($words[1] -eq 'session') { 'list attach stop delete help' }
     elseif ($words[1] -eq 'status') { 'server client --json' }
-    elseif ($words[1] -eq 'server') { 'start stop status help' }
+    elseif ($words[1] -eq 'server') { 'start stop reload-config status help' }
     elseif ($words[1] -eq 'plugin') { 'install uninstall link unlink list enable disable config-dir action pane log help' }
     elseif ($words[1] -eq 'config') { 'path default check reset-keys help' }
     elseif ($words[1] -eq 'workspace' -and $words[2] -eq 'create') { '--cwd --label --env --focus --no-focus' }
@@ -203,7 +203,7 @@ edit:completion:argadd 'spindle --session' (review)
 edit:completion:argadd 'spindle --session review' (start attach stop server list status doctor config workspace worktree tab pane agent notification integration plugin completion api session help)
 edit:completion:argadd 'spindle session' (list attach stop delete help)
 edit:completion:argadd 'spindle status' (server client --json)
-edit:completion:argadd 'spindle server' (start stop status help)
+edit:completion:argadd 'spindle server' (start stop reload-config status help)
 edit:completion:argadd 'spindle plugin' (install uninstall link unlink list enable disable config-dir action pane log help)
 edit:completion:argadd 'spindle config' (path default check reset-keys help)
 edit:completion:argadd 'spindle api' (snapshot schema help)

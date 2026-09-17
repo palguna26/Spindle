@@ -609,10 +609,24 @@ fn event_loop(
                                     palette_selected = 0;
                                 }
                                 GlobalMenuAction::ReloadConfig => {
-                                    status_notice = Some((
-                                        "configuration reloaded".into(),
-                                        Instant::now() + ACTION_ERROR_DURATION,
-                                    ));
+                                    let result = request_action(
+                                        client,
+                                        "reload-config",
+                                        "reload_config",
+                                        serde_json::json!({}),
+                                        "reload configuration",
+                                    );
+                                    if result.is_ok() {
+                                        status_notice = Some((
+                                            "configuration reloaded".into(),
+                                            Instant::now() + ACTION_ERROR_DURATION,
+                                        ));
+                                    }
+                                    record_action_error(
+                                        &mut action_error,
+                                        "reload configuration",
+                                        result,
+                                    );
                                 }
                                 GlobalMenuAction::Detach => {
                                     let _ = client.detach();
@@ -837,10 +851,20 @@ fn event_loop(
                             palette_selected = 0;
                         }
                         GlobalMenuAction::ReloadConfig => {
-                            status_notice = Some((
-                                "configuration reloaded".into(),
-                                Instant::now() + ACTION_ERROR_DURATION,
-                            ));
+                            let result = request_action(
+                                client,
+                                "reload-config",
+                                "reload_config",
+                                serde_json::json!({}),
+                                "reload configuration",
+                            );
+                            if result.is_ok() {
+                                status_notice = Some((
+                                    "configuration reloaded".into(),
+                                    Instant::now() + ACTION_ERROR_DURATION,
+                                ));
+                            }
+                            record_action_error(&mut action_error, "reload configuration", result);
                         }
                         GlobalMenuAction::Detach => {
                             let _ = client.detach();
@@ -1121,10 +1145,23 @@ fn event_loop(
             continue;
         }
         if pressed == Action::ReloadConfig {
-            status_notice = Some((
-                "configuration reloaded".into(),
-                Instant::now() + ACTION_ERROR_DURATION,
-            ));
+            match request_action(
+                client,
+                "reload-config",
+                "reload_config",
+                serde_json::json!({}),
+                "reload configuration",
+            ) {
+                Ok(()) => {
+                    status_notice = Some((
+                        "configuration reloaded".into(),
+                        Instant::now() + ACTION_ERROR_DURATION,
+                    ));
+                }
+                Err(error) => {
+                    record_action_error(&mut action_error, "reload configuration", Err(error))
+                }
+            }
             prefix_active = false;
             continue;
         }

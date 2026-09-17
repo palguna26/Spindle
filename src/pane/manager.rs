@@ -85,6 +85,15 @@ impl PaneManager {
         }
     }
 
+    pub fn set_scrollback_limit(&mut self, scrollback_limit: usize) {
+        self.scrollback_limit = scrollback_limit.max(1);
+        for pane in self.panes.values_mut() {
+            while pane.scrollback.len() > self.scrollback_limit {
+                pane.scrollback.pop_front();
+            }
+        }
+    }
+
     pub fn mark_agent_done_seen(&mut self, pane_ids: &[String]) {
         for pane_id in pane_ids {
             if let Some(pane) = self.panes.get_mut(pane_id) {

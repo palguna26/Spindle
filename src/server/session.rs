@@ -411,6 +411,15 @@ impl Default for Session {
 }
 
 impl Session {
+    pub fn reload_config(&mut self) -> Value {
+        let limit = crate::config::load().scrollback_limit_bytes;
+        self.pane_manager.set_scrollback_limit(limit);
+        serde_json::json!({
+            "reloaded": true,
+            "scrollback_limit_bytes": limit,
+        })
+    }
+
     pub fn load_or_default_with_scrollback(
         path: impl AsRef<Path>,
         scrollback_limit: usize,

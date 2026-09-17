@@ -376,6 +376,10 @@ pub(crate) fn response_for_with_interactive(
 
     let result = match request.op.as_str() {
         "ping" => Ok(json!({ "status": "ok", "interactive_endpoint": interactive_address })),
+        "reload_config" => {
+            let mut session = session.lock().expect("session lock poisoned");
+            Ok(session.reload_config())
+        }
         "stream_events" => Ok(json!({ "streaming": true })),
         "attach" => {
             let payload: AttachRequest = match serde_json::from_value(request.payload) {
@@ -1332,6 +1336,18 @@ mod tests {
         );
         assert!(response.ok);
         assert_eq!(response.request_id, "1");
+    }
+
+    #[test]
+    fn reload_config_returns_active_scrollback_limit() {
+        let response = response_for(
+            br#"{"version":1,"request_id":"reload","op":"reload_config","payload":{}}"#,
+            &session(),
+        );
+        assert!(response.ok);
+        let payload = response.payload.unwrap();
+        assert_eq!(payload["reloaded"], true);
+        assert!(payload["scrollback_limit_bytes"].as_u64().unwrap() > 0);
     }
 
     #[test]
