@@ -711,6 +711,7 @@ pub(crate) fn check(path: &std::path::Path) -> io::Result<Vec<String>> {
     if let Err(error) = sidebar::validate(&file.ui.sidebar) {
         diagnostics.push(format!("invalid sidebar config: {error}"));
     }
+    diagnostics.extend(tab_bar::tab_bar_right_diagnostics(&file.ui.tab_bar_right));
     Ok(diagnostics)
 }
 
