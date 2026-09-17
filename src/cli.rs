@@ -275,7 +275,7 @@ fn attach_server(project: &Project) -> io::Result<()> {
     if ping_server(project).is_err() {
         start_server_with_output(project, false)?;
     }
-    let address = fs::read_to_string(project.endpoint_path())?;
+    let address = control_address(project)?;
     crate::client::app::run(address.trim(), &project.state_dir)
         .map_err(|error| io::Error::other(format!("{error:?}")))
 }
@@ -303,12 +303,29 @@ fn send_command_with_payload(
     operation: &str,
     payload: Value,
 ) -> io::Result<Response<Value>> {
-    let address = fs::read_to_string(project.endpoint_path())?;
+    let address = control_address(project)?;
     let client = ControlClient::connect(address.trim())
         .map_err(|error| io::Error::other(format!("{error:?}")))?;
     client
         .request(format!("cli-{}", std::process::id()), operation, payload)
         .map_err(|error| io::Error::other(format!("{error:?}")))
+}
+
+fn control_address(project: &Project) -> io::Result<String> {
+    if let Some(address) = socket_override(
+        std::env::var("SPINDLE_SOCKET_PATH").ok().as_deref(),
+        std::env::var("HERDR_SOCKET_PATH").ok().as_deref(),
+    ) {
+        return Ok(address);
+    }
+    fs::read_to_string(project.endpoint_path())
+}
+
+fn socket_override(spindle: Option<&str>, herdr: Option<&str>) -> Option<String> {
+    spindle
+        .filter(|address| !address.trim().is_empty())
+        .or_else(|| herdr.filter(|address| !address.trim().is_empty()))
+        .map(str::to_owned)
 }
 
 fn print_help() {
@@ -534,7 +551,8 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::{
-        endpoint_status_label, project_id, selected_session_from_values, validate_session_name,
+        endpoint_status_label, project_id, selected_session_from_values, socket_override,
+        validate_session_name,
     };
     use std::path::Path;
 
@@ -583,5 +601,18 @@ mod tests {
             selected_session_from_values(Some(" "), Some("legacy")).as_deref(),
             Some("legacy")
         );
+    }
+
+    #[test]
+    fn socket_environment_prefers_spindle_and_ignores_blank_values() {
+        assert_eq!(
+            socket_override(Some("pipe-spindle"), Some("pipe-herdr")).as_deref(),
+            Some("pipe-spindle")
+        );
+        assert_eq!(
+            socket_override(Some(" "), Some("pipe-herdr")).as_deref(),
+            Some("pipe-herdr")
+        );
+        assert_eq!(socket_override(None, Some(" ")), None);
     }
 }
