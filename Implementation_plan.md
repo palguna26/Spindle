@@ -777,7 +777,9 @@ approved design changes it.
 - [x] Make `spindle stop` wait for endpoint cleanup and retry Windows named-pipe
   wakeups through the listener handoff race, following Herdr's bounded server
   stop wait. The Windows and installer smoke scripts pass after stale-endpoint
-  recovery.
+  recovery. Both smoke scripts now clear inherited Spindle/Herdr socket
+  overrides and return an explicit success code, so they remain reliable when
+  run from a shell that already has Herdr active.
 - [x] Add Herdr-style agent session identity metadata. Pane reports accept a
   session ID or path, `pane report-agent-session` reports identity separately
   from state authority, pane views expose the metadata, stale same-source
