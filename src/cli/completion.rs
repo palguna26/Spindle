@@ -42,11 +42,11 @@ const BASH: &str = r#"_spindle() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
   if (( COMP_CWORD == 1 )); then
-    COMPREPLY=( $(compgen -W "start attach stop server list status doctor config workspace worktree tab pane agent notification integration completion api session help --session" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start attach stop server list status doctor config workspace worktree tab pane agent notification integration plugin completion api session help --session" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "completion" ]]; then
     COMPREPLY=( $(compgen -W "bash elvish fish powershell zsh" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "--session" && COMP_CWORD -ge 3 ]]; then
-    COMPREPLY=( $(compgen -W "start attach stop server list status doctor config workspace worktree tab pane agent notification integration completion api session help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start attach stop server list status doctor config workspace worktree tab pane agent notification integration plugin completion api session help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "status" ]]; then
     COMPREPLY=( $(compgen -W "server client --json" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "server" ]]; then
@@ -95,6 +95,8 @@ const BASH: &str = r#"_spindle() {
     else
       COMPREPLY=( $(compgen -W "status install uninstall help" -- "$cur") )
     fi
+  elif [[ "$COMP_WORDS[1]" == "plugin" ]]; then
+    COMPREPLY=( $(compgen -W "install uninstall link unlink list enable disable config-dir action pane log help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "session" ]]; then
     COMPREPLY=( $(compgen -W "list attach stop delete help" -- "$cur") )
   elif [[ "$COMP_WORDS[1]" == "pane" ]]; then
@@ -104,13 +106,14 @@ const BASH: &str = r#"_spindle() {
 complete -F _spindle spindle
 "#;
 
-const FISH: &str = r#"complete -c spindle -f -n '__fish_use_subcommand' -a 'start attach stop server list status doctor config workspace worktree tab pane agent notification integration completion api session help'
+const FISH: &str = r#"complete -c spindle -f -n '__fish_use_subcommand' -a 'start attach stop server list status doctor config workspace worktree tab pane agent notification integration plugin completion api session help'
 complete -c spindle -f -n '__fish_use_subcommand' -l session -r
-complete -c spindle -f -n '__fish_seen_argument --session' -a 'start attach stop server list status doctor config workspace worktree tab pane agent notification integration completion api session help'
+complete -c spindle -f -n '__fish_seen_argument --session' -a 'start attach stop server list status doctor config workspace worktree tab pane agent notification integration plugin completion api session help'
 complete -c spindle -f -n '__fish_seen_subcommand_from session' -a 'list attach stop delete help'
 complete -c spindle -f -n '__fish_seen_subcommand_from completion' -a 'bash elvish fish powershell zsh'
 complete -c spindle -f -n '__fish_seen_subcommand_from status' -a 'server client --json'
 complete -c spindle -f -n '__fish_seen_subcommand_from server' -a 'start stop status help'
+complete -c spindle -f -n '__fish_seen_subcommand_from plugin' -a 'install uninstall link unlink list enable disable config-dir action pane log help'
 complete -c spindle -f -n '__fish_seen_subcommand_from config' -a 'path default check reset-keys help'
 complete -c spindle -f -n '__fish_seen_subcommand_from workspace' -a 'list create get focus report-metadata move rename close'
     complete -c spindle -f -n '__fish_seen_subcommand_from worktree' -a 'list create open remove help'
@@ -144,11 +147,12 @@ complete -c spindle -f -n '__fish_seen_subcommand_from integration; and __fish_s
 
 const ZSH: &str = r#"#compdef spindle
 _spindle() {
-  _arguments '1:command:(start attach stop server list status doctor config workspace worktree tab pane agent notification integration completion api session help)' '--session[use a named session]:name' '*::argument:->args'
+  _arguments '1:command:(start attach stop server list status doctor config workspace worktree tab pane agent notification integration plugin completion api session help)' '--session[use a named session]:name' '*::argument:->args'
   case $words[2] in
     completion) _arguments '1:shell:(bash elvish fish powershell zsh)' ;;
     status) _arguments '1:scope:(server client)' '2:options:(--json --outdated-only)' ;;
     server) _arguments '1:command:(start stop status help)' ;;
+    plugin) _arguments '1:command:(install uninstall link unlink list enable disable config-dir action pane log help)' ;;
     config) _arguments '1:command:(path default check reset-keys help)' ;;
     workspace) _arguments '1:command:(list create get focus report-metadata move rename close)' '2:options:(--cwd --label --env --focus --no-focus --group --source --token --clear-token --ttl-ms --seq)' ;;
     worktree) _arguments '1:command:(list create open remove help)' '2:options:(--workspace --cwd --branch --base --path --label --focus --no-focus --force --trust-repository)' ;;
@@ -167,12 +171,13 @@ _spindle "$@"
 const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spindle -ScriptBlock {
   param($wordToComplete, $commandAst, $cursorPosition)
   $words = $commandAst.ToString().Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
-  $choices = if ($words.Count -le 1) { 'start attach stop server list status doctor config workspace worktree tab pane agent notification integration completion api session help --session' }
+  $choices = if ($words.Count -le 1) { 'start attach stop server list status doctor config workspace worktree tab pane agent notification integration plugin completion api session help --session' }
     elseif ($words[1] -eq 'completion') { 'bash elvish fish powershell zsh' }
-    elseif ($words[1] -eq '--session' -and $words.Count -ge 3) { 'start attach stop server list status doctor config workspace worktree tab pane agent notification integration completion api session help' }
+    elseif ($words[1] -eq '--session' -and $words.Count -ge 3) { 'start attach stop server list status doctor config workspace worktree tab pane agent notification integration plugin completion api session help' }
     elseif ($words[1] -eq 'session') { 'list attach stop delete help' }
     elseif ($words[1] -eq 'status') { 'server client --json' }
     elseif ($words[1] -eq 'server') { 'start stop status help' }
+    elseif ($words[1] -eq 'plugin') { 'install uninstall link unlink list enable disable config-dir action pane log help' }
     elseif ($words[1] -eq 'config') { 'path default check reset-keys help' }
     elseif ($words[1] -eq 'workspace' -and $words[2] -eq 'create') { '--cwd --label --env --focus --no-focus' }
     elseif ($words[1] -eq 'workspace' -and $words[2] -eq 'report-metadata') { '--source --token --clear-token --ttl-ms --seq' }
@@ -193,12 +198,13 @@ const POWERSHELL: &str = r#"Register-ArgumentCompleter -Native -CommandName spin
 "#;
 
 const ELVISH: &str = r#"# Add to ~/.elvish/rc.elv:
-edit:completion:argadd spindle (start attach stop server list status doctor config workspace worktree tab pane agent notification integration completion api session help)
+edit:completion:argadd spindle (start attach stop server list status doctor config workspace worktree tab pane agent notification integration plugin completion api session help)
 edit:completion:argadd 'spindle --session' (review)
-edit:completion:argadd 'spindle --session review' (start attach stop server list status doctor config workspace worktree tab pane agent notification integration completion api session help)
+edit:completion:argadd 'spindle --session review' (start attach stop server list status doctor config workspace worktree tab pane agent notification integration plugin completion api session help)
 edit:completion:argadd 'spindle session' (list attach stop delete help)
 edit:completion:argadd 'spindle status' (server client --json)
 edit:completion:argadd 'spindle server' (start stop status help)
+edit:completion:argadd 'spindle plugin' (install uninstall link unlink list enable disable config-dir action pane log help)
 edit:completion:argadd 'spindle config' (path default check reset-keys help)
 edit:completion:argadd 'spindle api' (snapshot schema help)
 edit:completion:argadd 'spindle workspace' (list create get focus report-metadata move rename close)
@@ -268,6 +274,7 @@ mod tests {
             assert!(output.contains("client"));
             assert!(output.contains("--json"));
             assert!(output.contains("pane"));
+            assert!(output.contains("plugin"));
             assert!(output.contains("wait-output"));
             assert!(output.contains("tab"));
             assert!(output.contains("neighbor"));
