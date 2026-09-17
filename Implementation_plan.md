@@ -184,7 +184,9 @@ other configured shells avoid PowerShell-specific arguments and can request a
 login shell on Unix. CLI-created workspace, tab, and worktree panes use the
 same shell selection and mode rules. Herdr's `[terminal].new_cwd` policy now
 controls implicit pane, workspace, and tab directories; explicit `--cwd` and
-worktree paths still take precedence.
+worktree paths still take precedence. Git worktree creation now follows
+Herdr's `[worktrees].directory` setting and defaults to
+`~/.herdr/worktrees/<repository>/<branch-slug>`.
 
 ## 0. Establish the parity matrix
 
