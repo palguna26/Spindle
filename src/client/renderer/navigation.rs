@@ -3048,6 +3048,23 @@ mod tests {
     }
 
     #[test]
+    fn tab_bar_command_context_matches_herdr_active_pane_environment() {
+        let snapshot = sample_snapshot();
+        let workspace = &snapshot.spaces[0].workspaces[1];
+        let context = super::status_command_context(&snapshot, workspace);
+        assert_eq!(context.cwd.as_deref(), Some(std::path::Path::new("C:/")));
+        assert!(context
+            .environment
+            .contains(&("SPINDLE_ACTIVE_WORKSPACE_ID".into(), "workspace-2".into())));
+        assert!(context
+            .environment
+            .contains(&("SPINDLE_ACTIVE_TAB_ID".into(), "tab-3".into())));
+        assert!(context
+            .environment
+            .contains(&("SPINDLE_ACTIVE_PANE_ID".into(), "pane-2".into())));
+    }
+
+    #[test]
     fn expanded_sidebar_matches_herdr_default_width_at_normal_terminal_size() {
         let main = main_areas_with_sidebar(Rect::new(0, 0, 120, 30), false);
         assert_eq!(main.sidebar.width, 26);
