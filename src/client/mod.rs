@@ -20,6 +20,7 @@ mod selection;
 mod settings;
 mod sidebar;
 mod startup;
+mod status_context;
 mod workspace_navigation;
 mod worktree_actions;
 

@@ -49,6 +49,10 @@ Herdr-compatible active workspace, tab, pane, socket, and binary environment
 variables. Their cached values are isolated by command settings and active
 context, and Windows uses Herdr's `/d /c` command invocation form.
 
+Tab-bar command context construction is now isolated in
+`src/client/status_context.rs`, matching Herdr's dedicated status/runtime
+boundary and keeping navigation focused on geometry and rendering.
+
 Configured keybindings now take precedence over conflicting built-in and
 custom chords, following Herdr's user-before-default binding registry.
 
